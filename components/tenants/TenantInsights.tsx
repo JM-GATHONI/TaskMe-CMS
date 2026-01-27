@@ -1,0 +1,253 @@
+
+import React, { useMemo, useRef, useEffect } from 'react';
+import { useData } from '../../context/DataContext';
+import Icon from '../Icon';
+
+const Chart: React.FC<{ type: 'bar' | 'doughnut' | 'line'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const chartRef = useRef<any>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current || !(window as any).Chart) return;
+        if (chartRef.current) chartRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+            chartRef.current = new (window as any).Chart(ctx, {
+                type,
+                data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { 
+                            position: 'bottom',
+                            labels: { usePointStyle: true, boxWidth: 8 }
+                        } 
+                    },
+                    ...options
+                },
+            });
+        }
+        return () => chartRef.current?.destroy();
+    }, [type, data, options]);
+
+    return <div className={`relative ${height}`}><canvas ref={canvasRef}></canvas></div>;
+};
+
+const InsightMetricCard: React.FC<{ title: string; value: string; change: string; isPositive: boolean; icon: string; color: string }> = ({ title, value, change, isPositive, icon, color }) => (
+    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <div className="flex justify-between items-start">
+            <div>
+                <p className="text-sm text-gray-500 font-medium uppercase tracking-wider">{title}</p>
+                <h3 className="text-2xl font-bold text-gray-800 mt-1">{value}</h3>
+            </div>
+            <div className={`p-2 rounded-full bg-opacity-10`} style={{ backgroundColor: `${color}20` }}>
+                <Icon name={icon} className="w-6 h-6" style={{ color: color }} />
+            </div>
+        </div>
+        <div className="mt-3 flex items-center text-xs font-medium">
+            <span className={`${isPositive ? 'text-green-600' : 'text-red-600'} flex items-center`}>
+                {isPositive ? '▲' : '▼'} {change}
+            </span>
+            <span className="text-gray-400 ml-1">vs last month</span>
+        </div>
+    </div>
+);
+
+const TenantInsights: React.FC = () => {
+    const { tenants, properties, tasks } = useData();
+
+    // --- Data Calculations ---
+
+    // 1. Occupancy & Unit Preference
+    const unitTypeData = useMemo(() => {
+        const typeCounts: Record<string, number> = {};
+        tenants.forEach(t => {
+            // Derive type from unit number or mock it if specific type field missing in tenant
+            // Using a simplified heuristic: "1BR", "2BR" etc. based on properties context
+            const unitProp = properties.find(p => p.id === t.propertyId)?.units.find(u => u.id === t.unitId);
+            const type = unitProp ? `${unitProp.bedrooms} Bedroom` : 'Unknown';
+            typeCounts[type] = (typeCounts[type] || 0) + 1;
+        });
+        return typeCounts;
+    }, [tenants, properties]);
+
+    // 2. Lease Expiry Forecast (Next 6 Months)
+    const expiryForecast = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+        const counts = new Array(6).fill(0);
+        const now = new Date();
+        
+        tenants.forEach(t => {
+            if (t.leaseEnd) {
+                const date = new Date(t.leaseEnd);
+                const diffMonth = (date.getFullYear() - now.getFullYear()) * 12 + (date.getMonth() - now.getMonth());
+                if (diffMonth >= 0 && diffMonth < 6) {
+                    counts[diffMonth]++;
+                }
+            }
+        });
+        
+        // Generate labels dynamically starting from current month
+        const labels = counts.map((_, i) => {
+            const d = new Date();
+            d.setMonth(now.getMonth() + i);
+            return d.toLocaleString('default', { month: 'short' });
+        });
+
+        return { labels, counts };
+    }, [tenants]);
+
+    // 3. Risk Analysis
+    const atRiskTenants = useMemo(() => {
+        return tenants.filter(t => 
+            t.status === 'Overdue' || 
+            t.status === 'Notice' || 
+            (t.leaseEnd && new Date(t.leaseEnd) < new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000))
+        ).map(t => ({
+            id: t.id,
+            name: t.name,
+            unit: t.unit,
+            riskFactor: t.status === 'Overdue' ? 'Arrears' : t.status === 'Notice' ? 'Moving Out' : 'Expiring Lease',
+            amount: t.status === 'Overdue' ? t.rentAmount : 0
+        }));
+    }, [tenants]);
+
+    // 4. Metrics
+    const retentionRate = 94.2; // Mock calc
+    const avgTenancy = "1.8 Yrs"; // Mock calc
+    const paymentCompliance = 88; // Mock calc
+    const satisfactionScore = 4.5; // Mock calc
+
+    // --- Chart Configurations ---
+
+    const expiryChartData = {
+        labels: expiryForecast.labels,
+        datasets: [{
+            label: 'Leases Expiring',
+            data: expiryForecast.counts,
+            backgroundColor: '#F39C2A',
+            borderRadius: 4,
+            barThickness: 20
+        }]
+    };
+
+    const unitPreferenceChartData = {
+        labels: Object.keys(unitTypeData),
+        datasets: [{
+            data: Object.values(unitTypeData),
+            backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'],
+            borderWidth: 0
+        }]
+    };
+
+    const paymentBehaviorChartData = {
+        labels: ['On-Time', 'Late (<7 Days)', 'Late (>7 Days)', 'Default'],
+        datasets: [{
+            data: [65, 20, 10, 5],
+            backgroundColor: ['#10b981', '#facc15', '#f97316', '#ef4444'],
+            borderWidth: 0
+        }]
+    };
+
+    return (
+        <div className="space-y-8">
+            <button onClick={() => window.location.hash = '#/tenants/overview'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
+                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Overview
+            </button>
+            <div>
+                <h1 className="text-3xl font-bold text-gray-800">Tenant Insights</h1>
+                <p className="text-lg text-gray-500 mt-1">Deep analytics on tenant behavior, lease health, and retention.</p>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <InsightMetricCard title="Retention Rate" value={`${retentionRate}%`} change="+1.2%" isPositive={true} icon="check" color="#10b981" />
+                <InsightMetricCard title="Avg. Tenancy" value={avgTenancy} change="+2 mo" isPositive={true} icon="leases" color="#3b82f6" />
+                <InsightMetricCard title="Payment Compliance" value={`${paymentCompliance}%`} change="-0.5%" isPositive={false} icon="payments" color="#f59e0b" />
+                <InsightMetricCard title="Maint. Satisfaction" value={`${satisfactionScore}/5.0`} change="Stable" isPositive={true} icon="maintenance" color="#8b5cf6" />
+            </div>
+
+            {/* Main Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Lease Expiry Forecast */}
+                <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">Lease Expiry Forecast</h3>
+                        <button className="text-sm text-primary hover:underline font-medium" onClick={() => window.location.hash = '#/general-operations/leases/renewals'}>View Renewals</button>
+                    </div>
+                    <Chart type="bar" data={expiryChartData} height="h-72" />
+                </div>
+
+                {/* Unit Type Preference */}
+                <div className="bg-white p-6 rounded-xl shadow-sm">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4">Unit Type Demand</h3>
+                    <div className="flex items-center justify-center h-64">
+                        <Chart type="doughnut" data={unitPreferenceChartData} options={{ cutout: '70%' }} height="h-56" />
+                    </div>
+                    <p className="text-center text-xs text-gray-500 mt-4">Distribution of occupied units by type.</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Payment Behavior */}
+                <div className="bg-white p-6 rounded-xl shadow-sm">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4">Payment Habits</h3>
+                    <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="w-full md:w-1/2">
+                            <Chart type="doughnut" data={paymentBehaviorChartData} options={{ cutout: '60%', plugins: { legend: { display: false } } }} height="h-48" />
+                        </div>
+                        <div className="w-full md:w-1/2 space-y-3">
+                            {paymentBehaviorChartData.labels.map((label, i) => (
+                                <div key={label} className="flex justify-between items-center">
+                                    <div className="flex items-center">
+                                        <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: paymentBehaviorChartData.datasets[0].backgroundColor[i] }}></span>
+                                        <span className="text-sm text-gray-600">{label}</span>
+                                    </div>
+                                    <span className="font-bold text-gray-800">{paymentBehaviorChartData.datasets[0].data[i]}%</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* At Risk List */}
+                <div className="bg-white p-6 rounded-xl shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-gray-800">At-Risk Tenants</h3>
+                        <span className="bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded-full">{atRiskTenants.length} Flagged</span>
+                    </div>
+                    <div className="overflow-y-auto max-h-64 pr-2">
+                        {atRiskTenants.length > 0 ? (
+                            <ul className="space-y-2">
+                                {atRiskTenants.map(t => (
+                                    <li key={t.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => window.location.hash = `#/tenants/active-tenants?tenantId=${t.id}`}>
+                                        <div>
+                                            <p className="font-bold text-sm text-gray-800">{t.name}</p>
+                                            <p className="text-xs text-gray-500">{t.unit}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`text-xs font-bold px-2 py-1 rounded border ${
+                                                t.riskFactor === 'Arrears' ? 'bg-red-50 text-red-700 border-red-200' : 
+                                                t.riskFactor === 'Moving Out' ? 'bg-orange-50 text-orange-700 border-orange-200' : 
+                                                'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                            }`}>
+                                                {t.riskFactor}
+                                            </span>
+                                            {t.amount > 0 && <p className="text-xs text-red-600 font-semibold mt-1">KES {t.amount.toLocaleString()}</p>}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-gray-500 text-sm text-center py-8">No tenants currently flagged as high risk.</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default TenantInsights;

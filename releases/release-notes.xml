@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<releaseNotes version="1" date="unknown">
+  <file path="components/landlords/ActiveLandlords.tsx" module="landlords">
+    <description>Refactored Active Landlords with inline detail view and live deduction calculations.</description>
+  </file>
+  <file path="components/sidebar/Navigation.tsx" module="sidebar">
+    <description>Fixed sidebar collapse state and keyboard focus.</description>
+  </file>
+  <file path="constants.ts">
+    <description>Updated navigation link order and added mock investor data.</description>
+  </file>
+</releaseNotes>
