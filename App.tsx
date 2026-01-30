@@ -5,8 +5,9 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import QuickStats from './components/QuickStats';
 import QuickSearch from './components/registration/QuickSearch';
-import { DataProvider } from './context/DataContext';
+import { DataProvider, useData } from './context/DataContext'; // Import useData
 import Auth from './components/Auth';
+import { User, StaffProfile, TenantProfile } from './types'; // Import types
 
 // Registration
 import RegistrationOverview from './components/registration/Overview';
@@ -147,7 +148,8 @@ import ComplianceAndKYC from './components/r-reits/ComplianceAndKYC';
 
 // Settings
 import Profile from './components/settings/Profile';
-import RolesAndPermissions from './components/settings/RolesAndPermissions';
+import Roles from './components/settings/RolesAndPermissions'; // Renamed import
+import Permissions from './components/settings/Permissions'; // New import
 import Widgets from './components/settings/Widgets';
 import RatesAndRules from './components/settings/RatesAndRules';
 import Constants from './components/settings/Constants';
@@ -158,8 +160,8 @@ const AppContent: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [currentPath, setCurrentPath] = useState(window.location.hash || '#/dashboard');
   
-  // Auth State
-  const [user, setUser] = useState<any>(null);
+  // Auth State from Context
+  const { currentUser, setCurrentUser } = useData();
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -169,15 +171,29 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // Responsive Sidebar Logic
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsSidebarOpen(false);
+      } else {
+        setIsSidebarOpen(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close sidebar on mobile when clicking content, but keep open on desktop
   const handleMainClick = () => {
-    if (isSidebarOpen) {
+    if (window.innerWidth < 1024 && isSidebarOpen) {
         setIsSidebarOpen(false);
     }
   };
 
-  if (!user) {
+  if (!currentUser) {
       return <Auth onLogin={(u) => {
-          setUser(u);
+          setCurrentUser(u as User | StaffProfile | TenantProfile);
           // Auto-load dashboard if no specific hash is present or if it's just the root
           if (!window.location.hash || window.location.hash === '#/') {
               window.location.hash = '#/dashboard';
@@ -404,7 +420,8 @@ const AppContent: React.FC = () => {
     if (path.startsWith('#/settings')) {
         switch (path) {
             case '#/settings/profile': return <Profile />;
-            case '#/settings/roles-permissions': return <RolesAndPermissions />;
+            case '#/settings/roles': return <Roles />;
+            case '#/settings/permissions': return <Permissions />;
             case '#/settings/widgets': return <Widgets />;
             case '#/settings/rates-rules': return <RatesAndRules />;
             case '#/settings/constants': return <Constants />;
@@ -422,13 +439,26 @@ const AppContent: React.FC = () => {
         <Header 
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
             isSidebarOpen={isSidebarOpen} 
-            onLogout={() => setUser(null)}
+            onLogout={() => setCurrentUser(null)}
         />
         <Sidebar 
             activeRoute={currentPath} 
             isOpen={isSidebarOpen} 
-            closeSidebarMobile={() => setIsSidebarOpen(false)} 
+            closeSidebarMobile={() => {
+                if (window.innerWidth < 1024) {
+                    setIsSidebarOpen(false);
+                }
+            }} 
         />
+        
+        {/* Mobile Backdrop */}
+        {isSidebarOpen && (
+            <div 
+                className="fixed inset-0 bg-black/50 z-30 lg:hidden glass-backdrop" 
+                onClick={() => setIsSidebarOpen(false)}
+            />
+        )}
+
         <main className="app-main bg-gray-100 relative" onClick={handleMainClick}>
             {renderContent()}
         </main>

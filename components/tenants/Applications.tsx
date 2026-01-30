@@ -10,6 +10,7 @@ export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProf
     recordType: 'Tenant' | 'Application';
     displayStatus: string;
     submittedDate?: string;
+    referrerId?: string; // Added to track specific person
 };
 
 // --- MOVE TENANT MODAL ---
@@ -80,6 +81,7 @@ export const ApplicationFormModal: React.FC<{
     onSave: (data: UnifiedRecord) => void;
     properties: Property[];
 }> = ({ record, onClose, onSave, properties }) => {
+    const { tenants, landlords, staff } = useData(); // Context for referrer lookups
     const [activeTab, setActiveTab] = useState<'details' | 'lease' | 'documents'>('details');
     
     // File inputs refs (reused)
@@ -97,7 +99,8 @@ export const ApplicationFormModal: React.FC<{
         rentAmount: record?.rentAmount || 0,
         depositPaid: record?.depositPaid || 0,
         // Start date
-        rentStartDate: record?.rentStartDate || record?.onboardingDate || new Date().toISOString().split('T')[0]
+        rentStartDate: record?.rentStartDate || record?.onboardingDate || new Date().toISOString().split('T')[0],
+        source: record?.source || 'Walk-in'
     });
 
     // Rent Due Calculation State
@@ -171,11 +174,13 @@ export const ApplicationFormModal: React.FC<{
 
     const handleRecurringBillChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
+        // Allow empty string for better UX, convert to 0 on use
+        const numValue = value === '' ? 0 : parseFloat(value);
         setFormData(prev => ({
             ...prev,
             recurringBills: {
                 ...(prev.recurringBills || defaultRecurringBills),
-                [name]: parseFloat(value) || 0
+                [name]: numValue
             }
         }));
     };
@@ -250,6 +255,73 @@ export const ApplicationFormModal: React.FC<{
         }
     };
 
+    const renderReferrerSelect = () => {
+        const source = formData.source;
+        if (source === 'Walk-in' || source === 'Website') return null;
+
+        let options: {id: string, name: string, sub?: string}[] = [];
+        let label = "Select Referrer";
+
+        if (source === 'Tenant') {
+            options = tenants.map(t => ({ id: t.id, name: t.name, sub: t.unit }));
+            label = "Select Referring Tenant";
+        } else if (source === 'Landlord') {
+            options = landlords.map(l => ({ id: l.id, name: l.name }));
+            label = "Select Referring Landlord";
+        } else if (source === 'Affiliate') {
+            // Using Staff (Agents) as affiliates for this context
+            options = staff.map(s => ({ id: s.id, name: s.name, sub: s.role }));
+            label = "Select Affiliate/Agent";
+        } else if (source === 'Posters') {
+             // Posters might imply a specific campaign or location, simple input for now or select list of campaigns
+             return (
+                 <div className="md:col-span-2">
+                     <label className="block text-xs font-medium text-gray-700 mb-1">Poster Location / ID</label>
+                     <input 
+                        name="referrerId" 
+                        value={formData.referrerId || ''} 
+                        onChange={handleChange} 
+                        placeholder="e.g. CBD-001" 
+                        className="w-full p-2 border rounded bg-white"
+                     />
+                 </div>
+             );
+        } else if (source === 'Referral') {
+             // General Referral
+             return (
+                 <div className="md:col-span-2">
+                     <label className="block text-xs font-medium text-gray-700 mb-1">Referrer Name / Details</label>
+                     <input 
+                        name="referrerId" 
+                        value={formData.referrerId || ''} 
+                        onChange={handleChange} 
+                        placeholder="Name of referrer" 
+                        className="w-full p-2 border rounded bg-white"
+                     />
+                 </div>
+             );
+        }
+
+        return (
+            <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+                <select 
+                    name="referrerId" 
+                    value={formData.referrerId || ''} 
+                    onChange={handleChange} 
+                    className="w-full p-2 border rounded bg-white"
+                >
+                    <option value="">-- Select Person --</option>
+                    {options.map(opt => (
+                        <option key={opt.id} value={opt.id}>
+                            {opt.name} {opt.sub ? `(${opt.sub})` : ''}
+                        </option>
+                    ))}
+                </select>
+            </div>
+        );
+    };
+
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000] p-4 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); onClose(); }}>
             <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -293,16 +365,27 @@ export const ApplicationFormModal: React.FC<{
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
                                     <input name="email" value={formData.email || ''} onChange={handleChange} className="w-full p-2 border rounded" />
                                 </div>
-                                {record?.recordType === 'Application' && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Source</label>
-                                        <select name="source" value={formData.source} onChange={handleChange} className="w-full p-2 border rounded bg-white">
-                                            <option>Walk-in</option>
-                                            <option>Agent</option>
-                                            <option>Website</option>
-                                        </select>
+                                
+                                {/* Source & Referral Section */}
+                                <div className="md:col-span-2 border-t pt-4 mt-2">
+                                    <h4 className="text-sm font-bold text-gray-800 mb-3">Lead Source</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">How did they find us?</label>
+                                            <select name="source" value={formData.source} onChange={handleChange} className="w-full p-2 border rounded bg-white">
+                                                <option value="Walk-in">Walk-in</option>
+                                                <option value="Website">Website</option>
+                                                <option value="Agent">Agent</option>
+                                                <option value="Affiliate">Affiliate</option>
+                                                <option value="Tenant">Tenant Referral</option>
+                                                <option value="Landlord">Landlord Referral</option>
+                                                <option value="Referral">General Referral</option>
+                                                <option value="Posters">Posters / Ads</option>
+                                            </select>
+                                        </div>
+                                        {renderReferrerSelect()}
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </>
                     )}
@@ -362,8 +445,10 @@ export const ApplicationFormModal: React.FC<{
                                             <input 
                                                 type="number" 
                                                 name={key} 
-                                                value={(formData.recurringBills as any)?.[key] || 0} 
+                                                // If value is 0, show empty string to allow typing
+                                                value={(formData.recurringBills as any)?.[key] === 0 ? '' : (formData.recurringBills as any)?.[key]} 
                                                 onChange={handleRecurringBillChange} 
+                                                placeholder="0"
                                                 className="w-full p-1 pl-2 border rounded text-sm" 
                                             />
                                         </div>

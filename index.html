@@ -104,7 +104,7 @@
         box-sizing: border-box; 
       }
 
-      /* --- Unified Layout Logic (All Devices: Desktop, Tablet, Mobile) --- */
+      /* --- Unified Layout Logic (Desktop) --- */
       
       /* Sidebar Open: Push content right and resize */
       [data-sidebar-open="true"] .app-sidebar {
@@ -122,6 +122,26 @@
       [data-sidebar-open="false"] .app-main {
         margin-left: 0;
         width: 100%;
+      }
+
+      /* --- Mobile Responsive Overrides --- */
+      @media (max-width: 1024px) {
+        .app-sidebar {
+            z-index: 60 !important; /* Force above header backdrop */
+            box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+        }
+
+        /* On mobile, opening sidebar should NOT push content, just overlay */
+        [data-sidebar-open="true"] .app-main {
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+
+        /* Glass Backdrop for mobile menu */
+        .glass-backdrop {
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+        }
       }
 
       /* --- Secondary Colored Scrollbar (Sidebar) --- */

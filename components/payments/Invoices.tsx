@@ -164,7 +164,10 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
 
 // --- OUTBOUND INVOICE CREATOR MODAL (Professional Invoice) ---
 const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onClose: () => void; onSave: (invoice: Invoice) => void; }> = ({ initialInvoice, onClose, onSave }) => {
-    const { tenants } = useData();
+    const { tenants, landlords } = useData();
+    const [clientMode, setClientMode] = useState<'Existing' | 'New'>('Existing');
+    const [selectedTenantId, setSelectedTenantId] = useState('');
+    
     const [formData, setFormData] = useState({
         tenantName: initialInvoice?.tenantName || '', // Recipient
         email: initialInvoice?.email || '',
@@ -177,6 +180,35 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
     const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleTenantSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const tId = e.target.value;
+        setSelectedTenantId(tId);
+        
+        if (tId) {
+            const tenant = tenants.find(t => t.id === tId);
+            if (tenant) {
+                setFormData(prev => ({
+                    ...prev,
+                    tenantName: tenant.name,
+                    email: tenant.email,
+                    phone: tenant.phone,
+                    billingAddress: `${tenant.propertyName} - ${tenant.unit}`
+                }));
+            } else {
+                const landlord = landlords.find(l => l.id === tId);
+                if (landlord) {
+                    setFormData(prev => ({
+                        ...prev,
+                        tenantName: landlord.name,
+                        email: landlord.email,
+                        phone: landlord.phone,
+                        billingAddress: `Landlord - ${landlord.branch || 'Headquarters'}`
+                    }));
+                }
+            }
+        }
     };
 
     const handleItemChange = (index: number, field: string, value: any) => {
@@ -205,30 +237,23 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
 
     // --- FETCH DEBTS LOGIC ---
     const fetchOutstandingItems = () => {
-        if (!formData.tenantName) {
-            alert("Please enter a tenant name first.");
-            return;
+        let tenant = null;
+
+        if (clientMode === 'Existing' && selectedTenantId) {
+            tenant = tenants.find(t => t.id === selectedTenantId);
+        } else if (formData.tenantName) {
+            // Fallback for new clients or manual text matching
+             const query = formData.tenantName.toLowerCase();
+             tenant = tenants.find(p => p.name.toLowerCase() === query);
         }
-        
-        const query = formData.tenantName.toLowerCase();
-        const tenant = tenants.find(p => 
-            p.name.toLowerCase().includes(query) || 
-            p.unit.toLowerCase().includes(query)
-        );
 
         if (!tenant) {
-            alert("Tenant not found in the system database.");
+            alert(clientMode === 'Existing' 
+                ? "Please select a tenant from the dropdown." 
+                : "Tenant not found matching this name. Only existing tenants track arrears."
+            );
             return;
         }
-
-        // Auto-fill contact info if missing
-        setFormData(prev => ({
-            ...prev,
-            tenantName: tenant.name, // Exact name from DB
-            email: prev.email || tenant.email,
-            phone: prev.phone || tenant.phone,
-            billingAddress: prev.billingAddress || `${tenant.propertyName} - ${tenant.unit}`,
-        }));
 
         const newItems = [];
 
@@ -271,10 +296,17 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
         }
 
         if (newItems.length > 0) {
-            setFormData(prev => ({ ...prev, items: newItems }));
-            alert(`Found and added ${newItems.length} outstanding items for ${tenant.name}.`);
+            // Check if we already have items, if only one empty item, replace it
+            let finalItems = [...formData.items];
+            if (finalItems.length === 1 && !finalItems[0].description && finalItems[0].amount === 0) {
+                finalItems = newItems;
+            } else {
+                finalItems = [...finalItems, ...newItems];
+            }
+            setFormData(prev => ({ ...prev, items: finalItems }));
+            alert(`Added ${newItems.length} outstanding items for ${tenant!.name}.`);
         } else {
-            alert(`Tenant found: ${tenant.name}, but no outstanding arrears, bills, or fines were found.`);
+            alert(`No outstanding arrears or bills found for ${tenant.name}.`);
         }
     };
 
@@ -311,20 +343,71 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
             <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <h2 className="text-xl font-bold mb-4">{initialInvoice ? 'Edit Invoice' : 'Create Professional Invoice'}</h2>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <div className="space-y-3">
-                        <h3 className="font-semibold text-gray-700 text-sm">Bill To:</h3>
-                        <div className="flex gap-2">
-                            <input name="tenantName" value={formData.tenantName} onChange={handleHeaderChange} placeholder="Client / Tenant Name*" className="w-full p-2 border rounded" />
-                            <button 
-                                onClick={fetchOutstandingItems}
-                                className="bg-secondary/20 text-secondary-dark px-3 py-2 rounded text-xs font-bold hover:bg-secondary/30 whitespace-nowrap"
-                                title="Auto-fill arrears, fines, and bills for this tenant"
-                                type="button"
-                            >
-                                Fetch Debts
-                            </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="font-semibold text-gray-700 text-sm mb-2">Bill To:</h3>
+                            <div className="flex gap-4 mb-2 text-sm">
+                                <label className="flex items-center cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        name="clientMode" 
+                                        checked={clientMode === 'Existing'} 
+                                        onChange={() => setClientMode('Existing')} 
+                                        className="mr-2"
+                                    />
+                                    Existing
+                                </label>
+                                <label className="flex items-center cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        name="clientMode" 
+                                        checked={clientMode === 'New'} 
+                                        onChange={() => { setClientMode('New'); setSelectedTenantId(''); setFormData(prev => ({...prev, tenantName: '', email: '', phone: '', billingAddress: ''})) }} 
+                                        className="mr-2"
+                                    />
+                                    New Client
+                                </label>
+                            </div>
+
+                            <div className="flex gap-2">
+                                {clientMode === 'Existing' ? (
+                                    <select 
+                                        value={selectedTenantId} 
+                                        onChange={handleTenantSelect} 
+                                        className="w-full p-2 border rounded bg-white"
+                                    >
+                                        <option value="">Select Tenant/Landlord...</option>
+                                        <optgroup label="Tenants">
+                                            {tenants.map(t => <option key={t.id} value={t.id}>{t.name} ({t.unit})</option>)}
+                                        </optgroup>
+                                        <optgroup label="Landlords">
+                                            {landlords.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                        </optgroup>
+                                    </select>
+                                ) : (
+                                    <input 
+                                        name="tenantName" 
+                                        value={formData.tenantName} 
+                                        onChange={handleHeaderChange} 
+                                        placeholder="Client / Tenant Name*" 
+                                        className="w-full p-2 border rounded" 
+                                    />
+                                )}
+                                
+                                {clientMode === 'Existing' && (
+                                    <button 
+                                        onClick={fetchOutstandingItems}
+                                        className="bg-secondary/20 text-secondary-dark px-3 py-2 rounded text-xs font-bold hover:bg-secondary/30 whitespace-nowrap border border-secondary/20"
+                                        title="Auto-fill arrears, fines, and bills for this tenant"
+                                        type="button"
+                                    >
+                                        Fetch Debts
+                                    </button>
+                                )}
+                            </div>
                         </div>
+                        
                         <input name="email" value={formData.email} onChange={handleHeaderChange} placeholder="Email Address" className="w-full p-2 border rounded" />
                         <input name="phone" value={formData.phone} onChange={handleHeaderChange} placeholder="Phone Number" className="w-full p-2 border rounded" />
                         <input name="billingAddress" value={formData.billingAddress} onChange={handleHeaderChange} placeholder="Billing Address" className="w-full p-2 border rounded" />
@@ -387,6 +470,7 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
 
 // --- INVOICE PREVIEW & SEND MODAL ---
 const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> = ({ invoice, onClose }) => {
+    const { systemSettings } = useData();
     const [linkCopied, setLinkCopied] = useState(false);
     
     // Simulated Link Generation
@@ -461,7 +545,11 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
                              </div>
                         </div>
                         <div className="text-right">
-                            <h2 className="text-lg font-bold text-gray-800">TaskMe Realty</h2>
+                            {systemSettings.logo ? (
+                                <img src={systemSettings.logo} alt="Company Logo" className="h-16 object-contain ml-auto mb-2" />
+                            ) : (
+                                <h2 className="text-lg font-bold text-gray-800">{systemSettings.companyName || 'TaskMe Realty'}</h2>
+                            )}
                             <p className="text-gray-500">123 Property Lane</p>
                             <p className="text-gray-500">Nairobi, Kenya</p>
                             <div className="mt-4 bg-gray-100 p-3 rounded">

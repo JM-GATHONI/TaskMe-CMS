@@ -5,7 +5,7 @@ import {
     Payslip, Message, CommunicationTemplate, Bill, TaxRecord, LeaseTemplate, 
     RoleAwareKpis, OccupancyMetric, StaffLeaderboardEntry, PropertyInsight, 
     ReitMetric, ScheduledReport, Listing, Lead, Affiliate, DeveloperProject, 
-    ReitReferralDashboardData, KycRecord, Role, WidgetConfig, RateRule, 
+    ReitReferralDashboardData, KycRecord, Role, RolePermissions, WidgetConfig, RateRule, 
     SystemConstant, CompanyStructureNode, LandlordStatement, TenantApplication, 
     GeospatialData, CommissionRule, DeductionRule, ExternalTransaction, 
     Overpayment, Vendor, PreventiveTask, WithdrawalRequest, Distribution, 
@@ -26,7 +26,7 @@ export const NAVIGATION_ITEMS: NavItem[] = [
   { name: 'Accounting', icon: 'accounting', subModules: ['Overview', 'Income', 'Expenses', 'Financial Statements', 'Tax Compliance', 'Reconciliation', 'Reporting'] },
   { name: 'Reports & Analytics', icon: 'analytics', subModules: ['Reports', 'Analytics'] },
   { name: 'User App Portal', icon: 'user-app', subModules: ['Tenant Portal', 'Agent Portal', 'Landlords Portal', 'Affiliate Portal', 'Investors Portal', 'Caretaker Portal', 'Contractor Portal', 'Referral Landing'] },
-  { name: 'Settings', icon: 'settings', subModules: ['Profile', 'Roles & Permissions', 'Widgets', 'Rates & Rules', 'Constants', 'Company Structure', 'Audit Trail'] },
+  { name: 'Settings', icon: 'settings', subModules: ['Profile', 'Roles', 'Permissions', 'Widgets', 'Rates & Rules', 'Constants', 'Company Structure', 'Audit Trail'] },
 ];
 
 export const QUICK_STATS_DATA: QuickStat[] = [
@@ -56,11 +56,105 @@ export const MOCK_PROPERTIES: Property[] = [];
 export const MOCK_TENANTS: TenantProfile[] = []; 
 export const MOCK_TASKS: Task[] = []; 
 export const MOCK_APPLICATIONS: TenantApplication[] = []; 
+
+// --- UPDATED GEOSPATIAL DATA (KENYAN CONTEXT) ---
 export const GEOSPATIAL_DATA: GeospatialData = {
-    'Nairobi': { 'Westlands': { 'Parklands': { 'Zone A': [] } } },
-    'Kericho': { 'Township': { 'Majengo': { 'Plot 10': [] } } },
-    'Kisii': { 'Central': { 'Mwembe': { 'Block C': [] } } }
+    'Nairobi': { 
+        'Westlands': { 
+            'Parklands': { 
+                'Zone A': ['Highridge', '3rd Parklands'],
+                'Zone B': ['Kitsuru', 'Spring Valley'] 
+            },
+            'Kangemi': {
+                'Olympic': ['Village A', 'Village B'],
+                'Mountain View': ['Estate 1', 'Estate 2']
+            }
+        },
+        'Kasarani': {
+            'Roysambu': {
+                'Zimmerman': ['Base', 'Kamiti'],
+                'Githurai 44': ['Mokorino', 'Police Post']
+            }
+        },
+        'Kibra': {
+            'Woodley': {
+                'Jamhuri': ['Estate Phase 1', 'Estate Phase 2'],
+                'Kenyatta Golf Course': ['Ngummo']
+            }
+        }
+    },
+    'Kisii': { 
+        'Kitutu Chache South': { 
+            'Township': { 
+                'Mwembe': ['Mwembe Tayari', 'Jogoo'],
+                'CBD': ['Capital', 'Hospital Rd']
+            },
+            'Nyanchwa': {
+                'Nyanchwa Estate': ['Section A', 'Section B'],
+                'Daraja Mbili': ['Market Area']
+            }
+        },
+        'Nyaribari Chache': {
+            'Central': {
+                'Kisii Town': ['Main Stage', 'Stadium']
+            }
+        }
+    },
+    'Kericho': { 
+        'Ainamoi': { 
+            'Township': { 
+                'CBD': ['Temple Road', 'Uhuru Gardens'],
+                'Majengo': ['Area 1', 'Area 2']
+            },
+            'Kipchimchim': {
+                'Kipchimchim': ['Market', 'School']
+            }
+        } 
+    },
+    'Mombasa': {
+        'Nyali': {
+            'Nyali': {
+                'Beach Road': ['Links Rd', 'Moyne Dr'],
+                'Kongowea': ['Karama', 'Uwanja wa Ndege']
+            }
+        },
+        'Likoni': {
+            'Likoni': {
+                'Shelly Beach': ['Timbwani'],
+                'Mtongwe': ['Ferry']
+            }
+        }
+    },
+    'Nakuru': {
+        'Nakuru Town East': {
+            'CBD': {
+                'Bondeni': ['Section 58', 'Kaptembwa'],
+                'Milimani': ['State House Rd']
+            }
+        },
+        'Naivasha': {
+            'Viwandani': {
+                'Town': ['Area 1'],
+                'Industrial': ['Plant']
+            }
+        }
+    },
+    'Kiambu': {
+        'Thika': {
+            'Township': {
+                'Section 9': ['A', 'B'],
+                'Makongeni': ['Phase 1']
+            }
+        },
+        'Ruiru': {
+            'Biashara': {
+                'Kimbo': ['Matangi'],
+                'Githurai 45': ['Progress']
+            }
+        }
+    }
 };
+
 export const MOCK_COMMISSION_RULES: CommissionRule[] = [
     { id: 'rule1', trigger: 'Rent Collection', rateType: '%', rateValue: 5, description: 'Standard agent commission', appliesTo: 'Agent' },
     { id: 'rule2', trigger: 'Tenancy Referral', rateType: 'KES', rateValue: 200, description: 'One-off bonus for referring a tenant', appliesTo: 'Tenant, Agent, Affiliate' },
@@ -279,10 +373,83 @@ export const MOCK_KYC_RECORDS: KycRecord[] = [
     { id: 'kyc3', investorName: 'Jim Halpert', idNumber: '11223344', phone: '0733445566', joinDate: '2025-10-05', status: 'Rejected' }
 ];
 
+const createMockPermissions = (isAdmin: boolean): RolePermissions => {
+    const modules = ['Properties', 'Tenants', 'Landlords', 'Financials', 'Maintenance', 'Reports', 'Settings', 'Users'];
+    const perms: RolePermissions = {};
+    modules.forEach(m => {
+        perms[m] = {
+            create: isAdmin,
+            edit: isAdmin,
+            delete: isAdmin,
+            view: true,
+            approve: isAdmin,
+            import: isAdmin,
+            activate: isAdmin,
+            deactivate: isAdmin,
+            publish: isAdmin,
+            pay: isAdmin,
+            resolve: isAdmin,
+            cancel: isAdmin
+        };
+    });
+    return perms;
+};
+
+// All submodules list for admin
+const ALL_SUBMODULES = [
+    'Dashboard', 'Dashboard/Quick Stats', 'Dashboard/Quick Search',
+    'Registration', 'Registration/Overview', 'Registration/Users', 'Registration/Payment Setup', 'Registration/Commissions', 'Registration/Geospatial Mapping', 'Registration/Properties',
+    'Landlords', 'Landlords/Overview', 'Landlords/Applications', 'Landlords/Active Landlords', 'Landlords/Deductions', 'Landlords/Offboarding',
+    'Tenants', 'Tenants/Overview', 'Tenants/Applications', 'Tenants/Active Tenants', 'Tenants/Fines & Penalties', 'Tenants/Tenant Insights', 'Tenants/Offboarding',
+    'Operations', 'Operations/Field Agents', 'Operations/Affiliates', 'Operations/Caretakers', 'Operations/Properties', 'Operations/Maintenance', 'Operations/Task Management', 'Operations/Communications', 'Operations/Leases',
+    'Payments', 'Payments/Overview', 'Payments/Inbound', 'Payments/Outbound', 'Payments/Invoices', 'Payments/Reconciliation', 'Payments/Landlord Payouts', 'Payments/Overpayments', 'Payments/Payment Processing',
+    'Marketplace', 'Marketplace/Listings', 'Marketplace/Leads', 'Marketplace/Affiliates', 'Marketplace/Developer Portal', 'Marketplace/Referral Program', 'Marketplace/Reporting',
+    'R-Reits', 'R-Reits/Overview', 'R-Reits/Investment Plans', 'R-Reits/Project Accounting', 'R-Reits/Investor Dashboard', 'R-Reits/RF Payments', 'R-Reits/Portfolio Performance', 'R-Reits/Referrals', 'R-Reits/Compliance & KYC',
+    'HR & Payroll', 'HR & Payroll/Staff Management', 'HR & Payroll/Payroll Processing', 'HR & Payroll/Commissions', 'HR & Payroll/Leave & Attendance', 'HR & Payroll/Performance', 'HR & Payroll/Reporting',
+    'Accounting', 'Accounting/Overview', 'Accounting/Income', 'Accounting/Expenses', 'Accounting/Financial Statements', 'Accounting/Tax Compliance', 'Accounting/Reconciliation', 'Accounting/Reporting',
+    'Reports & Analytics', 'Reports & Analytics/Reports', 'Reports & Analytics/Analytics',
+    'User App Portal', 'User App Portal/Tenant Portal', 'User App Portal/Agent Portal', 'User App Portal/Landlords Portal', 'User App Portal/Affiliate Portal', 'User App Portal/Investors Portal', 'User App Portal/Caretaker Portal', 'User App Portal/Contractor Portal', 'User App Portal/Referral Landing',
+    'Settings', 'Settings/Profile', 'Settings/Roles', 'Settings/Permissions', 'Settings/Widgets', 'Settings/Rates & Rules', 'Settings/Constants', 'Settings/Company Structure', 'Settings/Audit Trail'
+];
+
 export const MOCK_ROLES: Role[] = [
-    { id: 'role1', name: 'Super Admin', description: 'Full system access' },
-    { id: 'role2', name: 'Property Manager', description: 'Manage properties and tenants' },
-    { id: 'role3', name: 'Accountant', description: 'Financials only' }
+    { 
+        id: 'role1', 
+        name: 'Super Admin', 
+        description: 'Full system access', 
+        isSystem: true, 
+        permissions: createMockPermissions(true),
+        accessibleSubmodules: ALL_SUBMODULES,
+        widgetAccess: []
+    },
+    { 
+        id: 'role2', 
+        name: 'Property Manager', 
+        description: 'Manage properties and tenants', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: [
+            'Dashboard', 'Dashboard/Quick Stats', 
+            'Tenants', 'Tenants/Overview', 'Tenants/Active Tenants',
+            'Landlords', 'Landlords/Overview',
+            'Operations', 'Operations/Task Management', 'Operations/Communications'
+        ],
+        widgetAccess: []
+    },
+    { 
+        id: 'role3', 
+        name: 'Accountant', 
+        description: 'Financials only', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: [
+             'Dashboard', 'Dashboard/Quick Stats',
+             'Payments', 'Payments/Overview', 'Payments/Inbound', 'Payments/Outbound',
+             'Accounting', 'Accounting/Overview', 'Accounting/Income', 'Accounting/Expenses',
+             'Reports & Analytics', 'Reports & Analytics/Reports'
+        ],
+        widgetAccess: []
+    }
 ];
 
 export const MOCK_WIDGETS: WidgetConfig[] = [

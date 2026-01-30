@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
@@ -73,26 +72,26 @@ const ReportModal: React.FC<{
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
-                <div className="flex justify-between items-center p-6 border-b border-gray-100">
+                <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50 rounded-t-xl">
                     <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-full bg-opacity-10`} style={{ backgroundColor: `${metric.color}20`, color: metric.color }}>
-                            <Icon name={metric.icon} className="w-6 h-6" />
+                        <button onClick={onClose} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors mr-2">
+                            <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Overview
+                        </button>
+                        <div className="h-8 w-px bg-gray-300 mx-2"></div>
+                        <div className={`p-2 rounded-full bg-opacity-10`} style={{ backgroundColor: `${metric.color}20`, color: metric.color }}>
+                            <Icon name={metric.icon} className="w-5 h-5" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-gray-800">{reportData.title}</h2>
-                            <div className="flex gap-2 mt-1">
-                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600 uppercase tracking-wide">{metric.reportType} Report</span>
-                                <span className="text-sm text-gray-500">• {filteredRows.length} Records Found</span>
-                            </div>
+                            <h2 className="text-xl font-bold text-gray-800">{reportData.title}</h2>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
                         <Icon name="close" className="w-6 h-6 text-gray-500" />
                     </button>
                 </div>
 
                 {/* Toolbar */}
-                <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div className="p-4 bg-white border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="relative w-full sm:w-80">
                         <input 
                             type="text" 
@@ -107,9 +106,9 @@ const ReportModal: React.FC<{
                     </div>
                     <div className="flex gap-3">
                         {reportData.summary?.map((stat, idx) => (
-                            <div key={idx} className="px-4 py-2 bg-white border rounded-lg shadow-sm">
-                                <p className="text-xs text-gray-500 uppercase">{stat.label}</p>
-                                <p className="text-lg font-bold text-gray-800">{typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}</p>
+                            <div key={idx} className="px-4 py-2 bg-blue-50 border border-blue-100 rounded-lg shadow-sm">
+                                <p className="text-[10px] text-blue-500 uppercase font-bold">{stat.label}</p>
+                                <p className="text-lg font-bold text-blue-900">{typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}</p>
                             </div>
                         ))}
                     </div>
@@ -201,6 +200,26 @@ const MetricCard: React.FC<{ metric: MetricConfig; onClick: () => void }> = ({ m
     </div>
 );
 
+const AIInsightCard: React.FC<{ title: string; description: string; type: 'success' | 'warning' | 'info'; icon: string }> = ({ title, description, type, icon }) => {
+    const styles = {
+        success: 'bg-green-50 border-green-200 text-green-800',
+        warning: 'bg-orange-50 border-orange-200 text-orange-800',
+        info: 'bg-blue-50 border-blue-200 text-blue-800'
+    };
+
+    return (
+        <div className={`p-4 rounded-xl border ${styles[type]} shadow-sm flex items-start gap-3`}>
+            <div className="mt-1 flex-shrink-0">
+                 <Icon name={icon} className="w-5 h-5" />
+            </div>
+            <div>
+                <h4 className="font-bold text-sm mb-1">{title}</h4>
+                <p className="text-xs opacity-90 leading-relaxed">{description}</p>
+            </div>
+        </div>
+    );
+};
+
 const Overview: React.FC = () => {
     const { landlords, properties, tenants, tasks } = useData();
     const [selectedMetric, setSelectedMetric] = useState<MetricConfig | null>(null);
@@ -219,7 +238,7 @@ const Overview: React.FC = () => {
     const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
 
     // Est. Maintenance (Mock: 10% of rent for demo or sum of task costs)
-    const maintCosts = tasks.reduce((acc, t) => acc + (t.costs?.labor || 0) + (t.costs?.materials || 0), 0);
+    const maintCosts = tasks.reduce((acc, t) => acc + (t.costs?.labor || 0) + (t.costs?.materials || 0) + (t.costs?.travel || 0), 0);
     
     // Est. Net Payout (Collected - 15% fees/costs)
     const netPayout = collectedRent * 0.85;
@@ -433,9 +452,44 @@ const Overview: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold text-gray-800">Landlord Overview</h1>
-                <p className="text-lg text-gray-500 mt-1">High-level metrics and actionable reports for property owners.</p>
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800">Landlord Overview</h1>
+                    <p className="text-lg text-gray-500 mt-1">High-level metrics and actionable reports for property owners.</p>
+                </div>
+            </div>
+
+            {/* AI Intelligence Section */}
+            <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                    <Icon name="analytics" className="w-48 h-48 text-white" />
+                </div>
+                <div className="relative z-10">
+                    <h3 className="text-lg font-bold mb-4 flex items-center">
+                        <Icon name="analytics" className="w-5 h-5 mr-2 text-yellow-400" />
+                        TaskMe AI Intelligence
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <AIInsightCard 
+                            title="Revenue Forecast" 
+                            description="Projected revenue for next month is KES 4.8M (+5%) based on lease renewals." 
+                            type="success"
+                            icon="revenue"
+                        />
+                        <AIInsightCard 
+                            title="Churn Risk Detected" 
+                            description="2 Landlords (Sarah Holdings, James Investor) show vacancy spikes. Recommend engagement." 
+                            type="warning"
+                            icon="offboarding"
+                        />
+                        <AIInsightCard 
+                            title="Market Opportunity" 
+                            description="Rental rates in Westlands trending up. Suggest 4% increase review for 'Highland Mall'." 
+                            type="info"
+                            icon="branch"
+                        />
+                    </div>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

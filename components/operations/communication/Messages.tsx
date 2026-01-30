@@ -368,17 +368,25 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
                                                     <div 
                                                         key={contact.id} 
                                                         onClick={() => setSelectedContact(contact)}
-                                                        className={`p-2 cursor-pointer flex justify-between items-center ${selectedContact?.id === contact.id ? 'bg-primary/10 text-primary' : 'hover:bg-white text-gray-700'}`}
+                                                        className={`p-2 cursor-pointer flex justify-between items-center ${selectedContact?.id === contact.id ? 'bg-primary/10 border-l-4 border-l-primary' : 'hover:bg-white text-gray-700'}`}
                                                     >
                                                         <div>
                                                             <p className="text-sm font-bold">{contact.name}</p>
                                                             <p className="text-xs opacity-70">{contact.phone}</p>
                                                         </div>
-                                                        <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded text-gray-600">{contact.label}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded text-gray-600">{contact.label}</span>
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedContact(contact); }}
+                                                                className={`px-2 py-1 text-xs rounded border ${selectedContact?.id === contact.id ? 'bg-primary text-white border-primary' : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'}`}
+                                                            >
+                                                                {selectedContact?.id === contact.id ? 'Selected' : 'Select'}
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 ))
                                             ) : (
-                                                <p className="text-xs text-center p-4 text-gray-400">No contacts found.</p>
+                                                <p className="text-xs text-center p-4 text-gray-400">No contacts found matching search.</p>
                                             )}
                                         </div>
                                     </div>

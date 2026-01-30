@@ -39,6 +39,26 @@ const MetricCard: React.FC<{ title: string; value: string; subtext?: string; col
     );
 };
 
+const AIInsightCard: React.FC<{ title: string; description: string; type: 'success' | 'warning' | 'info'; icon: string }> = ({ title, description, type, icon }) => {
+    const styles = {
+        success: 'bg-green-50 border-green-200 text-green-800',
+        warning: 'bg-orange-50 border-orange-200 text-orange-800',
+        info: 'bg-blue-50 border-blue-200 text-blue-800'
+    };
+
+    return (
+        <div className={`p-4 rounded-xl border ${styles[type]} shadow-sm flex items-start gap-3 bg-white`}>
+            <div className="mt-1 flex-shrink-0 p-1.5 rounded-lg bg-white/50">
+                 <Icon name={icon} className="w-5 h-5" />
+            </div>
+            <div>
+                <h4 className="font-bold text-sm mb-1">{title}</h4>
+                <p className="text-xs opacity-90 leading-relaxed">{description}</p>
+            </div>
+        </div>
+    );
+};
+
 const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: boolean; onManage?: () => void }> = ({ unit, tenant, isNewTenant, onManage }) => {
     const statusColor = useMemo(() => {
         // Unit status priorities
@@ -79,7 +99,7 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
                     <>
                         <p className="font-semibold truncate text-sm" title={tenant.name}>{tenant.name}</p>
                         {isNewTenant && (
-                            <div className="inline-block bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded mt-1 font-bold uppercase shadow-sm">
+                            <div className="inline-block bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded mt-1 font-bold uppercase shadow-sm animate-pulse">
                                 New Tenant
                             </div>
                         )}
@@ -603,7 +623,7 @@ export const LandlordDetailView: React.FC<{
         const currentBucket = graphData.find(d => d.day === selectedDayFilter) || graphData[graphData.length-1];
 
         return { graphData, tablePayments, currentPercentage: currentBucket.percentage };
-    }, [myTenants, financialPeriod, collectionStats.expected, selectedDayFilter, collectionStats.rate]);
+    }, [myTenants, financialPeriod, collectionStats, selectedDayFilter]);
 
     const paymentTrendData = {
         labels: paymentPerformanceLogic.graphData.map(d => `${d.day}${d.day === 1 ? 'st' : d.day === 2 ? 'nd' : 'th'}`),
@@ -719,6 +739,9 @@ export const LandlordDetailView: React.FC<{
         updateProperty(property.id, { units: updatedUnits });
         setUnitToManage(null);
     };
+    
+    // Calculate arrears count for AI card usage
+    const arrearsCount = myTenants.filter(t => t.status === 'Overdue').length;
 
     return (
         <div className="flex flex-col h-[calc(100vh-140px)] bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in"> 
@@ -769,7 +792,7 @@ export const LandlordDetailView: React.FC<{
             </div>
 
             {/* Content */}
-            <div className="flex-grow overflow-y-auto p-6 bg-gray-50/30">
+            <div className="flex-grow overflow-y-auto p-8 bg-gray-50/30">
                
                 {activeTab === 'overview' && (
                     <div className="grid grid-cols-1 gap-6">
@@ -792,6 +815,30 @@ export const LandlordDetailView: React.FC<{
                                 </select>
                             </div>
                         )}
+
+                        {/* AI Intelligence Section */}
+                        <div className="bg-gradient-to-r from-indigo-900 to-purple-900 rounded-xl p-5 text-white shadow-md relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-6 opacity-10">
+                                <Icon name="analytics" className="w-32 h-32 text-white" />
+                            </div>
+                            <div className="relative z-10">
+                                <h3 className="text-sm font-bold mb-3 flex items-center uppercase tracking-wider opacity-90">
+                                    <Icon name="analytics" className="w-4 h-4 mr-2 text-yellow-400" />
+                                    TaskMe AI Intelligence
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-800">
+                                     {alerts.map((insight: any, i: number) => (
+                                        <AIInsightCard 
+                                            key={i}
+                                            title={insight.title} 
+                                            description={insight.text}
+                                            type={insight.type}
+                                            icon={insight.type === 'critical' ? 'arrears' : insight.type === 'warning' ? 'task-escalated' : 'check'}
+                                        />
+                                     ))}
+                                </div>
+                            </div>
+                        </div>
 
                         {/* Top KPIs */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -822,7 +869,7 @@ export const LandlordDetailView: React.FC<{
                                                 scales: { y: { beginAtZero: true, max: 100 } },
                                                 plugins: { legend: { display: false } }
                                             }} height="h-64" />
-                                            <p className="text-xs text-gray-400 italic mt-2 text-center">Typically 60% of rent is collected by the 10th.</p>
+                                            <p className="text-center text-xs text-gray-400 mt-4 italic">Typically 60% of rent is collected by the 10th.</p>
                                         </div>
                                         
                                         {/* Interactive Table */}
@@ -850,7 +897,7 @@ export const LandlordDetailView: React.FC<{
                                             </div>
 
                                             <div className="border rounded-lg overflow-hidden h-48 overflow-y-auto">
-                                                <table className="min-w-full text-xs">
+                                                <table className="min-w-full text-xs text-left">
                                                     <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
                                                         <tr>
                                                             <th className="px-3 py-2 text-left">TENANT</th>
@@ -860,23 +907,17 @@ export const LandlordDetailView: React.FC<{
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-100">
-                                                        {paymentPerformanceLogic.tablePayments.map((p: any, i: number) => (
-                                                            <tr key={i} className="hover:bg-gray-50">
-                                                                <td className="px-3 py-2 font-medium text-gray-800">{p.tenantName}</td>
-                                                                <td className="px-3 py-2 text-gray-500">{p.unit}</td>
-                                                                <td className="px-3 py-2 text-right text-green-600 font-bold">
+                                                        {paymentPerformanceLogic.tablePayments.slice(0, 5).map((p: any, i: number) => (
+                                                            <tr key={i} className="border-b border-gray-50 last:border-0">
+                                                                <td className="py-2 font-medium text-gray-800">{p.tenantName} <span className="text-gray-400 text-[9px] ml-1">{p.unit}</span></td>
+                                                                <td className="py-2 text-gray-500">{p.unit}</td>
+                                                                <td className="py-2 text-right text-green-600 font-bold">
                                                                     {p.amount ? p.amount : `KES ${p.amountVal.toLocaleString()}`}
                                                                 </td>
-                                                                <td className="px-3 py-2 text-right text-gray-500">{p.date}</td>
+                                                                <td className="py-2 text-right text-gray-500">{p.date}</td>
                                                             </tr>
                                                         ))}
-                                                        {paymentPerformanceLogic.tablePayments.length === 0 && (
-                                                            <tr>
-                                                                <td colSpan={4} className="p-4 text-center text-gray-400 italic">
-                                                                    No payments recorded by this date.
-                                                                </td>
-                                                            </tr>
-                                                        )}
+                                                        {paymentPerformanceLogic.tablePayments.length === 0 && <tr><td colSpan={3} className="py-4 text-center text-gray-400 italic">No payments recorded by this date.</td></tr>}
                                                     </tbody>
                                                 </table>
                                             </div>

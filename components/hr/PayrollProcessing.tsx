@@ -61,11 +61,46 @@ const PayslipModal: React.FC<{ entry: any; onClose: () => void }> = ({ entry, on
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            <tr>
-                                <td className="py-2 px-2">Basic Salary</td>
-                                <td className="py-2 px-2 text-right">{entry.basic.toLocaleString()}</td>
-                                <td className="py-2 px-2 text-right">-</td>
-                            </tr>
+                             {/* Specific Logic for Field Agents (Target Based) display */}
+                             {entry.metrics ? (
+                                <>
+                                    <tr>
+                                        <td className="py-2 px-2 font-bold text-blue-600" colSpan={3}>Performance Metrics (Avg: {entry.metrics.average}%)</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2 px-2 pl-4 text-xs">1. Collection ({entry.metrics.collection}%)</td>
+                                        <td className="py-2 px-2 text-right text-xs">Included</td>
+                                        <td className="py-2 px-2 text-right">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2 px-2 pl-4 text-xs">2. Signed Leases ({entry.metrics.leases}%)</td>
+                                        <td className="py-2 px-2 text-right text-xs">Included</td>
+                                        <td className="py-2 px-2 text-right">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2 px-2 pl-4 text-xs">3. Task Completion ({entry.metrics.tasks}%)</td>
+                                        <td className="py-2 px-2 text-right text-xs">Included</td>
+                                        <td className="py-2 px-2 text-right">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2 px-2 pl-4 text-xs">4. Occupancy ({entry.metrics.occupancy}%)</td>
+                                        <td className="py-2 px-2 text-right text-xs">Included</td>
+                                        <td className="py-2 px-2 text-right">-</td>
+                                    </tr>
+                                    <tr className="bg-blue-50">
+                                        <td className="py-2 px-2 font-bold">Target Salary Achievement</td>
+                                        <td className="py-2 px-2 text-right font-bold">{entry.gross.toLocaleString()}</td>
+                                        <td className="py-2 px-2 text-right">-</td>
+                                    </tr>
+                                </>
+                             ) : (
+                                <tr>
+                                    <td className="py-2 px-2">Basic Salary</td>
+                                    <td className="py-2 px-2 text-right">{entry.basic.toLocaleString()}</td>
+                                    <td className="py-2 px-2 text-right">-</td>
+                                </tr>
+                             )}
+                            
                             {entry.commissions > 0 && (
                                 <tr>
                                     <td className="py-2 px-2">Commissions & Bonuses</td>
@@ -128,7 +163,7 @@ const PayslipModal: React.FC<{ entry: any; onClose: () => void }> = ({ entry, on
 };
 
 const PayrollProcessing: React.FC = () => {
-    const { staff } = useData();
+    const { staff, tenants, properties, tasks } = useData();
     const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [payrollStatus, setPayrollStatus] = useState<'Draft' | 'Processed' | 'Paid'>('Draft');
     const [searchQuery, setSearchQuery] = useState('');
@@ -137,9 +172,77 @@ const PayrollProcessing: React.FC = () => {
     // --- LOGIC: Calculate Payroll for the period ---
     const payrollData = useMemo(() => {
         return staff.filter(s => s.status === 'Active').map(s => {
-            const basic = s.salaryConfig?.amount || 0;
-            const commissions = s.commissions?.reduce((sum, c) => sum + c.amount, 0) || 0; // In real app, filter by period
-            const gross = basic + commissions;
+            let basic = s.salaryConfig?.amount || 0;
+            const commissions = s.commissions?.reduce((sum, c) => sum + c.amount, 0) || 0;
+            let gross = basic + commissions;
+            let metrics = null;
+
+            // --- TARGET BASED CALCULATION LOGIC FOR FIELD AGENTS ---
+            if (s.salaryConfig?.type === 'Target Based' && s.role === 'Field Agent') {
+                const targetSalary = s.salaryConfig.amount;
+                
+                // 1. Identify Assigned Properties & Units
+                const assignedProps = properties.filter(p => p.assignedAgentId === s.id);
+                const assignedPropIds = assignedProps.map(p => p.id);
+                
+                // 2. Identify Assigned Tenants (Active + Overdue + Notice)
+                const assignedTenants = tenants.filter(t => t.propertyId && assignedPropIds.includes(t.propertyId));
+                const totalAssignedTenants = assignedTenants.length;
+
+                // --- Metric 1: Collection % (Paid by 30th) ---
+                // "Tenants who have paid by 30th against all tenants assigned to them."
+                // Note: We check if paymentHistory contains a payment for this 'period' 
+                let paidTenantsCount = 0;
+                assignedTenants.forEach(t => {
+                    // Check if there is a payment in history matching the current period YYYY-MM
+                    const hasPaid = t.paymentHistory.some(p => p.date.startsWith(period) && p.status === 'Paid');
+                    if (hasPaid) paidTenantsCount++;
+                });
+                const collectionRate = totalAssignedTenants > 0 ? (paidTenantsCount / totalAssignedTenants) * 100 : 0;
+
+                // --- Metric 2: Signed Lease Agreements % ---
+                // "Tenants attached to them who have signed lease agreement against all tenants allocated to them."
+                // Proxy: Status is Active/Notice/Overdue (implies signed) vs 'Pending' (not signed).
+                // Or simply check if they are in the assignedTenants list which we filtered for active statuses.
+                // If we want to be strict, we check if leaseType is 'Fixed'.
+                // For this implementation, let's assume 'Active', 'Overdue', 'Notice' means signed.
+                const signedLeaseCount = assignedTenants.filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status)).length;
+                const leaseRate = totalAssignedTenants > 0 ? (signedLeaseCount / totalAssignedTenants) * 100 : 0;
+
+                // --- Metric 3: Task % ---
+                // "Completed tasks against assigned tasks for that month."
+                const agentTasks = tasks.filter(t => t.assignedTo === s.name); // Filter by period if dueDate in task needed
+                // Filter tasks due in this month
+                const monthlyTasks = agentTasks.filter(t => t.dueDate.startsWith(period));
+                const completedTasks = monthlyTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
+                const totalTasks = monthlyTasks.length;
+                const taskRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100; // Default 100 if no tasks assigned? Or 0? Assuming 100 for fairness if no work given.
+
+                // --- Metric 4: Occupancy % ---
+                // "Occupied houses against all houses allocated to the agent."
+                let totalUnits = 0;
+                let occupiedUnits = 0;
+                assignedProps.forEach(p => {
+                    totalUnits += p.units.length;
+                    occupiedUnits += p.units.filter(u => u.status === 'Occupied').length;
+                });
+                const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+
+                // --- Average Calculation ---
+                const avgPerformance = (collectionRate + leaseRate + taskRate + occupancyRate) / 4;
+                
+                // Actual Pay
+                basic = targetSalary * (avgPerformance / 100);
+                gross = basic + commissions;
+                
+                metrics = {
+                    collection: Math.round(collectionRate),
+                    leases: Math.round(leaseRate),
+                    tasks: Math.round(taskRate),
+                    occupancy: Math.round(occupancyRate),
+                    average: Math.round(avgPerformance)
+                };
+            }
 
             // Simplified Statutory Calculations (Kenya Context)
             const nssf = 1080; // Tier II cap approx
@@ -171,10 +274,11 @@ const PayrollProcessing: React.FC = () => {
                 net,
                 status: payrollStatus,
                 period,
-                bankDetails: s.bankDetails?.accountNumber || s.bankDetails?.mpesaNumber || 'N/A'
+                bankDetails: s.bankDetails?.accountNumber || s.bankDetails?.mpesaNumber || 'N/A',
+                metrics // Attached for Target Based
             };
         });
-    }, [staff, period, payrollStatus]);
+    }, [staff, period, payrollStatus, properties, tenants, tasks]);
 
     const filteredData = useMemo(() => {
         return payrollData.filter(p => 
@@ -311,7 +415,7 @@ const PayrollProcessing: React.FC = () => {
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider">Employee</th>
-                                <th className="px-6 py-3 text-right font-bold text-gray-500 uppercase tracking-wider">Basic</th>
+                                <th className="px-6 py-3 text-right font-bold text-gray-500 uppercase tracking-wider">Basic / Target</th>
                                 <th className="px-6 py-3 text-right font-bold text-gray-500 uppercase tracking-wider">Allowances</th>
                                 <th className="px-6 py-3 text-right font-bold text-gray-500 uppercase tracking-wider">Gross</th>
                                 <th className="px-6 py-3 text-right font-bold text-gray-500 uppercase tracking-wider">Deductions</th>
@@ -327,7 +431,16 @@ const PayrollProcessing: React.FC = () => {
                                         <div className="font-bold text-gray-900">{row.staffName}</div>
                                         <div className="text-xs text-gray-500">{row.role}</div>
                                     </td>
-                                    <td className="px-6 py-4 text-right text-gray-600">{row.basic.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-right text-gray-600">
+                                        {row.metrics ? (
+                                            <div className="flex flex-col items-end">
+                                                <span>{row.basic.toLocaleString()}</span>
+                                                <span className="text-[9px] text-blue-500">Achieved: {row.metrics.average}%</span>
+                                            </div>
+                                        ) : (
+                                            row.basic.toLocaleString()
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4 text-right text-gray-600">{row.commissions.toLocaleString()}</td>
                                     <td className="px-6 py-4 text-right font-medium text-gray-800">{row.gross.toLocaleString()}</td>
                                     <td className="px-6 py-4 text-right text-red-500">-{row.totalDeductions.toLocaleString()}</td>

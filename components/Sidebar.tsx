@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { NAVIGATION_ITEMS } from '../constants';
 import { NavItem } from '../types';
 import Icon from './Icon';
+import { useData } from '../context/DataContext';
 
 interface SidebarProps {
   activeRoute: string;
@@ -73,22 +74,47 @@ const NavLink: React.FC<{ item: NavItem; isActive: boolean; isSubMenuOpen: boole
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobile }) => {
+  const { currentUser, roles } = useData();
+
+  // Get active role
+  const userRole = roles.find(r => r.name === currentUser?.role) || roles.find(r => r.isSystem && r.name === 'Super Admin'); // Fallback for safety
   
+  // Filter Navigation based on Role
+  const filteredNav = NAVIGATION_ITEMS.map(item => {
+    // 1. Check if Module is allowed
+    // We check if "Module Name" exists in accessibleSubmodules OR if any submodule is accessible.
+    // However, the simplest logic based on the user's prompt is implicit access. 
+    // Let's rely on the explicit list.
+    
+    // Check if user has access to ANY submodules of this module
+    const allowedSubs = item.subModules.filter(sub => 
+        userRole?.accessibleSubmodules?.includes(`${item.name}/${sub}`) || 
+        userRole?.accessibleSubmodules?.includes(item.name) // Allow all if parent is checked (simplification) - but prompt implies granular. 
+        // Actually prompt says "If a card/submodule/module is unticked, user dont see it".
+        // So we strictly filter submodules.
+    );
+
+    if (allowedSubs.length === 0) return null; // Hide module if no subs allowed
+
+    return { ...item, subModules: allowedSubs };
+  }).filter(item => item !== null) as NavItem[];
+
   const getActiveModuleFromRoute = (route: string) => {
     if (route.startsWith('#/dashboard')) return 'Dashboard';
     if (route.startsWith('#/registration')) return 'Registration';
     if (route.startsWith('#/tenants')) return 'Tenants';
     if (route.startsWith('#/landlords')) return 'Landlords';
     if (route.startsWith('#/payments')) return 'Payments';
-    if (route.startsWith('#/general-operations')) return 'General Operations';
-    if (route.startsWith('#/field-operations')) return 'Field Operations';
+    if (route.startsWith('#/general-operations')) return 'Operations'; // Fix mapping
+    if (route.startsWith('#/operations')) return 'Operations';
+    if (route.startsWith('#/field-operations')) return 'Operations';
     if (route.startsWith('#/hr-payroll')) return 'HR & Payroll';
-    if (route.startsWith('#/communication')) return 'Communication';
+    if (route.startsWith('#/communication')) return 'Operations';
     if (route.startsWith('#/accounting')) return 'Accounting';
-    if (route.startsWith('#/maintenance')) return 'Maintenance';
-    if (route.startsWith('#/leases')) return 'Leases';
-    if (route.startsWith('#/analytics')) return 'Analytics';
-    if (route.startsWith('#/reports')) return 'Reports';
+    if (route.startsWith('#/maintenance')) return 'Operations';
+    if (route.startsWith('#/leases')) return 'Operations';
+    if (route.startsWith('#/analytics')) return 'Reports & Analytics';
+    if (route.startsWith('#/reports')) return 'Reports & Analytics';
     if (route.startsWith('#/user-app-portal')) return 'User App Portal';
     if (route.startsWith('#/marketplace')) return 'Marketplace';
     if (route.startsWith('#/website')) return 'Website';
@@ -102,8 +128,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
 
   useEffect(() => {
     const currentModule = getActiveModuleFromRoute(activeRoute);
-    // Only auto-open if not explicitly closed by user previously, 
-    // but for now simpler logic: auto-open current module if it's not open
     if (!openSubMenus[currentModule]) {
       setOpenSubMenus(prev => ({ ...prev, [currentModule]: true }));
     }
@@ -116,10 +140,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
   return (
     <aside
       id="main-nav"
-      className="app-sidebar bg-primary text-white flex flex-col shadow-xl z-30"
+      className="app-sidebar bg-primary text-white flex flex-col shadow-xl"
       aria-label="Sidebar"
     >
-        {/* Top Section - Branch Filter - Fixed at top of sidebar container */}
+        {/* Top Section - Branch Filter */}
         <div className="px-4 pt-4 pb-2 flex-shrink-0 bg-primary z-10">
             <div className="relative">
             <select 
@@ -140,7 +164,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
         {/* Navigation Menu - Scrollable Area */}
         <nav className="px-4 py-2 pb-4 flex-grow overflow-y-auto sidebar-nav-scroll">
             <ul className="space-y-2">
-            {NAVIGATION_ITEMS.map(item => (
+            {filteredNav.map(item => (
                 <li key={item.name}>
                     <NavLink 
                         item={item} 
@@ -155,15 +179,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
             </ul>
         </nav>
 
-      {/* Footer Section - Fixed at bottom of sidebar container */}
+      {/* Footer Section */}
       <div className="p-4 bg-black/20 mt-auto flex-shrink-0">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center font-bold text-white text-xs">
-            SA
+            {currentUser?.name?.charAt(0) || 'U'}
           </div>
-          <div>
-            <p className="text-white text-sm font-semibold">System Admin</p>
-            <p className="text-gray-400 text-xs">admin@taskme.re</p>
+          <div className="overflow-hidden">
+            <p className="text-white text-sm font-semibold truncate">{currentUser?.name || 'User'}</p>
+            <p className="text-gray-400 text-xs truncate">{currentUser?.email || 'email@example.com'}</p>
           </div>
         </div>
       </div>

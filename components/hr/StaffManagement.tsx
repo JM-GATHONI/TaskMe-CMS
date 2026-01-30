@@ -245,7 +245,7 @@ const AttendanceManagerModal: React.FC<{ staff: StaffProfile; onClose: () => voi
                             <button 
                                 key={day} 
                                 onClick={() => toggleDay(day)}
-                                className={`p-2 rounded text-xs font-bold transition-colors ${absentDays.includes(day) ? 'bg-red-500 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                className={`p-2 rounded text-xs font-bold transition-colors ${absentDays.includes(day) ? 'bg-red-50 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                             >
                                 {day}
                             </button>
@@ -260,230 +260,15 @@ const AttendanceManagerModal: React.FC<{ staff: StaffProfile; onClose: () => voi
 };
 
 const PayslipGeneratorModal: React.FC<{ staff: StaffProfile; onClose: () => void }> = ({ staff, onClose }) => {
-    const { properties, tenants } = useData();
-    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+    // This is a simplified version of the modal in PayrollProcessing.tsx to avoid circular dependency loop or huge file.
+    // In a real app, this would be a shared component. For now, we redirect.
     
-    // Performance Metrics State (For Target Based)
-    const [collectionRate, setCollectionRate] = useState(0); 
-    const [occupancyRate, setOccupancyRate] = useState(0);   
-
-    // Automatic calculation for Field Agents
     useEffect(() => {
-        if (staff.role === 'Field Agent' && staff.salaryConfig?.type === 'Target Based') {
-            // 1. Find properties assigned to this agent
-            const assignedProperties = properties.filter(p => p.assignedAgentId === staff.id);
-            
-            if (assignedProperties.length > 0) {
-                // Calculate Occupancy Rate
-                let totalUnits = 0;
-                let occupiedUnits = 0;
-                
-                assignedProperties.forEach(p => {
-                    totalUnits += p.units.length;
-                    occupiedUnits += p.units.filter(u => u.status === 'Occupied').length;
-                });
+        onClose();
+        window.location.hash = '#/hr-payroll/payroll-processing';
+    }, []);
 
-                const calculatedOccupancy = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
-                setOccupancyRate(Math.round(calculatedOccupancy));
-
-                // Calculate Collection Rate for the selected month
-                let totalExpectedRent = 0;
-                let totalCollectedRent = 0;
-
-                const propertyIds = assignedProperties.map(p => p.id);
-                // Tenants belonging to these properties
-                const relevantTenants = tenants.filter(t => propertyIds.includes(t.propertyId || ''));
-
-                relevantTenants.forEach(t => {
-                    if (t.status !== 'Vacated' && t.status !== 'Evicted') {
-                        totalExpectedRent += t.rentAmount;
-                    }
-                    const payment = t.paymentHistory.find(p => p.date.startsWith(month) && p.status === 'Paid');
-                    if (payment) {
-                         totalCollectedRent += t.rentAmount; 
-                    }
-                });
-
-                const calculatedCollection = totalExpectedRent > 0 ? (totalCollectedRent / totalExpectedRent) * 100 : 0;
-                setCollectionRate(Math.round(calculatedCollection));
-            } else {
-                setCollectionRate(0);
-                setOccupancyRate(0);
-            }
-        }
-    }, [staff, month, properties, tenants]);
-
-    const handleShare = (method: 'WhatsApp' | 'Email' | 'SMS') => {
-        const message = `Dear ${staff.name}, your payslip for ${month} is ready. Net Pay: KES ${net.toLocaleString()}.`;
-        if (method === 'WhatsApp') window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-        if (method === 'Email') window.open(`mailto:${staff.email}?subject=Payslip ${month}&body=${encodeURIComponent(message)}`, '_blank');
-        if (method === 'SMS') window.open(`sms:${staff.phone}?body=${encodeURIComponent(message)}`, '_blank');
-    };
-    
-    const handleDownload = () => {
-        printSection('printable-payslip', `Payslip-${staff.name}-${month}`);
-    };
-
-    // Calculation Logic
-    let basic = 0;
-    let commission = 0;
-    let rentComponent = 0;
-    let occupancyComponent = 0;
-    const isTargetBased = staff.salaryConfig?.type === 'Target Based';
-
-    if (isTargetBased) {
-        const targetSalary = staff.salaryConfig?.amount || 0;
-        const halfTarget = targetSalary / 2;
-        rentComponent = halfTarget * (collectionRate / 100);
-        occupancyComponent = halfTarget * (occupancyRate / 100);
-    } else {
-        basic = staff.salaryConfig?.amount || 0;
-        if (staff.salaryConfig?.type === 'Commission') {
-             commission = basic * ((staff.salaryConfig.commissionRate || 0)/100);
-        }
-    }
-    
-    // Deductions Calculation
-    const absentDays = staff.attendanceRecord?.[month]?.length || 0;
-    const dailyRate = (staff.salaryConfig?.amount || 0) / 30;
-    const absenteeismDeduction = Math.round(absentDays * dailyRate);
-    
-    const recurringDeductions = (staff.deductions || []).filter(d => d.type === 'Recurring').reduce((sum, d) => sum + d.amount, 0);
-    const oneOffDeductions = (staff.deductions || []).filter(d => d.type === 'One-Off').reduce((sum, d) => sum + d.amount, 0);
-
-    const gross = isTargetBased ? (rentComponent + occupancyComponent) : (basic + commission);
-    const tax = gross * 0.15; // Mock Tax
-    const nhif = 1500;
-    const nssf = 1080;
-    const totalDeductions = tax + nhif + nssf + absenteeismDeduction + recurringDeductions + oneOffDeductions;
-    const net = gross - totalDeductions;
-
-    return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1400] p-4 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <div className="p-6 border-b flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-gray-800">Generate Payslip</h3>
-                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-500" /></button>
-                </div>
-                
-                <div className="p-6 space-y-4 overflow-y-auto flex-grow">
-                    <div className="flex items-center gap-4">
-                        <label className="font-medium text-gray-700">Select Period:</label>
-                        <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="p-2 border rounded-md" />
-                    </div>
-
-                    {isTargetBased && (
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-3">
-                            <h4 className="font-bold text-blue-800 text-sm flex items-center">
-                                Performance Metrics 
-                                <span className="ml-2 text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Auto-Calculated</span>
-                            </h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-medium text-blue-700 mb-1">Avg. Rent Collection</label>
-                                    <span className="font-bold text-gray-700">{collectionRate}%</span>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-blue-700 mb-1">Avg. House Occupancy</label>
-                                    <span className="font-bold text-gray-700">{occupancyRate}%</span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Preview Area */}
-                    <div id="printable-payslip" className="border p-6 rounded-lg bg-gray-50 text-sm">
-                        <div className="text-center mb-4 border-b pb-2">
-                            <h2 className="text-lg font-bold text-primary uppercase">TaskMe Realty</h2>
-                            <p className="text-gray-500">Payslip for {month}</p>
-                        </div>
-                        <div className="flex justify-between mb-4">
-                            <div>
-                                <p><strong>Name:</strong> {staff.name}</p>
-                                <p><strong>Role:</strong> {staff.role}</p>
-                                <p><strong>Dept:</strong> {staff.department}</p>
-                            </div>
-                            <div className="text-right">
-                                <p><strong>Method:</strong> {staff.bankDetails?.defaultMethod || 'Bank'}</p>
-                                {staff.bankDetails?.defaultMethod === 'M-Pesa' ? (
-                                     <p><strong>Phone:</strong> {staff.bankDetails?.mpesaNumber}</p>
-                                ) : (
-                                    <p><strong>Bank:</strong> {staff.bankDetails?.bankName}</p>
-                                )}
-                                <p><strong>PIN:</strong> {staff.bankDetails?.kraPin}</p>
-                            </div>
-                        </div>
-                        
-                        <table className="w-full mb-4">
-                            <thead>
-                                <tr className="border-b">
-                                    <th className="text-left py-1">Description</th>
-                                    <th className="text-right py-1">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {isTargetBased ? (
-                                    <>
-                                        <tr>
-                                            <td>Rent Collection ({collectionRate}%)</td>
-                                            <td className="text-right">{rentComponent.toLocaleString()}</td>
-                                        </tr>
-                                        <tr>
-                                            <td>House Occupancy ({occupancyRate}%)</td>
-                                            <td className="text-right">{occupancyComponent.toLocaleString()}</td>
-                                        </tr>
-                                    </>
-                                ) : (
-                                    <>
-                                        <tr><td>Basic Salary ({staff.salaryConfig?.type})</td><td className="text-right">{basic.toLocaleString()}</td></tr>
-                                        {commission > 0 && <tr><td>Commissions</td><td className="text-right">{commission.toLocaleString()}</td></tr>}
-                                    </>
-                                )}
-                                
-                                <tr><td className="pt-2 font-bold">Gross Pay</td><td className="pt-2 text-right font-bold">{gross.toLocaleString()}</td></tr>
-                                
-                                <tr><td colSpan={2} className="py-2 text-xs font-bold text-gray-500 uppercase">Deductions</td></tr>
-                                
-                                {absentDays > 0 && (
-                                    <tr>
-                                        <td className="text-red-600 pl-2">Absenteeism ({absentDays} Days)</td>
-                                        <td className="text-right text-red-600">-{absenteeismDeduction.toLocaleString()}</td>
-                                    </tr>
-                                )}
-                                {(staff.deductions || []).map(d => (
-                                    <tr key={d.id}>
-                                        <td className="text-red-600 pl-2">{d.name} ({d.category})</td>
-                                        <td className="text-right text-red-600">-{d.amount.toLocaleString()}</td>
-                                    </tr>
-                                ))}
-                                
-                                <tr><td className="text-red-600 pl-2">PAYE (Tax)</td><td className="text-right text-red-600">-{tax.toLocaleString()}</td></tr>
-                                <tr><td className="text-red-600 pl-2">NHIF</td><td className="text-right text-red-600">-{nhif.toLocaleString()}</td></tr>
-                                <tr><td className="text-red-600 pl-2">NSSF</td><td className="text-right text-red-600">-{nssf.toLocaleString()}</td></tr>
-                            </tbody>
-                            <tfoot>
-                                <tr className="border-t-2 border-gray-300">
-                                    <td className="py-2 font-bold text-lg">Net Pay</td>
-                                    <td className="py-2 text-right font-bold text-lg text-primary">KES {net.toLocaleString()}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-
-                <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-                    <div className="flex gap-2">
-                        <button onClick={() => handleShare('WhatsApp')} className="p-2 bg-green-100 text-green-700 rounded-full hover:bg-green-200"><Icon name="communication" className="w-5 h-5"/></button>
-                        <button onClick={() => handleShare('Email')} className="p-2 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200"><Icon name="mail" className="w-5 h-5"/></button>
-                        <button onClick={() => handleShare('SMS')} className="p-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300"><Icon name="communication" className="w-5 h-5"/></button>
-                    </div>
-                    <button onClick={handleDownload} className="px-6 py-2 bg-primary text-white font-bold rounded-lg shadow hover:bg-primary-dark flex items-center">
-                        <Icon name="download" className="w-4 h-4 mr-2" /> Download PDF
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+    return null;
 };
 
 const StaffFormModal: React.FC<{ 
@@ -597,7 +382,7 @@ const StaffFormModal: React.FC<{
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Salary Type</label>
                                     <select name="salaryConfig.type" value={formData.salaryConfig?.type} onChange={handleChange} className="w-full p-2 border rounded bg-white">
                                         <option value="Monthly">Monthly Fixed</option>
-                                        <option value="Target Based">Target Based (Split)</option>
+                                        <option value="Target Based">Target Based (KPIs)</option>
                                         <option value="Commission">Commission Only</option>
                                         <option value="Per Project">Per Project</option>
                                     </select>
@@ -612,12 +397,14 @@ const StaffFormModal: React.FC<{
 
                             {formData.salaryConfig?.type === 'Target Based' && (
                                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-800">
-                                    <p className="font-bold mb-1"><Icon name="info" className="w-4 h-4 inline mr-1"/> Split Logic:</p>
-                                    <ul className="list-disc list-inside ml-1 space-y-1 text-xs">
-                                        <li><strong>Rent Collection (50%):</strong> KES {(formData.salaryConfig.amount || 0) / 2} (Paid based on % collected)</li>
-                                        <li><strong>House Occupancy (50%):</strong> KES {(formData.salaryConfig.amount || 0) / 2} (Paid based on % occupancy)</li>
+                                    <p className="font-bold mb-1"><Icon name="info" className="w-4 h-4 inline mr-1"/> Salary Calculation Logic:</p>
+                                    <p className="text-xs">Payout is calculated as <strong>Target Salary</strong> multiplied by the <strong>Average of 4 Performance Metrics:</strong></p>
+                                    <ul className="list-disc list-inside ml-1 space-y-1 text-xs mt-1">
+                                        <li><strong>Collection %:</strong> Paid Tenants vs Assigned</li>
+                                        <li><strong>Signed Leases %:</strong> Active Tenants vs Assigned</li>
+                                        <li><strong>Task Completion %:</strong> Completed vs Assigned Tasks</li>
+                                        <li><strong>Occupancy %:</strong> Occupied vs Total Units</li>
                                     </ul>
-                                    <p className="text-xs mt-2 italic text-blue-600">Note: Ensure this agent is assigned to properties in the Landlord module for tracking.</p>
                                 </div>
                             )}
 
@@ -862,7 +649,7 @@ const StaffManagement: React.FC = () => {
                                             <div className="flex flex-col text-xs">
                                                 <span className="font-bold">{s.salaryConfig?.type}</span>
                                                 <span>KES {s.salaryConfig?.amount.toLocaleString()}</span>
-                                                {s.salaryConfig?.type === 'Target Based' && <span className="text-[9px] text-blue-600 italic">(Split 50/50)</span>}
+                                                {s.salaryConfig?.type === 'Target Based' && <span className="text-[9px] text-blue-600 italic">(4 Metric Split)</span>}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">

@@ -17,6 +17,27 @@ const AGENT_CARD_CLASSES = "bg-white rounded-2xl shadow-sm border border-gray-10
 
 // --- Components ---
 
+const AIInsightCard: React.FC<{ title: string; description: string; type: 'success' | 'warning' | 'info' | 'critical'; icon: string }> = ({ title, description, type, icon }) => {
+    const styles = {
+        success: 'bg-green-50 border-green-200 text-green-800',
+        warning: 'bg-orange-50 border-orange-200 text-orange-800',
+        info: 'bg-blue-50 border-blue-200 text-blue-800',
+        critical: 'bg-red-50 border-red-200 text-red-800'
+    };
+
+    return (
+        <div className={`p-4 rounded-xl border ${styles[type]} shadow-sm flex items-start gap-3 bg-white`}>
+            <div className="mt-1 flex-shrink-0 p-1.5 rounded-lg bg-white/50">
+                 <Icon name={icon} className="w-5 h-5" />
+            </div>
+            <div>
+                <h4 className="font-bold text-sm mb-1">{title}</h4>
+                <p className="text-xs opacity-90 leading-relaxed">{description}</p>
+            </div>
+        </div>
+    );
+};
+
 // Task Detail Modal (Local Definition)
 const TaskDetailModal: React.FC<{ task: Task; onClose: () => void; onUpdate: (task: Task) => void }> = ({ task, onClose, onUpdate }) => {
     const [status, setStatus] = useState(task.status);
@@ -325,12 +346,18 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
     // Insights Generation
     const insights = useMemo(() => {
         const list = [];
-        if (collectionRate < 80) list.push({ type: 'critical', text: `Collection is below target (${collectionRate}%). Focus on arrears recovery.` });
-        if (occupancyRate < 85) list.push({ type: 'warning', text: `Occupancy is ${occupancyRate}%. Consider marketing vacant units in ${agentProperties.filter(p => p.units.some(u => u.status === 'Vacant'))[0]?.name || 'portfolio'}.` });
-        if (pendingTasks > 5) list.push({ type: 'warning', text: `${pendingTasks} tasks are pending. Ensure timely resolution.` });
-        if (list.length === 0) list.push({ type: 'success', text: "Performance is excellent across all metrics." });
+        if (collectionRate < 80) list.push({ type: 'critical', title: 'Revenue Risk', text: `Collection is below target (${collectionRate}%). Prioritize following up with ${agentTenants.filter(t => t.status === 'Overdue').length} overdue tenants.` });
+        if (occupancyRate < 85) list.push({ type: 'warning', title: 'Vacancy Alert', text: `Occupancy is ${occupancyRate}%. ${totalUnits - occupiedUnits} units are vacant. Recommend scheduling viewings.` });
+        if (pendingTasks > 5) list.push({ type: 'warning', title: 'Task Backlog', text: `${pendingTasks} tasks are pending. Average resolution time might increase.` });
+        if (list.length === 0) list.push({ type: 'success', title: 'Top Performance', text: "Excellent work! All metrics are above targets. Consider requesting a referral from happy tenants." });
+        
+        // Add a generic one if list is short
+        if (list.length < 3) {
+             list.push({ type: 'info', title: 'Market Trend', text: 'Rental inquiries in this region are up 12% this month. Good time to list vacant units.', icon: 'analytics' });
+        }
+        
         return list;
-    }, [collectionRate, occupancyRate, pendingTasks, agentProperties]);
+    }, [collectionRate, occupancyRate, pendingTasks, agentTenants, totalUnits, occupiedUnits, agentProperties]);
 
     // Charts Data
     const financialChartData = {
@@ -338,7 +365,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
         datasets: [{
             label: 'Rent (KES)',
             data: [expectedCollection, actualCollection],
-            backgroundColor: ['#e5e7eb', '#10b981'],
+            backgroundColor: ['#e5e7eb', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'],
             borderRadius: 5,
             barThickness: 40
         }]
@@ -547,10 +574,12 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                      {/* Insights */}
                      <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
                         <h3 className="text-lg font-bold text-blue-800 mb-3">AI Insights & Recommendations</h3>
-                        <ul className="list-disc pl-5 space-y-2 text-blue-900">
-                            {insights.map((ins, i) => (
-                                <li key={i}>{ins.text}</li>
-                            ))}
+                        <ul className="space-y-2">
+                             {insights.map((insight, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-blue-900">
+                                     <span className="font-bold">•</span> {insight.text}
+                                </li>
+                             ))}
                         </ul>
                     </div>
                 </div>
@@ -631,6 +660,31 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                 
                 {activeTab === 'Overview' && (
                     <div className="space-y-6">
+                        
+                         {/* TaskMe AI Intelligence Card */}
+                        <div className="bg-gradient-to-r from-indigo-900 to-purple-900 rounded-xl p-5 text-white shadow-md relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-6 opacity-10">
+                                <Icon name="analytics" className="w-32 h-32 text-white" />
+                            </div>
+                            <div className="relative z-10">
+                                <h3 className="text-sm font-bold mb-3 flex items-center uppercase tracking-wider opacity-90">
+                                    <Icon name="analytics" className="w-4 h-4 mr-2 text-yellow-400" />
+                                    TaskMe AI Intelligence
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-800">
+                                     {insights.map((insight: any, i: number) => (
+                                        <AIInsightCard 
+                                            key={i}
+                                            title={insight.title} 
+                                            description={insight.text}
+                                            type={insight.type}
+                                            icon={insight.type === 'critical' ? 'arrears' : insight.type === 'warning' ? 'task-escalated' : 'check'}
+                                        />
+                                     ))}
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                                 <p className="text-xs text-gray-500 font-bold uppercase">Properties</p>
@@ -698,31 +752,21 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                                     </div>
                                 </div>
                             </div>
-
-                            {/* 3. Insights */}
-                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-100">
-                                <h3 className="font-bold text-blue-800 mb-3 flex items-center">
-                                    <Icon name="analytics" className="w-5 h-5 mr-2" /> Insights & Actions
-                                </h3>
-                                <div className="space-y-3">
-                                    {insights.map((insight, i) => (
-                                        <div key={i} className={`flex items-start gap-3 p-3 rounded-lg bg-white border ${
-                                            insight.type === 'critical' ? 'border-red-200 text-red-700' :
-                                            insight.type === 'warning' ? 'border-orange-200 text-orange-700' :
-                                            'border-blue-100 text-blue-700'
-                                        }`}>
-                                            <Icon name={insight.type === 'critical' ? 'close' : 'info'} className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                                            <p className="text-sm font-medium">{insight.text}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
 
                         {/* Sidebar Stats */}
                         <div className="space-y-6">
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h3 className="font-bold text-gray-800 mb-4">Task Status</h3>
+                                <h3 className="font-bold text-gray-800 mb-4 flex justify-between items-center">
+                                    Task Status
+                                    {/* Add Button here */}
+                                    <button 
+                                        onClick={() => setActiveTab('Tasks')} 
+                                        className="text-xs font-bold text-primary hover:underline border border-gray-200 rounded px-2 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                                    >
+                                        View All Tasks
+                                    </button>
+                                </h3>
                                 <div className="h-48 flex justify-center">
                                     <Doughnut data={taskData} options={{ cutout: '70%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } } }} />
                                 </div>
@@ -783,7 +827,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                                 <div key={p.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                                     <h4 className="font-bold text-gray-800">{p.name}</h4>
                                     <p className="text-xs text-gray-500">{p.location}</p>
-                                    <div className="mt-2 flex justify-between text-xs font-medium bg-gray-50 p-2 rounded">
+                                    <div className="mt-2 flex justify-between text-xs font-medium text-gray-600 bg-gray-50 p-2 rounded">
                                         <span>{p.units.length} Units</span>
                                         <span className={p.status === 'Active' ? 'text-green-600' : 'text-red-600'}>{p.status}</span>
                                     </div>
@@ -834,7 +878,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredAgentTenants.map(t => (
                                         <tr key={t.id} className="hover:bg-gray-50">
-                                            <td className="px-4 py-3 font-medium">{t.name}</td>
+                                            <td className="px-4 py-3 font-medium text-gray-900">{t.name}</td>
                                             <td className="px-4 py-3 text-gray-600">{t.propertyName}</td>
                                             <td className="px-4 py-3 text-gray-600">{t.unit}</td>
                                             <td className="px-4 py-3 text-gray-800 font-bold">KES {t.rentAmount.toLocaleString()}</td>
@@ -851,7 +895,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                 {activeTab === 'Landlords' && (
                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                          <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-gray-800">Associated Landlords</h3>
+                            <h3 className="text-lg font-bold text-gray-800">Associated Landlords</h3>
                             <button 
                                 onClick={() => setIsAddLandlordOpen(true)}
                                 className="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-sm hover:bg-purple-700 flex items-center"

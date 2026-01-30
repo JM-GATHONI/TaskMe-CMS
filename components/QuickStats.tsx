@@ -124,7 +124,7 @@ const CollapsibleSection: React.FC<{ title: string; children: React.ReactNode; d
 
 
 const QuickStats: React.FC = () => {
-    const { tenants, tasks, properties } = useData();
+    const { tenants, tasks, properties, staff } = useData();
     const [dateRange, setDateRange] = useState('Last 30 Days');
     const [branch, setBranch] = useState('All Branches');
 
@@ -198,12 +198,17 @@ const QuickStats: React.FC = () => {
         const occupiedUnits = branchProperties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Occupied').length, 0);
         const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
 
-        return [
-            { title: 'Total Tenants', value: totalTenants, change: newTenants > 0 ? `+${newTenants}` : '0', changeType: 'increase', period: 'new in range', link: '#/reports/tenancy-reports' },
-            { title: 'Occupancy Rate', value: `${occupancyRate}%`, change: 'Stable', changeType: 'neutral', period: branch === 'All Branches' ? 'portfolio wide' : 'branch specific', link: '#/reports/property-reports?tab=vacancies' },
-            { title: 'New Sign-ups', value: newTenants, change: 'Growth', changeType: 'increase', period: 'in selection', link: '#/tenants/applications' },
-            { title: 'Leases Ended', value: churned, change: totalTenants > 0 ? `${((churned/totalTenants)*100).toFixed(1)}%` : '0%', changeType: 'decrease', period: 'churn rate', link: '#/tenants/offboarding' },
-        ];
+        return {
+            stats: [
+                { title: 'Total Tenants', value: totalTenants, change: newTenants > 0 ? `+${newTenants}` : '0', changeType: 'increase', period: 'new in range', link: '#/reports/tenancy-reports' },
+                { title: 'Occupancy Rate', value: `${occupancyRate}%`, change: 'Stable', changeType: 'neutral', period: branch === 'All Branches' ? 'portfolio wide' : 'branch specific', link: '#/reports/property-reports?tab=vacancies' },
+                { title: 'New Sign-ups', value: newTenants, change: 'Growth', changeType: 'increase', period: 'in selection', link: '#/tenants/applications' },
+                { title: 'Leases Ended', value: churned, change: totalTenants > 0 ? `${((churned/totalTenants)*100).toFixed(1)}%` : '0%', changeType: 'decrease', period: 'churn rate', link: '#/tenants/offboarding' },
+            ],
+            occupancyRate,
+            totalTenants,
+            newTenants
+        };
     }, [tenants, properties, dateRange, branch]);
 
     // 2. Financial Performance
@@ -234,12 +239,15 @@ const QuickStats: React.FC = () => {
         const expenseRatio = 0.15; // 15% of revenue
         const expenses = revenue * expenseRatio;
 
-        return [
-            { title: 'Revenue', value: `KES ${(revenue/1000).toFixed(1)}K`, change: `${countPayments} txns`, changeType: 'increase', period: 'volume', link: '#/reports/financial-reports?view=revenue' },
-            { title: 'Expenses', value: `KES ${(expenses/1000).toFixed(1)}K`, change: 'Est.', changeType: 'decrease', period: 'vs prev period', link: '#/reports/financial-reports?view=expenses' },
-            { title: 'Outstanding', value: `KES ${(arrears/1000).toFixed(1)}K`, change: 'Arrears', changeType: 'decrease', period: 'to collect', link: '#/reports/financial-reports?view=arrears' },
-            { title: 'Net Profit', value: `KES ${((revenue - expenses)/1000).toFixed(1)}K`, change: 'Est.', changeType: 'neutral', period: 'margin', link: '#/reports/financial-reports?view=net' },
-        ];
+        return {
+            stats: [
+                { title: 'Revenue', value: `KES ${(revenue/1000).toFixed(1)}K`, change: `${countPayments} txns`, changeType: 'increase', period: 'volume', link: '#/reports/financial-reports?view=revenue' },
+                { title: 'Expenses', value: `KES ${(expenses/1000).toFixed(1)}K`, change: 'Est.', changeType: 'decrease', period: 'vs prev period', link: '#/reports/financial-reports?view=expenses' },
+                { title: 'Outstanding', value: `KES ${(arrears/1000).toFixed(1)}K`, change: 'Arrears', changeType: 'decrease', period: 'to collect', link: '#/reports/financial-reports?view=arrears' },
+                { title: 'Net Profit', value: `KES ${((revenue - expenses)/1000).toFixed(1)}K`, change: 'Est.', changeType: 'neutral', period: 'margin', link: '#/reports/financial-reports?view=net' },
+            ],
+            revenue
+        };
     }, [tenants, properties, dateRange, branch]);
 
     // 3. Operational Activity
@@ -267,6 +275,61 @@ const QuickStats: React.FC = () => {
         ];
     }, [tasks, properties, dateRange, branch]);
 
+    // --- AI Insights Calculation ---
+    const aiInsights = useMemo(() => {
+        const totalArrears = tenants.reduce((sum, t) => sum + (t.status === 'Overdue' ? t.rentAmount : 0), 0);
+        const overdueCount = tenants.filter(t => t.status === 'Overdue').length;
+        
+        // Mock revenue for AI projection using calculated revenue from financialStats
+        const revenue = financialStats.revenue > 0 ? financialStats.revenue : 5000000; // Fallback for demo
+        const expenses = revenue * 0.3; // 30% expense mock
+        const netLiquidity = revenue - expenses;
+
+        const vacancies = properties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Vacant').length, 0);
+        const expiringLeases = tenants.filter(t => t.leaseEnd && new Date(t.leaseEnd) < new Date(new Date().setDate(new Date().getDate() + 60))).length;
+        
+        const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        
+        let summaryText = `"TaskMe AI analysis for system state as of ${today}. `;
+        if (membershipStats.occupancyRate > 90) summaryText += "High occupancy surplus detected. ";
+        else summaryText += `Vacancy rate is ${100 - membershipStats.occupancyRate}%. Acquisition recommended. `;
+        
+        if (overdueCount === 0) summaryText += "Portfolio risk is minimal with zero arrears." + '"';
+        else summaryText += `Risk elevated due to ${overdueCount} overdue accounts."`;
+
+        const priorities = [];
+        if (overdueCount > 0) {
+            priorities.push({ text: `Recover **KES ${(totalArrears/1000).toFixed(1)}k** in arrears from ${overdueCount} tenants.`, level: 'HIGH' });
+        } else {
+             priorities.push({ text: `Deploy surplus liquidity of **KES ${(netLiquidity/1000000).toFixed(2)}M** into high-yield funds.`, level: 'HIGH' });
+        }
+        
+        if (vacancies > 0) {
+            priorities.push({ text: `Scale agent force to fill **${vacancies}** vacant units in ${branch}.`, level: 'MEDIUM' });
+        } else {
+             priorities.push({ text: `Scale agent force beyond **${staff.filter(s => s.role === 'Field Agent').length}** active members to support growth.`, level: 'MEDIUM' });
+        }
+        
+        if (expiringLeases > 0) {
+             priorities.push({ text: `Optimize retention rates by renewing **${expiringLeases}** expiring leases.`, level: 'LOW' });
+        } else {
+             priorities.push({ text: `Optimize interest rates to maintain **KES ${(revenue/1000000).toFixed(1)}M** savings momentum.`, level: 'LOW' });
+        }
+
+        return {
+            summaryText,
+            netLiquidity,
+            arrearsCount: overdueCount,
+            riskScore: overdueCount > 5 ? 'High' : overdueCount > 0 ? 'Moderate' : 'Optimal',
+            priorities,
+            marketWatch: [
+                { category: 'Capital Surplus', status: 'Excellent', value: `${(netLiquidity/1000000).toFixed(2)}M` },
+                { category: 'Portfolio Risk', status: overdueCount > 5 ? 'High' : 'Optimal', value: `${overdueCount > 0 ? ((totalArrears/revenue)*100).toFixed(1) : '0'}% PAR` },
+                { category: 'Member Growth', status: 'Steady', value: `${membershipStats.newTenants} New` }
+            ]
+        };
+    }, [tenants, properties, membershipStats, financialStats, staff, branch]);
+
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -276,8 +339,8 @@ const QuickStats: React.FC = () => {
 
     const handleExport = (type: 'CSV' | 'PDF') => {
         const exportData = [
-            ...membershipStats.map(s => ({ Category: 'Membership', ...s })),
-            ...financialStats.map(s => ({ Category: 'Financial', ...s })),
+            ...membershipStats.stats.map(s => ({ Category: 'Membership', ...s })),
+            ...financialStats.stats.map(s => ({ Category: 'Financial', ...s })),
             ...operationalStats.map(s => ({ Category: 'Operational', ...s }))
         ];
 
@@ -337,7 +400,7 @@ const QuickStats: React.FC = () => {
             {/* Membership Section */}
             <CollapsibleSection title="Membership & User Insights" defaultOpen reportUrl="#/reports/tenancy-reports">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    {membershipStats.map((stat, i) => (
+                    {membershipStats.stats.map((stat, i) => (
                         <KpiCard key={i} stat={stat as any} />
                     ))}
                 </div>
@@ -360,7 +423,7 @@ const QuickStats: React.FC = () => {
             {/* Financial Section */}
             <CollapsibleSection title="Financial Performance" defaultOpen reportUrl="#/reports/financial-reports">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    {financialStats.map((stat, i) => (
+                    {financialStats.stats.map((stat, i) => (
                         <KpiCard key={i} stat={stat as any} />
                     ))}
                 </div>
@@ -404,6 +467,111 @@ const QuickStats: React.FC = () => {
                             <Chart type="bar" data={MAINTENANCE_PERFORMANCE_CHART_DATA} options={{ scales: { x: { stacked: true }, y: { stacked: true } } }}/>
                         </div>
                     </div>
+                </div>
+            </CollapsibleSection>
+
+            {/* AI Intelligence Section */}
+            <CollapsibleSection title="TaskMe AI Intelligence" defaultOpen reportUrl="#/analytics/overview">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 relative overflow-hidden">
+                    {/* Decorative Background Element */}
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500"></div>
+                    
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
+                                 <Icon name="analytics" className="w-6 h-6" /> 
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800">Daily Intelligence Briefing</h3>
+                                <p className="text-xs text-gray-500">Updated: {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                            </div>
+                        </div>
+                        <button className="text-sm font-bold text-gray-500 hover:text-gray-700 bg-gray-100 px-3 py-1.5 rounded-lg transition-colors">
+                            Refresh
+                        </button>
+                    </div>
+
+                    {/* Summary Text */}
+                    <div className="bg-purple-50/50 border border-purple-100 p-4 rounded-xl mb-8">
+                        <p className="text-purple-900 text-sm font-medium italic">
+                            "{aiInsights.summaryText}"
+                        </p>
+                    </div>
+
+                    {/* 3 Key Metrics Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div className="p-4 border rounded-xl bg-white shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                                 <p className="text-xs font-bold text-gray-400 uppercase">Net Liquidity (Est)</p>
+                                 <Icon name="revenue" className="w-4 h-4 text-green-500" />
+                            </div>
+                            <p className="text-2xl font-bold text-gray-800">KES {(aiInsights.netLiquidity/1000).toFixed(0)}k</p>
+                        </div>
+                        <div className="p-4 border rounded-xl bg-white shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                                 <p className="text-xs font-bold text-gray-400 uppercase">Arrears Count</p>
+                                 <Icon name="arrears" className={`w-4 h-4 ${aiInsights.arrearsCount > 0 ? 'text-red-500' : 'text-green-500'}`} />
+                            </div>
+                            <p className="text-2xl font-bold text-gray-800">{aiInsights.arrearsCount}</p>
+                        </div>
+                         <div className="p-4 border rounded-xl bg-white shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                                 <p className="text-xs font-bold text-gray-400 uppercase">Risk Score</p>
+                                 <Icon name="analytics" className="w-4 h-4 text-blue-500" />
+                            </div>
+                            <p className="text-2xl font-bold text-gray-800">{aiInsights.riskScore}</p>
+                        </div>
+                    </div>
+
+                    {/* Two Cards: Strategic Priorities & Market Watch */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Strategic Priorities */}
+                        <div className="border border-gray-200 rounded-xl p-5 bg-white">
+                            <h4 className="font-bold text-gray-700 flex items-center mb-4">
+                                <Icon name="check" className="w-5 h-5 mr-2 text-gray-400" /> Strategic Priorities
+                            </h4>
+                            <div className="space-y-4">
+                                {aiInsights.priorities.map((p, i) => (
+                                    <div key={i} className="flex justify-between items-start pb-3 border-b border-gray-50 last:border-0 last:pb-0">
+                                        <div className="flex items-start gap-3">
+                                            <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${p.level === 'HIGH' ? 'bg-red-500' : p.level === 'MEDIUM' ? 'bg-yellow-500' : 'bg-blue-500'}`}></div>
+                                            <p className="text-sm text-gray-600" dangerouslySetInnerHTML={{ __html: p.text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}></p>
+                                        </div>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                                            p.level === 'HIGH' ? 'bg-red-100 text-red-700' : 
+                                            p.level === 'MEDIUM' ? 'bg-yellow-100 text-yellow-700' : 
+                                            'bg-blue-100 text-blue-700'
+                                        }`}>{p.level}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Market Watch / Pulse */}
+                        <div className="border border-gray-200 rounded-xl p-5 bg-gray-50/50">
+                            <h4 className="font-bold text-gray-700 flex items-center mb-4">
+                                <Icon name="analytics" className="w-5 h-5 mr-2 text-gray-400" /> Performance Pulse
+                            </h4>
+                            <div className="space-y-4">
+                                 {aiInsights.marketWatch.map((m, i) => (
+                                    <div key={i} className="flex justify-between items-center py-2">
+                                        <span className="text-sm text-gray-500 font-medium">{m.category}</span>
+                                        <div className="flex items-center gap-4">
+                                            <span className={`text-xs px-2 py-1 rounded font-bold ${
+                                                m.status === 'Excellent' || m.status === 'Optimal' || m.status === 'Steady' ? 'bg-green-100 text-green-700' : 
+                                                m.status === 'High' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'
+                                            }`}>
+                                                {m.status}
+                                            </span>
+                                            <span className="text-sm font-bold text-gray-800 min-w-[60px] text-right">{m.value}</span>
+                                        </div>
+                                    </div>
+                                 ))}
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </CollapsibleSection>
 

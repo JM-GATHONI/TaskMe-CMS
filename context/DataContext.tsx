@@ -1,8 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation } from '../types';
+import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions } from '../types';
 import { SEED_PROPERTIES, SEED_TENANTS, SEED_LANDLORDS, SEED_TASKS, SEED_INVOICES, SEED_BILLS, SEED_FINE_RULES, SEED_OFFBOARDING_RECORDS, SEED_LANDLORD_APPLICATIONS, SEED_WORKFLOWS, SEED_AUTOMATION_RULES, SEED_ESCALATION_RULES, SEED_AUDIT_LOGS, SEED_VENDORS, SEED_PREVENTIVE_TASKS, SEED_MESSAGES, SEED_TEMPLATES, SEED_INCOME_SOURCES, SEED_RENOVATION_PROJECT_BILLS, SEED_STAFF_PROFILES, SEED_TENANT_APPLICATIONS, SEED_EXTERNAL_TRANSACTIONS, SEED_NOTIFICATIONS } from '../utils/seedData';
-import { MOCK_APPLICATIONS, GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA, MOCK_COMMISSION_RULES, MOCK_DEDUCTION_RULES, MOCK_EXTERNAL_TRANSACTIONS, MOCK_OVERPAYMENTS, INITIAL_FUNDS, MOCK_INVESTMENTS, MOCK_WITHDRAWALS, MOCK_RENOVATION_INVESTORS, MOCK_RF_TRANSACTIONS } from '../constants';
+import { MOCK_APPLICATIONS, GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA, MOCK_COMMISSION_RULES, MOCK_DEDUCTION_RULES, MOCK_EXTERNAL_TRANSACTIONS, MOCK_OVERPAYMENTS, INITIAL_FUNDS, MOCK_INVESTMENTS, MOCK_WITHDRAWALS, MOCK_RENOVATION_INVESTORS, MOCK_RF_TRANSACTIONS, MOCK_ROLES } from '../constants';
 import { encryptData, decryptData } from '../utils/security';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -43,6 +43,9 @@ function useStickyState<T>(defaultValue: T, key: string): [T, React.Dispatch<Rea
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    // Current User
+    const [currentUser, setCurrentUser] = useState<User | StaffProfile | TenantProfile | null>(null);
+
     // Core Data - Using v11 keys to force reset with new seed data and enable encryption
     const [tenants, setTenants] = useStickyState<TenantProfile[]>(SEED_TENANTS, 'tm_tenants_v11');
     const [properties, setProperties] = useStickyState<Property[]>(SEED_PROPERTIES, 'tm_properties_v11');
@@ -87,6 +90,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [renovationInvestors, setRenovationInvestors] = useStickyState<RenovationInvestor[]>(MOCK_RENOVATION_INVESTORS, 'tm_renovation_investors_v11');
     const [rfTransactions, setRFTransactions] = useStickyState<RFTransaction[]>(MOCK_RF_TRANSACTIONS, 'tm_rf_transactions_v11');
     const [renovationProjectBills, setRenovationProjectBills] = useStickyState<RenovationProjectBill[]>(SEED_RENOVATION_PROJECT_BILLS, 'tm_renovation_project_bills_v11');
+
+    const [roles, setRoles] = useStickyState<Role[]>(MOCK_ROLES, 'tm_roles_v12');
 
     const [systemSettings, setSystemSettings] = useStickyState<SystemSettings>({
         companyName: 'TaskMe Realty',
@@ -272,6 +277,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addRenovationProjectBill = (bill: RenovationProjectBill) => setRenovationProjectBills(prev => [bill, ...prev]);
     const updateRenovationProjectBill = (id: string, d: Partial<RenovationProjectBill>) => setRenovationProjectBills(prev => prev.map(b => b.id === id ? { ...b, ...d } : b));
 
+    const addRole = (r: Role) => setRoles(prev => [...prev, r]);
+    const updateRole = (id: string, d: Partial<Role>) => setRoles(prev => prev.map(r => r.id === id ? {...r, ...d} : r));
+    const deleteRole = (id: string) => setRoles(prev => prev.filter(r => r.id !== id));
+
     const getOccupancyRate = () => {
         const totalUnits = properties.reduce((acc, p) => acc + p.units.length, 0);
         const occupiedUnits = properties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Occupied').length, 0);
@@ -289,6 +298,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bills, invoices, vendors, messages, notifications, templates, workflows, automationRules, auditLogs, escalationRules,
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
+            roles,
+            currentUser,
+            setCurrentUser,
             addTenant, updateTenant, deleteTenant, addProperty, updateProperty, deleteProperty,
             addUnitToProperty, addTask, updateTask, addQuotation, updateQuotation, addApplication, updateApplication, deleteApplication,
             addLandlordApplication, updateLandlordApplication, deleteLandlordApplication, addLandlord, updateLandlord, deleteLandlord,
@@ -302,6 +314,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addFund, updateFund, addInvestment, updateInvestment, addWithdrawal, updateWithdrawal,
             addRenovationInvestor, updateRenovationInvestor, addRFTransaction, updateRFTransaction,
             addRenovationProjectBill, updateRenovationProjectBill,
+            addRole, updateRole, deleteRole,
             getOccupancyRate, getTotalRevenue
         }}>
             {children}

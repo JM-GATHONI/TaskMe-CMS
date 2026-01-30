@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import Icon from './Icon';
@@ -181,17 +182,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-            {/* Background with slight blur */}
-            <div 
-                className="absolute inset-0 bg-cover bg-center z-0 blur-[2px] scale-[1.01]" 
-                style={{ backgroundImage: `url('https://images.unsplash.com/photo-1506318137071-a8bcbf90d177?auto=format&fit=crop&q=80')` }}
-            ></div>
+        <div className="min-h-screen w-full flex items-center justify-center relative bg-cover bg-center py-10 px-4 overflow-y-auto" style={{ backgroundImage: `url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80')` }}>
+            {/* Overlay Removed */}
             
-            {/* Primary color overlay at 35% opacity */}
-            <div className="absolute inset-0 bg-primary/35 z-0"></div>
-
-            <div className="w-full max-w-md bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl relative z-10 overflow-hidden transform transition-all duration-500 animate-fade-in border border-white/20">
+            <div className="w-full max-w-md bg-white/95 rounded-3xl shadow-2xl relative z-10 transform transition-all duration-500 animate-fade-in border border-white/20">
                 {/* Header */}
                 <div className="bg-primary/90 p-8 text-center">
                     <label className="mx-auto w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg border-4 border-white/30 mb-4 cursor-pointer hover:scale-105 transition-transform group relative overflow-hidden">

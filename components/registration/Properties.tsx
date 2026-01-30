@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MOCK_PROPERTIES, GEOSPATIAL_DATA } from '../../constants';
 import { Property, Unit, User, PropertyAsset, FloorPlan, UnitType, StaffProfile } from '../../types';
@@ -77,10 +78,11 @@ export const PropertyForm: React.FC<{
     landlords: User[];
     staff: StaffProfile[];
 }> = ({ property, onCancel, onSave, landlords, staff }) => {
+    const { geospatialData } = useData();
     const [activeTab, setActiveTab] = useState('details');
     const [formData, setFormData] = useState<Partial<Property>>({});
     const [activeFloorIndex, setActiveFloorIndex] = useState(0);
-    const [baseRent, setBaseRent] = useState<number>(0); // Local state for calculator
+    const [baseRent, setBaseRent] = useState<number>(0); 
     const [docFiles, setDocFiles] = useState<FileList | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const docInputRef = useRef<HTMLInputElement>(null);
@@ -153,28 +155,41 @@ export const PropertyForm: React.FC<{
     }, [formData.floors, activeFloorIndex, formData.defaultUnitType]);
 
     // Cascading Geospatial Logic
-    useEffect(() => {
-        if (formData.county && GEOSPATIAL_DATA[formData.county]) setSubCountyOptions(Object.keys(GEOSPATIAL_DATA[formData.county]));
-        else setSubCountyOptions([]);
-    }, [formData.county]);
+    // Use geospatialData from Context which is initialized from constants or persisted data
+    // Fallback to imported GEOSPATIAL_DATA if context is empty (though it shouldn't be with seed)
+    const geoData = geospatialData || GEOSPATIAL_DATA;
 
     useEffect(() => {
-        if (formData.county && formData.subCounty && GEOSPATIAL_DATA[formData.county]?.[formData.subCounty]) 
-            setLocationOptions(Object.keys(GEOSPATIAL_DATA[formData.county][formData.subCounty]));
-        else setLocationOptions([]);
-    }, [formData.county, formData.subCounty]);
+        if (formData.county && geoData[formData.county]) {
+            setSubCountyOptions(Object.keys(geoData[formData.county]));
+        } else {
+            setSubCountyOptions([]);
+        }
+    }, [formData.county, geoData]);
 
     useEffect(() => {
-        if (formData.county && formData.subCounty && formData.location && GEOSPATIAL_DATA[formData.county]?.[formData.subCounty]?.[formData.location]) 
-            setZoneOptions(Object.keys(GEOSPATIAL_DATA[formData.county][formData.subCounty][formData.location]));
-        else setZoneOptions([]);
-    }, [formData.county, formData.subCounty, formData.location]);
+        if (formData.county && formData.subCounty && geoData[formData.county]?.[formData.subCounty]) {
+            setLocationOptions(Object.keys(geoData[formData.county][formData.subCounty]));
+        } else {
+            setLocationOptions([]);
+        }
+    }, [formData.county, formData.subCounty, geoData]);
 
     useEffect(() => {
-        if (formData.county && formData.subCounty && formData.location && formData.zone && GEOSPATIAL_DATA[formData.county]?.[formData.subCounty]?.[formData.location]?.[formData.zone]) 
-            setSubLocationOptions(GEOSPATIAL_DATA[formData.county][formData.subCounty][formData.location][formData.zone]);
-        else setSubLocationOptions([]);
-    }, [formData.county, formData.subCounty, formData.location, formData.zone]);
+        if (formData.county && formData.subCounty && formData.location && geoData[formData.county]?.[formData.subCounty]?.[formData.location]) {
+            setZoneOptions(Object.keys(geoData[formData.county][formData.subCounty][formData.location]));
+        } else {
+            setZoneOptions([]);
+        }
+    }, [formData.county, formData.subCounty, formData.location, geoData]);
+
+    useEffect(() => {
+        if (formData.county && formData.subCounty && formData.location && formData.zone && geoData[formData.county]?.[formData.subCounty]?.[formData.location]?.[formData.zone]) {
+            setSubLocationOptions(geoData[formData.county][formData.subCounty][formData.location][formData.zone]);
+        } else {
+            setSubLocationOptions([]);
+        }
+    }, [formData.county, formData.subCounty, formData.location, formData.zone, geoData]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -196,13 +211,11 @@ export const PropertyForm: React.FC<{
     const handleGeospatialChange = (field: string, value: string) => {
         setFormData(prev => {
             const newState: any = { ...prev, [field]: value };
-            const resetFields = (f: string) => {
-                if(f === 'county') { newState.subCounty=''; newState.location=''; newState.zone=''; newState.subLocation=''; }
-                if(f === 'subCounty') { newState.location=''; newState.zone=''; newState.subLocation=''; }
-                if(f === 'location') { newState.zone=''; newState.subLocation=''; }
-                if(f === 'zone') { newState.subLocation=''; }
-            };
-            resetFields(field);
+            // Clear children when parent changes
+            if(field === 'county') { newState.subCounty=''; newState.location=''; newState.zone=''; newState.subLocation=''; }
+            if(field === 'subCounty') { newState.location=''; newState.zone=''; newState.subLocation=''; }
+            if(field === 'location') { newState.zone=''; newState.subLocation=''; }
+            if(field === 'zone') { newState.subLocation=''; }
             return newState;
         });
     };
@@ -385,29 +398,47 @@ export const PropertyForm: React.FC<{
 
                     <div className="md:col-span-2 mt-2">
                         <h3 className="font-bold text-gray-800 mb-3 border-b pb-2">Location & Mapping</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <select name="county" value={formData.county || ''} onChange={e => handleGeospatialChange('county', e.target.value)} className="p-2 border rounded bg-white">
-                                <option value="">County</option>{Object.keys(GEOSPATIAL_DATA).map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                            <select name="subCounty" value={formData.subCounty || ''} onChange={e => handleGeospatialChange('subCounty', e.target.value)} disabled={!formData.county} className="p-2 border rounded bg-white disabled:bg-gray-100">
-                                <option value="">Sub-County</option>{subCountyOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            <select name="location" value={formData.location || ''} onChange={e => handleGeospatialChange('location', e.target.value)} disabled={!formData.subCounty} className="p-2 border rounded bg-white disabled:bg-gray-100">
-                                <option value="">Location</option>{locationOptions.map(l => <option key={l} value={l}>{l}</option>)}
-                            </select>
-                            <select name="zone" value={formData.zone || ''} onChange={e => handleGeospatialChange('zone', e.target.value)} disabled={!formData.location} className="p-2 border rounded bg-white disabled:bg-gray-100">
-                                <option value="">Zone</option>{zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
-                            </select>
-                            <select name="subLocation" value={formData.subLocation || ''} onChange={e => handleGeospatialChange('subLocation', e.target.value)} disabled={!formData.zone} className="p-2 border rounded bg-white disabled:bg-gray-100">
-                                <option value="">Sub-Location / Village</option>{subLocationOptions.map(sl => <option key={sl} value={sl}>{sl}</option>)}
-                            </select>
-                            <input 
-                                name="nearestLandmark" 
-                                value={formData.nearestLandmark || ''} 
-                                onChange={handleChange} 
-                                placeholder="Nearest Road / Landmark" 
-                                className="p-2 border rounded bg-white w-full"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">County</label>
+                                <select name="county" value={formData.county || ''} onChange={e => handleGeospatialChange('county', e.target.value)} className="w-full p-2 border rounded bg-white">
+                                    <option value="">Select County</option>{Object.keys(geoData).map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sub-County</label>
+                                <select name="subCounty" value={formData.subCounty || ''} onChange={e => handleGeospatialChange('subCounty', e.target.value)} disabled={!formData.county} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
+                                    <option value="">Select Sub-County</option>{subCountyOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Location</label>
+                                <select name="location" value={formData.location || ''} onChange={e => handleGeospatialChange('location', e.target.value)} disabled={!formData.subCounty} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
+                                    <option value="">Select Location</option>{locationOptions.map(l => <option key={l} value={l}>{l}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Zone / Ward</label>
+                                <select name="zone" value={formData.zone || ''} onChange={e => handleGeospatialChange('zone', e.target.value)} disabled={!formData.location} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
+                                    <option value="">Select Zone</option>{zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sub-Location / Village</label>
+                                <select name="subLocation" value={formData.subLocation || ''} onChange={e => handleGeospatialChange('subLocation', e.target.value)} disabled={!formData.zone} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
+                                    <option value="">Select Village</option>{subLocationOptions.map(sl => <option key={sl} value={sl}>{sl}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nearest Landmark</label>
+                                <input 
+                                    name="nearestLandmark" 
+                                    value={formData.nearestLandmark || ''} 
+                                    onChange={handleChange} 
+                                    placeholder="e.g. Near Main Market" 
+                                    className="w-full p-2 border rounded bg-white"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>

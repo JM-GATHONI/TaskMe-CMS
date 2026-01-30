@@ -178,7 +178,7 @@ export interface User {
   passwordHash?: string;
 }
 
-export type UserRole = 'Super Admin' | 'Branch Manager' | 'Field Agent' | 'Accountant' | 'Caretaker' | 'Landlord' | 'Tenant' | 'Contractor';
+export type UserRole = 'Super Admin' | 'Branch Manager' | 'Field Agent' | 'Accountant' | 'Caretaker' | 'Landlord' | 'Tenant' | 'Contractor' | 'Affiliate';
 
 export interface Quotation {
   id: string;
@@ -802,10 +802,31 @@ export interface KycRecord {
   status: 'Verified' | 'Pending' | 'Rejected';
 }
 
+export interface RolePermissions {
+    [module: string]: {
+        create: boolean;
+        edit: boolean;
+        delete: boolean;
+        view: boolean;
+        approve: boolean;
+        import: boolean;
+        activate: boolean;
+        deactivate: boolean;
+        publish: boolean;
+        pay: boolean;
+        resolve: boolean;
+        cancel: boolean;
+    };
+}
+
 export interface Role {
   id: string;
   name: string;
   description: string;
+  isSystem: boolean;
+  permissions: RolePermissions;
+  accessibleSubmodules: string[];
+  widgetAccess?: string[];
 }
 
 export interface WidgetConfig {
@@ -951,7 +972,10 @@ export interface DataContextType {
     renovationInvestors: RenovationInvestor[];
     rfTransactions: RFTransaction[];
     renovationProjectBills: RenovationProjectBill[];
+    roles: Role[];
+    currentUser: User | StaffProfile | TenantProfile | null;
 
+    setCurrentUser: (user: User | StaffProfile | TenantProfile | null) => void;
     addTenant: (tenant: TenantProfile) => void;
     updateTenant: (id: string, data: Partial<TenantProfile>) => void;
     deleteTenant: (id: string) => void;
@@ -1025,6 +1049,9 @@ export interface DataContextType {
     updateRFTransaction: (id: string, d: Partial<RFTransaction>) => void;
     addRenovationProjectBill: (bill: RenovationProjectBill) => void;
     updateRenovationProjectBill: (id: string, d: Partial<RenovationProjectBill>) => void;
+    addRole: (r: Role) => void;
+    updateRole: (id: string, d: Partial<Role>) => void;
+    deleteRole: (id: string) => void;
     getOccupancyRate: () => number;
     getTotalRevenue: () => number;
 }
