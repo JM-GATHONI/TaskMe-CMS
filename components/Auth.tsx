@@ -92,18 +92,31 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             const id = loginData.identifier.trim();
             const pass = loginData.password;
             
+            // Normalize inputs for robust matching (Mobile keyboards often add spaces or capitalization)
+            const idLower = id.toLowerCase();
+            const idClean = id.replace(/[\s-]/g, ''); // Remove spaces and dashes for phone matching
+
             // Hash entered password for comparison
             const passHash = await hashPassword(pass);
 
             // 1. Super Admin Hardcoded Check (Failsafe)
-            if ((id === SUPER_ADMIN_USERNAME || id === SUPER_ADMIN_PHONE || id === SUPER_ADMIN_ID) && passHash === SUPER_ADMIN_HASH) {
+            const isSuperAdminUser = (idLower === SUPER_ADMIN_USERNAME.toLowerCase());
+            const isSuperAdminPhone = (idClean === SUPER_ADMIN_PHONE.replace(/[\s-]/g, ''));
+            const isSuperAdminId = (id === SUPER_ADMIN_ID);
+
+            if ((isSuperAdminUser || isSuperAdminPhone || isSuperAdminId) && passHash === SUPER_ADMIN_HASH) {
                 // Find Joseph Ritch in staff to return full profile if exists
-                const adminProfile = staff.find(s => s.name === 'JOSEPH RITCH' || s.phone === SUPER_ADMIN_PHONE);
+                const adminProfile = staff.find(s => 
+                    s.name.toUpperCase() === 'JOSEPH RITCH' || 
+                    s.phone.replace(/[\s-]/g, '') === SUPER_ADMIN_PHONE.replace(/[\s-]/g, '')
+                );
+                
                 if (adminProfile) {
                     onLogin(adminProfile);
                     return;
                 }
-                // Fallback Profile
+                
+                // Fallback Profile if seed data missing/modified
                 onLogin({
                     id: 'staff-ritch',
                     name: 'JOSEPH RITCH',
@@ -123,12 +136,22 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             }
 
             // 2. Regular User Checks
-            // Find user by Username, Email, or Phone
-            const foundUser = allUsers.find(u => 
-                (u.username && u.username.toLowerCase() === id.toLowerCase()) || 
-                u.email.toLowerCase() === id.toLowerCase() || 
-                u.phone === id
-            );
+            // Find user by Username, Email, or Phone with robust matching
+            const foundUser = allUsers.find(u => {
+                // Check Username (Case insensitive)
+                if (u.username && u.username.toLowerCase() === idLower) return true;
+                
+                // Check Email (Case insensitive)
+                if (u.email && u.email.toLowerCase() === idLower) return true;
+                
+                // Check Phone (Strip spaces/dashes)
+                if (u.phone && u.phone.replace(/[\s-]/g, '') === idClean) return true;
+
+                // Check ID Number (Direct match)
+                if (u.idNumber === id) return true;
+                
+                return false;
+            });
 
             if (foundUser) {
                 if (foundUser.passwordHash) {
@@ -223,6 +246,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                         placeholder="Username, Email or Phone"
                                         required
                                         autoFocus
+                                        autoCapitalize="none"
+                                        autoCorrect="off"
                                     />
                                 </div>
                                 <div className="relative group">

@@ -351,15 +351,8 @@ const QuickStats: React.FC = () => {
         }
     };
 
-    const handleBack = () => {
-        window.location.hash = '#/dashboard';
-    };
-
     return (
         <div className="space-y-8 pb-8" id="quick-stats-content">
-            <button type="button" onClick={handleBack} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors no-print">
-                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back
-            </button>
             <div>
                 <h1 className="text-3xl font-bold text-gray-800">Quick Stats & Analytics</h1>
                 <p className="text-lg text-gray-500 mt-1">Real-time performance metrics based on live system data.</p>

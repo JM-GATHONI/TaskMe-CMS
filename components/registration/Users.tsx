@@ -391,12 +391,13 @@ const Users: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-4 text-left font-bold text-gray-500 uppercase tracking-wider">Name</th>
-                                <th className="px-6 py-4 text-left font-bold text-gray-500 uppercase tracking-wider">Username</th>
-                                <th className="px-6 py-4 text-left font-bold text-gray-500 uppercase tracking-wider">Contact</th>
-                                <th className="px-6 py-4 text-left font-bold text-gray-500 uppercase tracking-wider">Role</th>
-                                <th className="px-6 py-4 text-center font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-4 text-right font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Name</th>
+                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Username</th>
+                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Tel</th>
+                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Role</th>
+                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">RegDate</th>
+                                <th className="px-6 py-3 text-center font-bold text-gray-500 uppercase tracking-wider text-xs">Active</th>
+                                <th className="px-6 py-3 text-center font-bold text-gray-500 uppercase tracking-wider text-xs">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-100">
@@ -406,37 +407,36 @@ const Users: React.FC = () => {
                                         <div className="font-bold text-gray-800">{user.name}</div>
                                         <div className="text-xs text-gray-500">{user.email}</div>
                                     </td>
-                                    <td className="px-6 py-4 text-gray-700 font-medium font-mono text-xs">
-                                        {user.username || <span className="text-gray-300">--</span>}
+                                    <td className="px-6 py-4 text-gray-700 font-medium">
+                                        {user.username || '-'}
                                     </td>
                                     <td className="px-6 py-4 text-gray-600">{user.phone}</td>
-                                    <td className="px-6 py-4">
-                                        <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-bold border border-gray-200">{user.role}</span>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-6 py-4 text-gray-600">{user.role}</td>
+                                    <td className="px-6 py-4 text-gray-600">{(user.fullObject as any).dateRegistered || 'N/A'}</td>
+                                     <td className="px-6 py-4 text-center">
                                         <span className={`px-2 py-1 text-xs font-bold rounded-full ${
                                             user.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                                         }`}>
-                                            {user.status}
+                                            {user.status === 'Active' ? 'Yes' : 'No'}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button onClick={() => { setEditUser(user); setIsFormVisible(true); }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Edit">
-                                                <Icon name="settings" className="w-4 h-4" />
+                                    <td className="px-6 py-4 text-center">
+                                        <div className="flex justify-center gap-2">
+                                            <button onClick={() => { setEditUser(user); setIsFormVisible(true); }} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded flex items-center hover:bg-blue-700 transition-colors">
+                                                <Icon name="settings" className="w-3 h-3 mr-1" /> Edit
                                             </button>
-                                            <button onClick={() => setResetUser(user)} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded" title="Reset Password">
-                                                <Icon name="keys" className="w-4 h-4" /> {/* Assuming 'keys' icon exists or mapped to something */}
+                                            <button onClick={() => setResetUser(user)} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-bold rounded flex items-center hover:bg-gray-300 transition-colors">
+                                                <Icon name="keys" className="w-3 h-3 mr-1" /> Set Pwd
                                             </button>
-                                            <button onClick={() => handleDeleteUser(user)} className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="Delete">
-                                                <Icon name="close" className="w-4 h-4" />
+                                            <button onClick={() => handleDeleteUser(user)} className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded flex items-center hover:bg-red-700 transition-colors">
+                                                <Icon name="trash" className="w-3 h-3 mr-1" /> Del
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                             ))}
                             {filteredUsers.length === 0 && (
-                                <tr><td colSpan={6} className="text-center py-16 text-gray-400 bg-gray-50/50">No users found in {activeCategory?.title}.</td></tr>
+                                <tr><td colSpan={7} className="text-center py-16 text-gray-400 bg-gray-50/50">No users found in {activeCategory?.title}.</td></tr>
                             )}
                         </tbody>
                     </table>
