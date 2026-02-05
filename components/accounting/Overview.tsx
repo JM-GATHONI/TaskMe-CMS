@@ -83,13 +83,49 @@ const Overview: React.FC = () => {
         return { totalRevenue, totalExpenses, receivables, payables, netProfit, margin };
     }, [tenants, bills, tasks]);
 
-    // --- Chart Data ---
+    // --- Monthly Cashflow Calculation ---
+    const monthlyCashflow = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const currentYear = new Date().getFullYear();
+        const incomeData = new Array(12).fill(0);
+        const expenseData = new Array(12).fill(0);
+
+        // Aggregate Income
+        tenants.forEach(t => {
+            t.paymentHistory.forEach(p => {
+                const d = new Date(p.date);
+                if (d.getFullYear() === currentYear && p.status === 'Paid') {
+                    const amt = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
+                    incomeData[d.getMonth()] += amt;
+                }
+            });
+        });
+
+        // Aggregate Expenses
+        bills.forEach(b => {
+             const d = new Date(b.invoiceDate);
+             if (d.getFullYear() === currentYear && b.status === 'Paid') {
+                 expenseData[d.getMonth()] += b.amount;
+             }
+        });
+
+        // Slice for last 6 months relevant
+        const currentMonthIndex = new Date().getMonth();
+        const startMonth = Math.max(0, currentMonthIndex - 5);
+        
+        return {
+            labels: months.slice(startMonth, currentMonthIndex + 1),
+            income: incomeData.slice(startMonth, currentMonthIndex + 1),
+            expenses: expenseData.slice(startMonth, currentMonthIndex + 1)
+        };
+    }, [tenants, bills]);
+
     const cashflowData = {
-        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
+        labels: monthlyCashflow.labels,
         datasets: [
             {
                 label: 'Income',
-                data: [stats.totalRevenue * 0.8, stats.totalRevenue * 0.85, stats.totalRevenue * 0.9, stats.totalRevenue * 0.88, stats.totalRevenue * 0.95, stats.totalRevenue],
+                data: monthlyCashflow.income,
                 borderColor: '#10b981',
                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                 tension: 0.4,
@@ -97,7 +133,7 @@ const Overview: React.FC = () => {
             },
             {
                 label: 'Expenses',
-                data: [stats.totalExpenses * 0.8, stats.totalExpenses * 0.82, stats.totalExpenses * 0.85, stats.totalExpenses * 0.9, stats.totalExpenses * 0.88, stats.totalExpenses],
+                data: monthlyCashflow.expenses,
                 borderColor: '#ef4444',
                 backgroundColor: 'rgba(239, 68, 68, 0.1)',
                 tension: 0.4,
@@ -164,9 +200,9 @@ const Overview: React.FC = () => {
                 </div>
 
                 <KpiCard 
-                    title="Net Profit (YTD)" 
+                    title="Net Profit (All-Time)" 
                     value={`KES ${(stats.netProfit/1000000).toFixed(2)}M`} 
-                    subtext="12%" 
+                    subtext="Net Cash Position" 
                     trend="up" 
                     color="text-green-600" 
                     icon="revenue" 
@@ -257,7 +293,7 @@ const Overview: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {/* Mix of recent payments and bills */}
-                            {tenants.flatMap(t => t.paymentHistory.map(p => ({...p, desc: `Rent: ${t.name}`, type: 'Income', date: p.date}))).slice(0, 3).map((item, i) => (
+                            {tenants.flatMap(t => t.paymentHistory.map(p => ({...p, desc: `Rent: ${t.name}`, type: 'Income', date: p.date}))).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 3).map((item, i) => (
                                 <tr key={`inc-${i}`} className="hover:bg-gray-50">
                                     <td className="px-6 py-3 text-gray-600">{item.date}</td>
                                     <td className="px-6 py-3 font-medium text-gray-800">{item.desc}</td>
@@ -266,9 +302,9 @@ const Overview: React.FC = () => {
                                     <td className="px-6 py-3 text-center"><span className="text-xs font-bold text-gray-500">Completed</span></td>
                                 </tr>
                             ))}
-                             {bills.slice(0, 3).map((b, i) => (
+                             {bills.sort((a,b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()).slice(0, 3).map((b, i) => (
                                 <tr key={`exp-${i}`} className="hover:bg-gray-50">
-                                    <td className="px-6 py-3 text-gray-600">{b.dueDate}</td>
+                                    <td className="px-6 py-3 text-gray-600">{b.invoiceDate}</td>
                                     <td className="px-6 py-3 font-medium text-gray-800">{b.vendor}</td>
                                     <td className="px-6 py-3"><span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full font-bold">Expense</span></td>
                                     <td className="px-6 py-3 text-right font-bold text-red-600">- KES {b.amount.toLocaleString()}</td>

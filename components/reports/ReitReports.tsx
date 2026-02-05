@@ -1,9 +1,10 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { REIT_BALANCE_GROWTH_DATA } from '../../constants';
 import Icon from '../Icon';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { useData } from '../../context/DataContext';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -49,16 +50,46 @@ const Chart: React.FC<{ type: 'line'; data: any; options?: any; height?: string 
     return <div className={`relative ${height}`}><canvas ref={canvasRef}></canvas></div>;
 };
 
-const MOCK_REIT_KPIS = [
-    { title: 'Total Fund Value', value: 'KES 24.5M', subtext: 'Net Asset Value', icon: 'revenue', color: '#10b981' },
-    { title: 'Active Investors', value: '1,842', subtext: '+56 this month', icon: 'hr', color: '#3b82f6' },
-    { title: 'Average Return (YTD)', value: '18.5%', subtext: 'Annualized', icon: 'analytics', color: '#f59e0b' },
-    { title: 'Payouts This Month', value: 'KES 490K', subtext: 'Distributed on the 15th', icon: 'payments', color: '#8b5cf6' },
-];
-
 const ReitReports: React.FC = () => {
+    const { funds, investments, rfTransactions } = useData();
+
+    // Live Metrics Calculation
+    const metrics = useMemo(() => {
+        const totalAUM = funds.reduce((sum, f) => sum + f.capitalRaised, 0);
+        // Active investors = unique count of investors with active status
+        const activeInvestorCount = new Set(investments.filter(i => i.status === 'Active').map(i => i.id)).size;
+        
+        // Payouts This Month
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const payouts = rfTransactions
+            .filter(t => (t.type === 'Interest Payout' || t.type === 'Withdrawal') && t.date.startsWith(currentMonth))
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        // Weighted Average Return (Approximation)
+        // Weighted by capital raised per fund
+        let weightedReturn = 0;
+        if (totalAUM > 0) {
+            weightedReturn = funds.reduce((sum, f) => {
+                // Parse APY from string e.g., "14-16%" or "30%"
+                const apyStr = f.targetApy.match(/(\d+(\.\d+)?)/);
+                const apy = apyStr ? parseFloat(apyStr[0]) : 0;
+                return sum + (f.capitalRaised * apy);
+            }, 0) / totalAUM;
+        }
+
+        return [
+            { title: 'Total Fund Value', value: `KES ${(totalAUM/1000000).toFixed(1)}M`, subtext: 'Net Asset Value', icon: 'revenue', color: '#10b981' },
+            { title: 'Active Investors', value: activeInvestorCount.toString(), subtext: 'Total unique holders', icon: 'hr', color: '#3b82f6' },
+            { title: 'Average Return (YTD)', value: `${weightedReturn.toFixed(1)}%`, subtext: 'Annualized', icon: 'analytics', color: '#f59e0b' },
+            { title: 'Payouts This Month', value: `KES ${(payouts/1000).toFixed(1)}K`, subtext: 'Distributed', icon: 'payments', color: '#8b5cf6' },
+        ];
+    }, [funds, investments, rfTransactions]);
+
     return (
         <div className="space-y-8 pb-10">
+            <button onClick={() => window.location.hash = '#/reports-analytics/reports'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors mb-4">
+                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Reports Center
+            </button>
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">R-reits Fund Reports</h1>
@@ -67,7 +98,7 @@ const ReitReports: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {MOCK_REIT_KPIS.map(kpi => <KpiCard key={kpi.title} {...kpi} />)}
+                {metrics.map(kpi => <KpiCard key={kpi.title} {...kpi} />)}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

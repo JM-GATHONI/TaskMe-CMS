@@ -198,6 +198,7 @@ export const SEED_TENANTS: TenantProfile[] = [];
 export const SEED_TASKS: Task[] = [];
 export const SEED_INVOICES: Invoice[] = [];
 export const SEED_BILLS: Bill[] = [];
+export const SEED_EXTERNAL_TRANSACTIONS: ExternalTransaction[] = [];
 
 SEED_PROPERTIES.forEach(prop => {
     // Find assigned agent name for tasks
@@ -227,14 +228,31 @@ SEED_PROPERTIES.forEach(prop => {
             for (let i = 3; i >= 1; i--) {
                  const d = new Date(CURRENT_YEAR, CURRENT_MONTH - i, 5);
                  const dateStr = d.toISOString().split('T')[0];
+                 const method = Math.random() > 0.5 ? 'M-Pesa' : 'Bank';
+                 const ref = `REF-${Math.floor(Math.random()*100000)}`;
                  
                  paymentHistory.push({
                     date: dateStr,
                     amount: `KES ${rentAmount.toLocaleString()}`,
                     status: 'Paid',
-                    method: Math.random() > 0.5 ? 'M-Pesa' : 'Bank',
-                    reference: `REF-${Math.floor(Math.random()*100000)}`
+                    method,
+                    reference: ref
                 });
+
+                // Generate matching External Transaction for reconciliation
+                if (Math.random() > 0.3) {
+                     SEED_EXTERNAL_TRANSACTIONS.push({
+                         id: `ext-${id()}`,
+                         date: dateStr,
+                         reference: ref,
+                         amount: rentAmount,
+                         name: tenantName,
+                         account: method === 'M-Pesa' ? 'Paybill 522522' : 'Equity Bank',
+                         type: method as any,
+                         matched: true,
+                         matchedTenantId: tenantId
+                     });
+                }
             }
 
             // Current Month Logic
@@ -243,13 +261,30 @@ SEED_PROPERTIES.forEach(prop => {
                     status = 'Overdue';
                 }
             } else {
+                const currDate = `${START_OF_CURRENT_MONTH.slice(0,7)}-05`;
+                const currMethod = 'M-Pesa';
+                const currRef = `REF-CURR-${Math.floor(Math.random()*100000)}`;
                 paymentHistory.push({
-                    date: `${START_OF_CURRENT_MONTH.slice(0,7)}-05`, // 5th of current month
+                    date: currDate,
                     amount: `KES ${rentAmount.toLocaleString()}`,
                     status: 'Paid',
-                    method: 'M-Pesa',
-                    reference: `REF-CURR-${Math.floor(Math.random()*100000)}`
+                    method: currMethod,
+                    reference: currRef
                 });
+
+                 // Unmatched external transaction for demo
+                 if (Math.random() > 0.7) {
+                     SEED_EXTERNAL_TRANSACTIONS.push({
+                         id: `ext-curr-${id()}`,
+                         date: currDate,
+                         reference: currRef,
+                         amount: rentAmount,
+                         name: tenantName,
+                         account: 'Paybill 522522',
+                         type: 'M-Pesa',
+                         matched: false // Unmatched for reconciliation demo
+                     });
+                }
             }
 
             if (joinDate === START_OF_CURRENT_MONTH) {
@@ -307,22 +342,18 @@ SEED_PROPERTIES.forEach(prop => {
             });
 
             // --- TASK GENERATION ---
-            // Create a mix of tasks for dashboard population
-            // Some assigned to the property agent, some unassigned
-            if (Math.random() > 0.6) { // 40% of tenants have a task history
-                
+            if (Math.random() > 0.6) {
                 const taskTypes = ['Leaking Tap', 'Broken Socket', 'Door Lock Issue', 'Paint Touchup', 'Rent Collection Follow-up'];
                 const taskStatusOptions = [TaskStatus.Issued, TaskStatus.InProgress, TaskStatus.Pending, TaskStatus.Completed, TaskStatus.Closed];
                 const taskPriorityOptions = [TaskPriority.Low, TaskPriority.Medium, TaskPriority.High, TaskPriority.VeryHigh];
 
                 const randomStatus = taskStatusOptions[Math.floor(Math.random() * taskStatusOptions.length)];
                 
-                // Set due dates based on status
                 let dueDate = getRelativeDate(3);
                 if (randomStatus === TaskStatus.Completed || randomStatus === TaskStatus.Closed) {
-                     dueDate = getRelativeDate(-Math.floor(Math.random() * 10)); // Completed in past
+                     dueDate = getRelativeDate(-Math.floor(Math.random() * 10)); 
                 } else if (randomStatus === TaskStatus.Pending) {
-                     dueDate = getRelativeDate(-1); // Overdue pending review
+                     dueDate = getRelativeDate(-1); 
                 }
 
                 SEED_TASKS.push({
@@ -333,7 +364,7 @@ SEED_PROPERTIES.forEach(prop => {
                     priority: taskPriorityOptions[Math.floor(Math.random() * taskPriorityOptions.length)],
                     dueDate: dueDate,
                     sla: 48,
-                    assignedTo: Math.random() > 0.3 ? agentName : 'Unassigned', // Most tasks assigned to agent
+                    assignedTo: Math.random() > 0.3 ? agentName : 'Unassigned',
                     tenant: { name: tenantName, unit: unit.unitNumber },
                     property: prop.name,
                     comments: [],
@@ -347,40 +378,90 @@ SEED_PROPERTIES.forEach(prop => {
     });
 });
 
-// --- 5. BILLS (Payables) ---
-// Add real bills for current period
-SEED_BILLS.push({
-    id: `bill-clean-1`,
-    vendor: 'Spotless Cleaners',
-    category: 'Cleaning',
-    amount: 15000,
-    invoiceDate: getRelativeDate(-5),
-    dueDate: getRelativeDate(2),
-    status: 'Unpaid',
-    propertyId: 'prop1'
-});
+// --- 5. BILLS & INVOICES (Payables/Expenses) ---
+// Add diverse bills for financial reporting
+const EXPENSE_CATS = ['Maintenance', 'Transaction Costs', 'Tax', 'Legal', 'Marketing', 'Office Rent', 'Other', 'Salary', 'Cleaning', 'Security', 'Water', 'Electricity', 'Garbage'];
+
+for (let i = 0; i < 15; i++) {
+    const category = EXPENSE_CATS[Math.floor(Math.random() * EXPENSE_CATS.length)];
+    const amount = Math.floor(Math.random() * 50000) + 1000;
+    const isPaid = Math.random() > 0.3;
+    const date = getRelativeDate(-Math.floor(Math.random() * 60));
+    
+    const bill: Bill = {
+        id: `bill-auto-${i}`,
+        vendor: `${category} Vendor ${i}`,
+        category: category as any,
+        amount: amount,
+        invoiceDate: date,
+        dueDate: getRelativeDate(5),
+        status: isPaid ? 'Paid' : Math.random() > 0.5 ? 'Unpaid' : 'Overdue',
+        propertyId: Math.random() > 0.5 ? SEED_PROPERTIES[0].id : 'Agency',
+        description: `Monthly ${category} charge`
+    };
+    SEED_BILLS.push(bill);
+
+    // Auto generate invoices for some bills
+    if (Math.random() > 0.5) {
+        SEED_INVOICES.push({
+            id: `inv-in-${i}`,
+            invoiceNumber: `INV-${1000+i}`,
+            category: 'Inbound',
+            tenantName: bill.vendor,
+            amount: bill.amount,
+            dueDate: bill.dueDate,
+            status: bill.status === 'Paid' ? 'Paid' : 'Due',
+            items: [{ description: bill.description || '', amount: bill.amount, quantity: 1 }]
+        });
+    }
+}
+
+// Add Outbound Invoices (Receivables)
+for (let i = 0; i < 10; i++) {
+    const amount = Math.floor(Math.random() * 100000) + 5000;
+    const isPaid = Math.random() > 0.4;
+    SEED_INVOICES.push({
+        id: `inv-out-${i}`,
+        invoiceNumber: `INV-REC-${2000+i}`,
+        category: 'Outbound',
+        tenantName: `Commercial Tenant ${i}`,
+        amount: amount,
+        dueDate: getRelativeDate(10),
+        status: isPaid ? 'Paid' : 'Due',
+        items: [{ description: 'Office Rent Q4', amount: amount, quantity: 1 }]
+    });
+}
 
 // --- 6. OTHER ---
 export const SEED_FINE_RULES: FineRule[] = [
     { id: 'fr1', type: 'Late Rent', basis: 'Fixed Fee', value: 100, description: 'Daily penalty after 5th', appliesTo: 'Tenant' },
+    { id: 'fr2', type: 'Lost Key', basis: 'Fixed Fee', value: 500, description: 'Replacement cost', appliesTo: 'Tenant' },
 ];
 
 export const SEED_OFFBOARDING_RECORDS: OffboardingRecord[] = [];
 export const SEED_VENDORS: Vendor[] = [
-    { id: 'v1', name: 'FixIt All Ltd', specialty: 'General Repairs', rating: 4.5 }
+    { id: 'v1', name: 'FixIt All Ltd', specialty: 'General Repairs', rating: 4.5 },
+    { id: 'v2', name: 'PowerWorks Electric', specialty: 'Electrical', rating: 4.8 },
+    { id: 'v3', name: 'CleanSweep Services', specialty: 'Cleaning', rating: 4.2 }
 ];
 export const SEED_WORKFLOWS: Workflow[] = [];
 export const SEED_AUTOMATION_RULES: CommunicationAutomationRule[] = [
     { id: 'auto1', name: 'Rent Reminder', trigger: '3 Days Before Due', templateName: 'Rent Reminder', channels: ['SMS'], enabled: true }
 ];
 export const SEED_ESCALATION_RULES: EscalationRule[] = [];
-export const SEED_AUDIT_LOGS: AuditLogEntry[] = [];
+export const SEED_AUDIT_LOGS: AuditLogEntry[] = [
+    { id: 'log1', timestamp: getRelativeDate(0), action: 'System Startup', user: 'System' }
+];
 export const SEED_LANDLORD_APPLICATIONS: LandlordApplication[] = [];
-export const SEED_PREVENTIVE_TASKS: PreventiveTask[] = [];
+export const SEED_PREVENTIVE_TASKS: PreventiveTask[] = [
+    { id: 'pt1', title: 'Generator Service', asset: 'Riverside Block A Gen', frequency: 'Monthly', nextDueDate: getRelativeDate(5) }
+];
 export const SEED_MESSAGES: Message[] = [];
 export const SEED_NOTIFICATIONS: Notification[] = [];
-export const SEED_TEMPLATES: CommunicationTemplate[] = [];
+export const SEED_TEMPLATES: CommunicationTemplate[] = [
+    { id: 't1', name: 'Rent Reminder', type: 'SMS', content: 'Dear {name}, your rent of KES {amount} is due on {date}.' },
+    { id: 't2', name: 'Welcome Packet', type: 'Email', content: 'Welcome to {property}. Here is your guide...' }
+];
 export const SEED_INCOME_SOURCES: IncomeSource[] = [];
 export const SEED_RENOVATION_PROJECT_BILLS: RenovationProjectBill[] = [];
 export const SEED_TENANT_APPLICATIONS: TenantApplication[] = [];
-export const SEED_EXTERNAL_TRANSACTIONS: ExternalTransaction[] = [];

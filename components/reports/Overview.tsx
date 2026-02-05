@@ -101,10 +101,60 @@ const ReportCard: React.FC<{ card: ReportCardData }> = ({ card }) => {
 
 
 const ReportsOverview: React.FC = () => {
-    const [dateRange, setDateRange] = useState('This Month');
-    const { tenants, properties, landlords, tasks, getTotalRevenue, getOccupancyRate } = useData();
+    const { tenants, properties, landlords, tasks, bills, getOccupancyRate } = useData();
+    
+    // Period State
+    const [period, setPeriod] = useState('This Month');
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
 
-    // Updated links to match new route structure: #/reports-analytics/reports/[report-name]
+    // --- Date Calculation Logic ---
+    const dateRange = useMemo(() => {
+        const now = new Date();
+        // Default to beginning of current month to now
+        let start = new Date(now.getFullYear(), now.getMonth(), 1);
+        let end = new Date(now.getFullYear(), now.getMonth() + 1, 0); // End of month
+
+        if (period === 'Today') {
+            start = now;
+            end = now;
+        } else if (period === 'This Week') {
+            const day = now.getDay(); // 0 is Sunday
+            const diff = now.getDate() - day + (day === 0 ? -6 : 1); 
+            start = new Date(now.setDate(diff));
+            end = new Date();
+        } else if (period === 'This Month') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (period === 'Last Month') {
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+        } else if (period === 'Last 2 Months') {
+            start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0); // End of last month
+        } else if (period === 'Last 3 Months') {
+            start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+        } else if (period === 'This Quarter') {
+            const q = Math.floor(now.getMonth() / 3);
+            start = new Date(now.getFullYear(), q * 3, 1);
+            end = new Date(now.getFullYear(), (q * 3) + 3, 0);
+        } else if (period === 'Year to Date') {
+            start = new Date(now.getFullYear(), 0, 1);
+            end = new Date();
+        } else if (period === 'Custom Range') {
+            if (customStart) start = new Date(customStart);
+            if (customEnd) end = new Date(customEnd);
+        }
+
+        // Normalize time
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+
+        return { start, end };
+    }, [period, customStart, customEnd]);
+
+    // Updated links to match new route structure
     const reportModules = [
         { title: "Tenancy Reports", icon: "tenants", description: "Tenant population, status, and compliance.", link: "#/reports-analytics/reports/tenancy-reports", color: "#3b82f6" },
         { title: "Property Reports", icon: "branch", description: "Portfolio health, occupancy, and landlord performance.", link: "#/reports-analytics/reports/property-reports", color: "#10b981" },
@@ -117,54 +167,116 @@ const ReportsOverview: React.FC = () => {
     ];
 
     const reportCards: ReportCardData[] = useMemo(() => {
+        // --- Snapshot Metrics (Independent of Time Range) ---
         const totalTenants = tenants.length;
         const totalLandlords = landlords.length;
         const occupancy = getOccupancyRate();
-        const revenue = getTotalRevenue();
-        const pendingTasks = tasks.filter(t => t.status === 'Pending' || t.status === 'Received').length;
-        const escalatedTasks = tasks.filter(t => t.priority === 'Very High' || t.priority === 'High').length;
-        
-        // Calculate arrears
         const arrears = tenants.reduce((acc, t) => acc + (t.status === 'Overdue' ? t.rentAmount : 0), 0);
-        
-        // Calculate vacant units
         const vacantUnits = properties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Vacant').length, 0);
 
+        // --- Period Based Metrics ---
+        
+        // 1. Revenue
+        let periodRevenue = 0;
+        tenants.forEach(t => {
+            t.paymentHistory.forEach(p => {
+                const pDate = new Date(p.date);
+                if (pDate >= dateRange.start && pDate <= dateRange.end && p.status === 'Paid') {
+                     periodRevenue += parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
+                }
+            });
+        });
+
+        // 2. Expenses
+        const periodExpenses = bills.reduce((acc, b) => {
+            const bDate = new Date(b.invoiceDate || b.dueDate);
+            if (bDate >= dateRange.start && bDate <= dateRange.end) {
+                return acc + b.amount;
+            }
+            return acc;
+        }, 0);
+
+        // 3. New Tenants in Period
+        const newTenantsCount = tenants.filter(t => {
+            const joinDate = new Date(t.onboardingDate);
+            return joinDate >= dateRange.start && joinDate <= dateRange.end;
+        }).length;
+
+        // 4. Tasks Created/Due in Period
+        const periodTasks = tasks.filter(t => {
+            const tDate = new Date(t.dueDate); // Or use created date if available
+            return tDate >= dateRange.start && tDate <= dateRange.end;
+        });
+        const escalatedTasks = periodTasks.filter(t => t.priority === 'Very High' || t.priority === 'High').length;
+
         return [
-            { title: "Total Tenants", value: totalTenants.toString(), icon: 'tenants', link: '#/reports-analytics/reports/tenancy-reports', color: 'primary', subtext: "+56 this month" },
-            { title: "Active Landlords", value: totalLandlords.toString(), icon: 'landlords', link: '#/reports-analytics/reports/property-reports?tab=landlords', color: 'primary', subtext: "+4 this month" },
-            { title: "Total Branches", value: "2", icon: 'branch', link: '#/reports-analytics/reports/property-reports?tab=branches', color: 'gray', subtext: "Kericho & Kisii" },
-            { title: "Active Field Agents", value: "42", icon: 'hr', link: '#/reports-analytics/reports/staff-reports?role=Field Agent', color: 'gray', subtext: "vs 38 last month" },
+            // Row 1: Key Performance
+            { title: "Revenue", value: `KES ${(periodRevenue/1000000).toFixed(2)}M`, icon: 'revenue', link: '#/reports-analytics/reports/financial-reports?view=revenue', color: 'green', subtext: `Collected in period` },
+            { title: "Expenses", value: `KES ${(periodExpenses/1000).toFixed(1)}k`, icon: 'expenses', link: '#/reports-analytics/reports/financial-reports?view=expenses', color: 'red', subtext: `Incurred in period` },
+            { title: "New Tenants", value: newTenantsCount.toString(), icon: 'tenants', link: '#/reports-analytics/reports/tenancy-reports', color: 'primary', subtext: "Signed in period" },
+            { title: "Active Landlords", value: totalLandlords.toString(), icon: 'landlords', link: '#/reports-analytics/reports/property-reports?tab=landlords', color: 'primary', subtext: "Current Total" },
             
-            { title: "Monthly Revenue", value: `KES ${(revenue/1000000).toFixed(1)}M`, icon: 'revenue', link: '#/reports-analytics/reports/financial-reports?view=revenue', color: 'green', subtext: "Target: KES 4.3M" },
-            { title: "Monthly Expenses", value: "KES 1.8M", icon: 'expenses', link: '#/reports-analytics/reports/financial-reports?view=expenses', color: 'red', subtext: "Target: KES 2.0M" },
-            { title: "On-Time Payments", value: "83%", icon: 'on-time-payment', link: '#/reports-analytics/reports/financial-reports?view=revenue', color: 'green', subtext: "vs 85% last month" },
-            { title: "Total Rent Arrears", value: `KES ${(arrears/1000).toFixed(0)}k`, icon: 'arrears', link: '#/reports-analytics/reports/financial-reports?view=arrears', color: 'red', subtext: "from overdue tenants" },
-
-            { title: "Vacant Units", value: vacantUnits.toString(), icon: 'vacant-house', link: '#/reports-analytics/reports/property-reports?tab=vacancies', color: 'blue', subtext: `Occupancy: ${occupancy}%` },
-            { title: "Properties", value: properties.length.toString(), icon: 'for-sale', link: '#/reports-analytics/reports/property-reports?tab=branches', color: 'blue', subtext: "Under Management" },
-
-            { title: "Pending Tasks", value: pendingTasks.toString(), icon: 'pending-task', link: '#/reports-analytics/reports/task-operations-reports?status=Pending', color: 'secondary', subtext: "Avg. age: 3 days" },
-            { title: "Escalated Tasks", value: escalatedTasks.toString(), icon: 'task-escalated', link: '#/reports-analytics/reports/task-operations-reports?priority=High', color: 'secondary', subtext: "Requires immediate attention" },
+            // Row 2: Snapshots & Operations
+            { title: "Occupancy Rate", value: `${occupancy}%`, icon: 'vacant-house', link: '#/reports-analytics/reports/property-reports?tab=vacancies', color: 'blue', subtext: `${vacantUnits} Vacant Units` },
+            { title: "Total Rent Arrears", value: `KES ${(arrears/1000).toFixed(0)}k`, icon: 'arrears', link: '#/reports-analytics/reports/financial-reports?view=arrears', color: 'red', subtext: "Current Outstanding" },
+            { title: "Tasks Due", value: periodTasks.length.toString(), icon: 'pending-task', link: '#/reports-analytics/reports/task-operations-reports?status=Pending', color: 'secondary', subtext: `In selected period` },
+            { title: "Escalations", value: escalatedTasks.toString(), icon: 'task-escalated', link: '#/reports-analytics/reports/task-operations-reports?priority=High', color: 'secondary', subtext: "High Priority in period" },
         ];
-    }, [tenants, properties, landlords, tasks, getTotalRevenue, getOccupancyRate]);
+    }, [tenants, properties, landlords, tasks, bills, getOccupancyRate, dateRange]);
 
     return (
         <div className="space-y-8 pb-10">
+            <button onClick={() => window.location.hash = '#/dashboard'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
+                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Dashboard
+            </button>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Reports Center</h1>
                     <p className="text-lg text-gray-500 mt-1">Central hub for all system reports and analytics.</p>
                 </div>
-                <div className="bg-white p-1 rounded-lg border border-gray-200 flex items-center gap-2">
-                    <span className="px-3 py-1 text-xs font-bold text-gray-500 uppercase">Period:</span>
-                    <select value={dateRange} onChange={e => setDateRange(e.target.value)} className="px-2 py-1 bg-gray-50 border-none rounded-md text-sm font-semibold text-gray-800 focus:ring-0 cursor-pointer">
-                        <option>Today</option>
-                        <option>This Week</option>
-                        <option>This Month</option>
-                        <option>This Quarter</option>
-                        <option>Year to Date</option>
-                    </select>
+                
+                {/* Period Selector */}
+                <div className="flex flex-col items-end gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                    <div className="flex items-center gap-2">
+                        <Icon name="time" className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs font-bold text-gray-500 uppercase">Period:</span>
+                        <select 
+                            value={period} 
+                            onChange={e => setPeriod(e.target.value)} 
+                            className="bg-gray-50 border border-gray-200 rounded-md text-sm font-semibold text-gray-800 focus:ring-2 focus:ring-primary/20 outline-none px-2 py-1 cursor-pointer"
+                        >
+                            <option>Today</option>
+                            <option>This Week</option>
+                            <option>This Month</option>
+                            <option>This Quarter</option>
+                            <option>Last Month</option>
+                            <option>Last 2 Months</option>
+                            <option>Last 3 Months</option>
+                            <option>Year to Date</option>
+                            <option>Custom Range</option>
+                        </select>
+                    </div>
+
+                    {period === 'Custom Range' && (
+                        <div className="flex items-center gap-2 mt-1 animate-fade-in">
+                            <input 
+                                type="date" 
+                                value={customStart} 
+                                onChange={e => setCustomStart(e.target.value)} 
+                                className="border rounded px-2 py-1 text-xs"
+                            />
+                            <span className="text-gray-400">-</span>
+                            <input 
+                                type="date" 
+                                value={customEnd} 
+                                onChange={e => setCustomEnd(e.target.value)} 
+                                className="border rounded px-2 py-1 text-xs"
+                            />
+                        </div>
+                    )}
+                    <div className="text-[10px] text-gray-400 font-mono">
+                        {dateRange.start.toLocaleDateString()} - {dateRange.end.toLocaleDateString()}
+                    </div>
                 </div>
             </div>
 

@@ -1,9 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
-import { MOCK_TAX_RECORDS } from '../../constants';
-import { TaxRecord } from '../../types';
-import Icon from '../Icon';
+import React, { useMemo } from 'react';
 import { useData } from '../../context/DataContext';
+import Icon from '../Icon';
+import { exportToCSV } from '../../utils/exportHelper';
 
 const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: string; isOverdue?: boolean }> = ({ title, amount, dueDate, isOverdue }) => (
     <div className={`p-5 rounded-xl border-l-4 shadow-sm bg-white ${isOverdue ? 'border-red-500' : 'border-blue-500'}`}>
@@ -21,8 +20,7 @@ const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: strin
 );
 
 const TaxCompliance: React.FC = () => {
-    const { tenants } = useData();
-    const [records, setRecords] = useState<TaxRecord[]>(MOCK_TAX_RECORDS);
+    const { tenants, taxRecords, updateTaxRecord } = useData();
 
     // --- Live Estimations ---
     const estGrossRevenue = tenants.reduce((acc, t) => acc + (t.status !== 'Overdue' ? t.rentAmount : 0), 0);
@@ -30,8 +28,23 @@ const TaxCompliance: React.FC = () => {
     const estVAT = estGrossRevenue * 0.16; // 16% VAT if applicable
 
     const handleMarkAsPaid = (recordId: string) => {
-        setRecords(prev => prev.map(rec => rec.id === recordId ? { ...rec, status: 'Paid'} : rec));
-        alert(`Record ${recordId} marked as paid.`);
+        updateTaxRecord(recordId, { status: 'Paid' });
+        alert(`Record marked as paid.`);
+    };
+
+    const handleExportReport = () => {
+        if (taxRecords.length === 0) {
+            alert("No tax records to export.");
+            return;
+        }
+        const exportData = taxRecords.map(t => ({
+            Type: t.type,
+            Description: t.description,
+            Amount: t.amount,
+            DueDate: t.date,
+            Status: t.status
+        }));
+        exportToCSV(exportData, `Tax_Compliance_Report_${new Date().toISOString().split('T')[0]}`);
     };
 
     return (
@@ -41,7 +54,10 @@ const TaxCompliance: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Tax & Compliance</h1>
                     <p className="text-lg text-gray-500 mt-1">Automated liability estimation and remittance tracking.</p>
                 </div>
-                <button className="bg-primary text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-primary-dark transition-colors flex items-center">
+                <button 
+                    onClick={handleExportReport}
+                    className="bg-primary text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-primary-dark transition-colors flex items-center"
+                >
                     <Icon name="download" className="w-4 h-4 mr-2"/> Tax Report
                 </button>
             </div>
@@ -97,24 +113,24 @@ const TaxCompliance: React.FC = () => {
                         <table className="min-w-full divide-y divide-gray-100 text-sm">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left font-bold text-gray-500 uppercase text-xs">Tax</th>
+                                    <th className="px-4 py-3 text-left font-bold text-gray-500 uppercase text-xs">Tax Type</th>
                                     <th className="px-4 py-3 text-left font-bold text-gray-500 uppercase text-xs">Description</th>
-                                    <th className="px-4 py-3 text-right font-bold text-gray-500 uppercase text-xs">Amount</th>
-                                    <th className="px-4 py-3 text-center font-bold text-gray-500 uppercase text-xs">Due</th>
+                                    <th className="px-4 py-3 text-right font-bold text-gray-500 uppercase text-xs">Amount Due</th>
+                                    <th className="px-4 py-3 text-center font-bold text-gray-500 uppercase text-xs">Due Date</th>
                                     <th className="px-4 py-3 text-center font-bold text-gray-500 uppercase text-xs">Status</th>
                                     <th className="px-4 py-3 text-right font-bold text-gray-500 uppercase text-xs">Action</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {records.map(tax => (
+                            <tbody className="divide-y divide-gray-100 bg-white">
+                                {taxRecords.map(tax => (
                                     <tr key={tax.id} className="hover:bg-gray-50">
                                         <td className="px-4 py-3 font-bold text-gray-700">{tax.type}</td>
                                         <td className="px-4 py-3 text-gray-600">{tax.description}</td>
-                                        <td className="px-4 py-3 text-right font-bold text-gray-800">KES {tax.amount.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-center text-gray-500 font-mono text-xs">{tax.date}</td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">KES {tax.amount.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-center text-gray-500 font-mono">{tax.date}</td>
                                         <td className="px-4 py-3 text-center">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                                tax.status === 'Due' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                                            <span className={`px-2 py-1 text-xs font-bold uppercase rounded-full ${
+                                                tax.status === 'Due' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
                                             }`}>
                                                 {tax.status}
                                             </span>
@@ -128,6 +144,7 @@ const TaxCompliance: React.FC = () => {
                                         </td>
                                     </tr>
                                 ))}
+                                {taxRecords.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">No tax records found.</td></tr>}
                             </tbody>
                         </table>
                     </div>

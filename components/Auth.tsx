@@ -86,6 +86,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }
     };
 
+    const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+          try {
+            const resizedPic = await resizeImage(e.target.files[0], 150, 150);
+            updateSystemSettings({ profilePic: resizedPic });
+          } catch (error) {
+            console.error("Error processing profile pic", error);
+          }
+        }
+    };
+
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
         simulateProcessing(async () => {
@@ -148,7 +159,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 if (u.phone && u.phone.replace(/[\s-]/g, '') === idClean) return true;
 
                 // Check ID Number (Direct match)
-                if (u.idNumber === id) return true;
+                if ('idNumber' in u && u.idNumber === id) return true;
                 
                 return false;
             });

@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { MOCK_TASKS } from '../../constants';
+import { useData } from '../../context/DataContext';
 import { Task, TaskStatus } from '../../types';
 import { exportToCSV } from '../../utils/exportHelper';
 import Icon from '../Icon';
@@ -44,6 +44,7 @@ const KpiCard: React.FC<{ title: string; value: number; onClick: () => void; isA
 );
 
 const TaskAndOperationsReports: React.FC = () => {
+    const { tasks } = useData();
     const [filter, setFilter] = useState<TaskStatus | 'All'>('All');
     
     // Deep Linking Logic
@@ -52,27 +53,25 @@ const TaskAndOperationsReports: React.FC = () => {
         if (hash.includes('?')) {
             const params = new URLSearchParams(hash.split('?')[1]);
             const status = params.get('status');
-            const priority = params.get('priority');
             
             if (status && (Object.values(TaskStatus).includes(status as TaskStatus) || status === 'All')) {
                 setFilter(status as TaskStatus | 'All');
             }
-            // Logic for priority deep linking could be added here if we had a priority filter state
         }
     }, []);
 
     const taskCounts = useMemo(() => {
-        const counts = { All: MOCK_TASKS.length } as Record<TaskStatus | 'All', number>;
+        const counts = { All: tasks.length } as Record<TaskStatus | 'All', number>;
         for (const status of Object.values(TaskStatus)) {
-            counts[status] = MOCK_TASKS.filter(t => t.status === status).length;
+            counts[status] = tasks.filter(t => t.status === status).length;
         }
         return counts;
-    }, []);
+    }, [tasks]);
 
     const filteredTasks = useMemo(() => {
-        if (filter === 'All') return MOCK_TASKS;
-        return MOCK_TASKS.filter(task => task.status === filter);
-    }, [filter]);
+        if (filter === 'All') return tasks;
+        return tasks.filter(task => task.status === filter);
+    }, [filter, tasks]);
 
     const priorityDistribution = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -104,6 +103,9 @@ const TaskAndOperationsReports: React.FC = () => {
 
     return (
         <div className="space-y-8 pb-10">
+            <button onClick={() => window.location.hash = '#/reports-analytics/reports'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors mb-4">
+                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Reports Center
+            </button>
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Task & Operations Reports</h1>

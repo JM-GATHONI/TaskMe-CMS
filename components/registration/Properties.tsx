@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MOCK_PROPERTIES, GEOSPATIAL_DATA } from '../../constants';
 import { Property, Unit, User, PropertyAsset, FloorPlan, UnitType, StaffProfile } from '../../types';
@@ -78,7 +79,7 @@ export const PropertyForm: React.FC<{
     landlords: User[];
     staff: StaffProfile[];
 }> = ({ property, onCancel, onSave, landlords, staff }) => {
-    const { geospatialData } = useData();
+    const { geospatialData, addGeospatialNode } = useData();
     const [activeTab, setActiveTab] = useState('details');
     const [formData, setFormData] = useState<Partial<Property>>({});
     const [activeFloorIndex, setActiveFloorIndex] = useState(0);
@@ -92,6 +93,10 @@ export const PropertyForm: React.FC<{
     const [locationOptions, setLocationOptions] = useState<string[]>([]);
     const [zoneOptions, setZoneOptions] = useState<string[]>([]);
     const [subLocationOptions, setSubLocationOptions] = useState<string[]>([]);
+    
+    // Manual Village Entry
+    const [isAddingSubLocation, setIsAddingSubLocation] = useState(false);
+    const [customSubLocation, setCustomSubLocation] = useState('');
 
     useEffect(() => {
         const isNew = !property;
@@ -155,8 +160,6 @@ export const PropertyForm: React.FC<{
     }, [formData.floors, activeFloorIndex, formData.defaultUnitType]);
 
     // Cascading Geospatial Logic
-    // Use geospatialData from Context which is initialized from constants or persisted data
-    // Fallback to imported GEOSPATIAL_DATA if context is empty (though it shouldn't be with seed)
     const geoData = geospatialData || GEOSPATIAL_DATA;
 
     useEffect(() => {
@@ -209,13 +212,18 @@ export const PropertyForm: React.FC<{
     };
 
     const handleGeospatialChange = (field: string, value: string) => {
+        if (field === 'subLocation' && value === 'ADD_NEW') {
+            setIsAddingSubLocation(true);
+            setFormData(prev => ({ ...prev, subLocation: '' }));
+            return;
+        }
+
         setFormData(prev => {
             const newState: any = { ...prev, [field]: value };
-            // Clear children when parent changes
             if(field === 'county') { newState.subCounty=''; newState.location=''; newState.zone=''; newState.subLocation=''; }
             if(field === 'subCounty') { newState.location=''; newState.zone=''; newState.subLocation=''; }
             if(field === 'location') { newState.zone=''; newState.subLocation=''; }
-            if(field === 'zone') { newState.subLocation=''; }
+            if(field === 'zone') { newState.subLocation=''; setIsAddingSubLocation(false); setCustomSubLocation(''); }
             return newState;
         });
     };
@@ -260,7 +268,6 @@ export const PropertyForm: React.FC<{
                 }
             };
             
-            // Auto-recalculate gross rent if Uniform and Inclusive
             if (prev.rentIsUniform && prev.rentType === 'Inclusive') {
                 const totalBills = Object.values(newBills).reduce<number>((acc, b: any) => acc + (b?.applicable ? (Number(b?.amount) || 0) : 0), 0);
                 return { ...prev, bills: newBills, defaultMonthlyRent: baseRent + totalBills };
@@ -299,12 +306,25 @@ export const PropertyForm: React.FC<{
             alert('Property Name is required.');
             return;
         }
-        onSave(formData as Property);
+
+        // Handle Custom Sub-location Logic
+        let finalData = { ...formData };
+        if (isAddingSubLocation && customSubLocation.trim()) {
+            // Update Context if we have all parent nodes
+            if (formData.county && formData.subCounty && formData.location && formData.zone) {
+                 addGeospatialNode('Village', [formData.county, formData.subCounty, formData.location, formData.zone], customSubLocation.trim());
+            }
+            finalData.subLocation = customSubLocation.trim();
+        } else if (isAddingSubLocation && !customSubLocation.trim()) {
+             alert("Please enter a name for the new Village.");
+             return;
+        }
+
+        onSave(finalData as Property);
     };
 
     const totalIncludedBills = Object.values(formData.bills || {}).reduce<number>((acc, b: any) => acc + (b?.applicable ? (Number(b?.amount) || 0) : 0), 0);
 
-    // Filter staff for Field Agents
     const fieldAgents = staff.filter(s => s.role === 'Field Agent');
 
     return (
@@ -353,7 +373,6 @@ export const PropertyForm: React.FC<{
                             </div>
                         </div>
                         
-                        {/* Assigned Agent (New) */}
                         <div>
                             <label className="block text-sm font-bold text-blue-700 mb-1">Assigned Field Agent*</label>
                             <select name="assignedAgentId" value={formData.assignedAgentId || ''} onChange={handleChange} className="w-full p-2 border border-blue-200 rounded bg-blue-50 text-gray-800 font-medium">
@@ -363,7 +382,6 @@ export const PropertyForm: React.FC<{
                             <p className="text-xs text-gray-500 mt-1">This agent will be responsible for occupancy & collection targets.</p>
                         </div>
 
-                        {/* Financial & Remittance Section */}
                         <div className="pt-4 mt-2 border-t">
                             <h4 className="text-sm font-bold text-gray-700 mb-3">Financial & Remittance</h4>
                             <div className="grid grid-cols-2 gap-4">
@@ -425,9 +443,30 @@ export const PropertyForm: React.FC<{
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sub-Location / Village</label>
-                                <select name="subLocation" value={formData.subLocation || ''} onChange={e => handleGeospatialChange('subLocation', e.target.value)} disabled={!formData.zone} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
-                                    <option value="">Select Village</option>{subLocationOptions.map(sl => <option key={sl} value={sl}>{sl}</option>)}
-                                </select>
+                                {isAddingSubLocation ? (
+                                    <div className="flex gap-2">
+                                        <input 
+                                            value={customSubLocation} 
+                                            onChange={e => setCustomSubLocation(e.target.value)} 
+                                            placeholder="Enter New Village Name" 
+                                            className="w-full p-2 border rounded bg-white focus:ring-2 focus:ring-green-500 outline-none"
+                                            autoFocus
+                                        />
+                                        <button 
+                                            onClick={() => { setIsAddingSubLocation(false); setCustomSubLocation(''); setFormData(p => ({...p, subLocation: ''})); }}
+                                            className="px-2 bg-gray-200 rounded text-xs font-bold hover:bg-gray-300"
+                                            title="Cancel"
+                                        >
+                                            <Icon name="close" className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <select name="subLocation" value={formData.subLocation || ''} onChange={e => handleGeospatialChange('subLocation', e.target.value)} disabled={!formData.zone} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
+                                        <option value="">Select Village</option>
+                                        {subLocationOptions.map(sl => <option key={sl} value={sl}>{sl}</option>)}
+                                        <option value="ADD_NEW" className="font-bold text-green-600">+ Add New Village</option>
+                                    </select>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nearest Landmark</label>

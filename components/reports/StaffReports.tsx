@@ -117,6 +117,9 @@ const StaffReports: React.FC = () => {
 
     return (
         <div className="space-y-8 pb-10">
+            <button onClick={() => window.location.hash = '#/reports-analytics/reports'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors mb-4">
+                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Reports Center
+            </button>
             <div>
                 <h1 className="text-3xl font-bold text-gray-800">Staff Reports</h1>
                 <p className="text-lg text-gray-500 mt-1">Detailed breakdown of personnel, payroll, and roles.</p>

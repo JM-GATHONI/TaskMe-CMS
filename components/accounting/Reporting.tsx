@@ -1,6 +1,5 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
-import { MOCK_PROFITABILITY_BY_PRODUCT_DATA } from '../../constants';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 
@@ -31,29 +30,45 @@ const Chart: React.FC<{ type: 'bar' | 'line'; data: any; options?: any; height?:
 };
 
 const Reporting: React.FC = () => {
-    const { properties } = useData();
+    const { properties, tenants, bills, tasks } = useData();
 
-    // Mock Profitability Logic
+    // Live Profitability Logic
     const propProfitability = useMemo(() => {
-        return properties.map(p => ({
-            name: p.name,
-            revenue: p.units.length * (p.defaultMonthlyRent || 0),
-            expense: (p.units.length * (p.defaultMonthlyRent || 0)) * 0.3, // Mock 30% expense ratio
-        })).sort((a,b) => b.revenue - a.revenue).slice(0, 5);
-    }, [properties]);
+        return properties.map(p => {
+            // Revenue: Rent from tenants in this property
+            const revenue = tenants
+                .filter(t => t.propertyId === p.id && t.status !== 'Overdue')
+                .reduce((s, t) => s + (t.rentAmount || 0), 0);
+            
+            // Expenses: Bills + Tasks for this property
+            const propBills = bills.filter(b => b.propertyId === p.id).reduce((s, b) => s + b.amount, 0);
+            const propTasks = tasks.filter(t => t.property === p.name).reduce((s, t) => s + ((t.costs?.labor||0) + (t.costs?.materials||0)), 0);
+            
+            const expense = propBills + propTasks;
+
+            return {
+                name: p.name,
+                revenue,
+                expense,
+                net: revenue - expense
+            };
+        }).sort((a,b) => b.revenue - a.revenue).slice(0, 8);
+    }, [properties, tenants, bills, tasks]);
 
     const chartData = {
-        labels: propProfitability.map(p => p.name),
+        labels: propProfitability.map(p => p.name.substring(0, 10) + (p.name.length > 10 ? '...' : '')),
         datasets: [
             {
                 label: 'Revenue',
                 data: propProfitability.map(p => p.revenue),
                 backgroundColor: '#10b981',
+                borderRadius: 4
             },
             {
                 label: 'Expenses',
                 data: propProfitability.map(p => p.expense),
                 backgroundColor: '#ef4444',
+                borderRadius: 4
             }
         ]
     };
@@ -73,7 +88,10 @@ const Reporting: React.FC = () => {
                     <p className="text-indigo-200 mb-6 text-sm leading-relaxed">
                         Drag and drop metrics to create tailored financial reports for stakeholders.
                     </p>
-                    <button className="w-full py-3 bg-white text-indigo-900 font-bold rounded-xl hover:bg-indigo-50 transition-colors">
+                    <button 
+                        onClick={() => window.location.hash = '#/reports-analytics/reports/custom-reports'}
+                        className="w-full py-3 bg-white text-indigo-900 font-bold rounded-xl hover:bg-indigo-50 transition-colors"
+                    >
                         Start Building
                     </button>
                 </div>
@@ -95,7 +113,7 @@ const Reporting: React.FC = () => {
                             </div>
                         </div>
                         <h4 className="font-bold text-gray-800">{report}</h4>
-                        <p className="text-xs text-gray-500 mt-1">Generated daily</p>
+                        <p className="text-xs text-gray-500 mt-1">Generated daily based on live data</p>
                     </div>
                 ))}
             </div>

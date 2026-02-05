@@ -974,6 +974,8 @@ export interface DataContextType {
     renovationProjectBills: RenovationProjectBill[];
     roles: Role[];
     currentUser: User | StaffProfile | TenantProfile | null;
+    scheduledReports: ScheduledReport[];
+    taxRecords: TaxRecord[];
 
     setCurrentUser: (user: User | StaffProfile | TenantProfile | null) => void;
     addTenant: (tenant: TenantProfile) => void;
@@ -1054,4 +1056,8 @@ export interface DataContextType {
     deleteRole: (id: string) => void;
     getOccupancyRate: () => number;
     getTotalRevenue: () => number;
+    addScheduledReport: (r: ScheduledReport) => void;
+    deleteScheduledReport: (id: string) => void;
+    addTaxRecord: (record: TaxRecord) => void;
+    updateTaxRecord: (id: string, d: Partial<TaxRecord>) => void;
 }

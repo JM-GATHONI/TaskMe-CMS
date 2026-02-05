@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
-import { StaffProfile, SalaryType } from '../../types';
+import { StaffProfile, SalaryType, Bill } from '../../types';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
 
 // --- HELPER COMPONENTS ---
@@ -163,7 +163,7 @@ const PayslipModal: React.FC<{ entry: any; onClose: () => void }> = ({ entry, on
 };
 
 const PayrollProcessing: React.FC = () => {
-    const { staff, tenants, properties, tasks } = useData();
+    const { staff, tenants, properties, tasks, addBill, updateStaff } = useData();
     const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [payrollStatus, setPayrollStatus] = useState<'Draft' | 'Processed' | 'Paid'>('Draft');
     const [searchQuery, setSearchQuery] = useState('');
@@ -190,8 +190,6 @@ const PayrollProcessing: React.FC = () => {
                 const totalAssignedTenants = assignedTenants.length;
 
                 // --- Metric 1: Collection % (Paid by 30th) ---
-                // "Tenants who have paid by 30th against all tenants assigned to them."
-                // Note: We check if paymentHistory contains a payment for this 'period' 
                 let paidTenantsCount = 0;
                 assignedTenants.forEach(t => {
                     // Check if there is a payment in history matching the current period YYYY-MM
@@ -201,25 +199,17 @@ const PayrollProcessing: React.FC = () => {
                 const collectionRate = totalAssignedTenants > 0 ? (paidTenantsCount / totalAssignedTenants) * 100 : 0;
 
                 // --- Metric 2: Signed Lease Agreements % ---
-                // "Tenants attached to them who have signed lease agreement against all tenants allocated to them."
-                // Proxy: Status is Active/Notice/Overdue (implies signed) vs 'Pending' (not signed).
-                // Or simply check if they are in the assignedTenants list which we filtered for active statuses.
-                // If we want to be strict, we check if leaseType is 'Fixed'.
-                // For this implementation, let's assume 'Active', 'Overdue', 'Notice' means signed.
                 const signedLeaseCount = assignedTenants.filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status)).length;
                 const leaseRate = totalAssignedTenants > 0 ? (signedLeaseCount / totalAssignedTenants) * 100 : 0;
 
                 // --- Metric 3: Task % ---
-                // "Completed tasks against assigned tasks for that month."
-                const agentTasks = tasks.filter(t => t.assignedTo === s.name); // Filter by period if dueDate in task needed
-                // Filter tasks due in this month
+                const agentTasks = tasks.filter(t => t.assignedTo === s.name); 
                 const monthlyTasks = agentTasks.filter(t => t.dueDate.startsWith(period));
                 const completedTasks = monthlyTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
                 const totalTasks = monthlyTasks.length;
-                const taskRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100; // Default 100 if no tasks assigned? Or 0? Assuming 100 for fairness if no work given.
+                const taskRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100;
 
                 // --- Metric 4: Occupancy % ---
-                // "Occupied houses against all houses allocated to the agent."
                 let totalUnits = 0;
                 let occupiedUnits = 0;
                 assignedProps.forEach(p => {
@@ -304,9 +294,38 @@ const PayrollProcessing: React.FC = () => {
     };
 
     const handleDisburse = () => {
-        if (confirm(`Confirm disbursement of KES ${totals.net.toLocaleString()} to ${payrollData.length} employees?`)) {
+        if (confirm(`Confirm disbursement of KES ${totals.net.toLocaleString()} to ${payrollData.length} employees? This will create expense records.`)) {
+            // 1. Create Bill Records for Accounting
+            payrollData.forEach(p => {
+                const bill: Bill = {
+                    id: `sal-${Date.now()}-${p.id}`,
+                    vendor: p.staffName,
+                    category: 'Salary',
+                    amount: p.net,
+                    invoiceDate: new Date().toISOString().split('T')[0],
+                    dueDate: new Date().toISOString().split('T')[0],
+                    status: 'Paid',
+                    propertyId: 'Agency', // Corporate expense
+                    description: `Salary for ${p.period}`
+                };
+                addBill(bill);
+
+                // 2. Update Staff Next Payment Date
+                const currentNextDate = new Date(p.period + '-01'); // YYYY-MM-01
+                const nextMonth = new Date(currentNextDate);
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                nextMonth.setDate(25); // Set to 25th of next month
+                
+                updateStaff(p.id, { 
+                    payrollInfo: { 
+                        baseSalary: p.basic, 
+                        nextPaymentDate: nextMonth.toISOString().split('T')[0] 
+                    } 
+                });
+            });
+
             setPayrollStatus('Paid');
-            alert("Payments disbursed successfully via registered payment methods.");
+            alert("Payments disbursed successfully via registered payment methods. Expenses recorded.");
         }
     };
 

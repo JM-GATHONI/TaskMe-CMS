@@ -1,8 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions } from '../types';
+import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord } from '../types';
 import { SEED_PROPERTIES, SEED_TENANTS, SEED_LANDLORDS, SEED_TASKS, SEED_INVOICES, SEED_BILLS, SEED_FINE_RULES, SEED_OFFBOARDING_RECORDS, SEED_LANDLORD_APPLICATIONS, SEED_WORKFLOWS, SEED_AUTOMATION_RULES, SEED_ESCALATION_RULES, SEED_AUDIT_LOGS, SEED_VENDORS, SEED_PREVENTIVE_TASKS, SEED_MESSAGES, SEED_TEMPLATES, SEED_INCOME_SOURCES, SEED_RENOVATION_PROJECT_BILLS, SEED_STAFF_PROFILES, SEED_TENANT_APPLICATIONS, SEED_EXTERNAL_TRANSACTIONS, SEED_NOTIFICATIONS } from '../utils/seedData';
-import { MOCK_APPLICATIONS, GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA, MOCK_COMMISSION_RULES, MOCK_DEDUCTION_RULES, MOCK_EXTERNAL_TRANSACTIONS, MOCK_OVERPAYMENTS, INITIAL_FUNDS, MOCK_INVESTMENTS, MOCK_WITHDRAWALS, MOCK_RENOVATION_INVESTORS, MOCK_RF_TRANSACTIONS, MOCK_ROLES } from '../constants';
+import { MOCK_APPLICATIONS, GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA, MOCK_COMMISSION_RULES, MOCK_DEDUCTION_RULES, MOCK_EXTERNAL_TRANSACTIONS, MOCK_OVERPAYMENTS, INITIAL_FUNDS, MOCK_INVESTMENTS, MOCK_WITHDRAWALS, MOCK_RENOVATION_INVESTORS, MOCK_RF_TRANSACTIONS, MOCK_ROLES, MOCK_SCHEDULED_REPORTS, MOCK_TAX_RECORDS } from '../constants';
 import { encryptData, decryptData } from '../utils/security';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -99,6 +99,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profilePic: null
     }, 'tm_system_settings_v11');
 
+    const [scheduledReports, setScheduledReports] = useStickyState<ScheduledReport[]>(MOCK_SCHEDULED_REPORTS, 'tm_scheduled_reports_v11');
+    const [taxRecords, setTaxRecords] = useStickyState<TaxRecord[]>(MOCK_TAX_RECORDS, 'tm_tax_records_v11');
+
     const addTenant = (tenant: TenantProfile) => {
         setTenants(prev => [tenant, ...prev]);
         if (tenant.propertyId && tenant.unitId) {
@@ -193,6 +196,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } else if (level === 'Zone') {
                 const [c, s, l] = parentPath;
                 if (newData[c]?.[s]?.[l]) newData[c][s][l][name] = [];
+            } else if (level === 'Village') {
+                const [c, s, l, z] = parentPath;
+                if (newData[c]?.[s]?.[l]?.[z]) {
+                    // Avoid duplicates
+                    if (!newData[c][s][l][z].includes(name)) {
+                        newData[c][s][l][z].push(name);
+                    }
+                }
             }
             return newData;
         });
@@ -281,6 +292,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateRole = (id: string, d: Partial<Role>) => setRoles(prev => prev.map(r => r.id === id ? {...r, ...d} : r));
     const deleteRole = (id: string) => setRoles(prev => prev.filter(r => r.id !== id));
 
+    const addScheduledReport = (r: ScheduledReport) => setScheduledReports(prev => [r, ...prev]);
+    const deleteScheduledReport = (id: string) => setScheduledReports(prev => prev.filter(r => r.id !== id));
+
+    const addTaxRecord = (r: TaxRecord) => setTaxRecords(prev => [r, ...prev]);
+    const updateTaxRecord = (id: string, d: Partial<TaxRecord>) => setTaxRecords(prev => prev.map(r => r.id === id ? {...r, ...d} : r));
+
     const getOccupancyRate = () => {
         const totalUnits = properties.reduce((acc, p) => acc + p.units.length, 0);
         const occupiedUnits = properties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Occupied').length, 0);
@@ -298,7 +315,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bills, invoices, vendors, messages, notifications, templates, workflows, automationRules, auditLogs, escalationRules,
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
-            roles,
+            roles, scheduledReports, taxRecords,
             currentUser,
             setCurrentUser,
             addTenant, updateTenant, deleteTenant, addProperty, updateProperty, deleteProperty,
@@ -315,6 +332,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addRenovationInvestor, updateRenovationInvestor, addRFTransaction, updateRFTransaction,
             addRenovationProjectBill, updateRenovationProjectBill,
             addRole, updateRole, deleteRole,
+            addScheduledReport, deleteScheduledReport,
+            addTaxRecord, updateTaxRecord,
             getOccupancyRate, getTotalRevenue
         }}>
             {children}
