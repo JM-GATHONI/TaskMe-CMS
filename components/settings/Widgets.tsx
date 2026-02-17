@@ -1,57 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
-import { NAVIGATION_ITEMS } from '../../constants';
+import { NAVIGATION_ITEMS, WIDGET_REGISTRY } from '../../constants';
 import Icon from '../Icon';
 import { Role } from '../../types';
-
-// Mock list of available widgets per module for configuration
-// In a real app, this might come from a registry or component introspection.
-const WIDGET_REGISTRY: Record<string, { id: string; name: string }[]> = {
-    'Dashboard': [
-        { id: 'dash_welcome', name: 'Welcome Banner' },
-        { id: 'dash_search', name: 'Search & Filter Bar' },
-        { id: 'dash_house_alerts', name: 'House Status Alerts' },
-        { id: 'dash_key_stats', name: 'Key Statistics Cards' },
-        { id: 'dash_quick_stats', name: 'Quick Stats Grid' },
-        { id: 'dash_financial_chart', name: 'Financial Health Chart' },
-        { id: 'dash_recent_activity', name: 'Recent Activities' },
-        { id: 'dash_upcoming_payments', name: 'Upcoming Payments' },
-        { id: 'dash_my_tasks', name: 'My Tasks' }
-    ],
-    'Registration': [
-        { id: 'reg_user_stats', name: 'User Statistics' },
-        { id: 'reg_quick_actions', name: 'Quick Actions' }
-    ],
-    'Tenants': [
-        { id: 'ten_kpi', name: 'Tenant KPI Cards' },
-        { id: 'ten_status_dist', name: 'Status Distribution Chart' },
-        { id: 'ten_lease_struct', name: 'Lease Structure Chart' },
-        { id: 'ten_expiring', name: 'Expiring Leases List' },
-        { id: 'ten_financials', name: 'Financial Health Shortcut' }
-    ],
-    'Landlords': [
-        { id: 'land_kpi', name: 'KPI Cards' },
-        { id: 'land_collection', name: 'Collection Performance Chart' },
-        { id: 'land_alerts', name: 'Insight Alerts' },
-        { id: 'land_quick_actions', name: 'Quick Actions' }
-    ],
-    'Operations': [
-        { id: 'ops_kpi', name: 'Pending Tasks & Efficiency' },
-        { id: 'ops_nav', name: 'Module Navigation Cards' }
-    ],
-    'Payments': [
-        { id: 'pay_kpi', name: 'Collection & Expenses KPIs' },
-        { id: 'pay_income_chart', name: 'Income vs Expense Chart' },
-        { id: 'pay_methods_chart', name: 'Payment Methods Doughnut' },
-        { id: 'pay_recent', name: 'Recent Transactions Table' }
-    ],
-    'Reports': [
-        { id: 'rep_modules', name: 'Report Modules Grid' },
-        { id: 'rep_health', name: 'System Health Status' },
-        { id: 'rep_insights', name: 'Quick Insights Cards' }
-    ]
-};
 
 // Fallback for modules without specific widgets defined
 const DEFAULT_WIDGETS = [
@@ -163,7 +115,7 @@ const Widgets: React.FC = () => {
 
                 <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
                     <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
-                        <h3 className="font-bold text-gray-800">Widgets</h3>
+                        <h3 className="font-bold text-gray-700">Widgets</h3>
                         <div className="space-x-3">
                             <button 
                                 onClick={() => handleSelectAll(true)} 

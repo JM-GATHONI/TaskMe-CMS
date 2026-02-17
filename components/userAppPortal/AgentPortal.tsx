@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { PropertyForm } from '../registration/Properties';
-import { Property, TenantApplication, User, TenantProfile, Task, TaskStatus, TaskPriority, LandlordApplication } from '../../types';
+import { Property, TenantApplication, User, TenantProfile, Task, TaskStatus, TaskPriority, LandlordApplication, StaffProfile } from '../../types';
 import { CollectionManagerModal } from '../operations/TaskManagement';
 import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
@@ -83,7 +83,8 @@ const AgentPortal: React.FC = () => {
     const { 
         staff, tasks, properties, applications, tenants, landlords, 
         addApplication, addLandlord, addProperty, updateProperty, 
-        updateTask, addTenant, addMessage, updateTenant, addLandlordApplication
+        updateTask, addTenant, addMessage, updateTenant, addLandlordApplication,
+        currentUser
     } = useData();
     
     const [activeTab, setActiveTab] = useState<'Dashboard' | 'My Properties' | 'My Tenants' | 'My Landlords' | 'Tasks'>('Dashboard');
@@ -97,8 +98,13 @@ const AgentPortal: React.FC = () => {
     const [taskTypeFilter, setTaskTypeFilter] = useState<'Work Orders' | 'Collections'>('Work Orders');
     const [tenantFilter, setTenantFilter] = useState('All');
 
-    // Simulate logged-in agent (First Field Agent found)
-    const agent = useMemo(() => staff.find(s => s.role === 'Field Agent') || staff[0], [staff]);
+    // Identify current agent based on login or fallback
+    const agent = useMemo(() => {
+        if (currentUser && currentUser.role === 'Field Agent') {
+            return currentUser as StaffProfile;
+        }
+        return staff.find(s => s.role === 'Field Agent') || staff[0];
+    }, [staff, currentUser]);
 
     // --- Live Data Filters ---
     const myTasks = useMemo(() => tasks.filter(t => t.assignedTo === agent.name && t.status !== 'Closed'), [tasks, agent]);
@@ -378,6 +384,7 @@ const AgentPortal: React.FC = () => {
                             <thead className="bg-gray-50 text-gray-600 uppercase text-xs font-bold">
                                 <tr>
                                     <th className="px-4 py-3">Name</th>
+                                    <th className="px-4 py-3">Phone</th>
                                     <th className="px-4 py-3">Property</th>
                                     <th className="px-4 py-3">Unit</th>
                                     <th className="px-4 py-3">Rent</th>
@@ -388,13 +395,14 @@ const AgentPortal: React.FC = () => {
                                 {filteredMyTenants.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50">
                                         <td className="px-4 py-3 font-medium text-gray-900">{t.name}</td>
+                                        <td className="px-4 py-3 text-gray-600">{t.phone}</td>
                                         <td className="px-4 py-3 text-gray-600">{t.propertyName}</td>
                                         <td className="px-4 py-3 text-gray-600">{t.unit}</td>
                                         <td className="px-4 py-3 text-gray-800 font-bold">KES {t.rentAmount.toLocaleString()}</td>
                                         <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded text-xs font-bold ${t.status === 'Active' ? 'bg-green-100 text-green-700' : t.status === 'Overdue' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{t.status}</span></td>
                                     </tr>
                                 ))}
-                                {filteredMyTenants.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-400">No tenants found for filter "{tenantFilter}".</td></tr>}
+                                {filteredMyTenants.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">No tenants found for filter "{tenantFilter}".</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -412,30 +420,21 @@ const AgentPortal: React.FC = () => {
                             <Icon name="plus" className="w-3 h-3 mr-1"/> Register Landlord
                         </button>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm text-left">
-                            <thead className="bg-gray-50 text-gray-600 uppercase text-xs font-bold">
-                                <tr>
-                                    <th className="px-4 py-3">Name</th>
-                                    <th className="px-4 py-3">Contact</th>
-                                    <th className="px-4 py-3 text-center">Properties</th>
-                                    <th className="px-4 py-3 text-center">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {myLandlords.map(l => (
-                                    <tr key={l.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3 font-medium text-gray-900">{l.name}</td>
-                                        <td className="px-4 py-3 text-gray-600">{l.email}</td>
-                                        <td className="px-4 py-3 text-center font-bold">{properties.filter(p => p.landlordId === l.id).length}</td>
-                                        <td className="px-4 py-3 text-center"><span className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs font-bold">Active</span></td>
-                                    </tr>
-                                ))}
-                                {myLandlords.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-400">No landlords found.</td></tr>}
-                            </tbody>
-                        </table>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {myLandlords.map(l => (
+                            <div key={l.id} className="p-4 border rounded-lg flex items-center gap-4 hover:shadow-sm">
+                                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold">
+                                    {l.name.charAt(0)}
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-gray-800">{l.name}</h4>
+                                    <p className="text-xs text-gray-500">{l.phone}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {myLandlords.length === 0 && <p className="col-span-2 text-center text-gray-400 py-4">No landlords associated.</p>}
                     </div>
-                 </div>
+                </div>
             )}
             
             {activeTab === 'Tasks' && (
@@ -523,7 +522,7 @@ const AgentPortal: React.FC = () => {
                             )}
                         </div>
                     )}
-                </div>
+                 </div>
             )}
 
             {/* Modals for Adding Entities */}
@@ -531,7 +530,7 @@ const AgentPortal: React.FC = () => {
                 <ApplicationFormModal 
                     onClose={() => setModalOpen('none')} 
                     onSave={handleRegisterTenant} 
-                    properties={properties} 
+                    properties={myProperties} 
                     record={{ recordType: 'Application', displayStatus: 'New', source: 'Agent' }}
                 />
             )}

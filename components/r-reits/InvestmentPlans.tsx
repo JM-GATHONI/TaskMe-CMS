@@ -21,8 +21,12 @@ export const StatCard: React.FC<{ title: string; value: string; icon: string; co
 );
 
 // --- Add Investor Modal ---
-const AddInvestorModal: React.FC<{ onClose: () => void; onSave: (inv: RenovationInvestor) => void }> = ({ onClose, onSave }) => {
-    const [formData, setFormData] = useState<Partial<RenovationInvestor>>({
+const AddInvestorModal: React.FC<{ 
+    investor?: RenovationInvestor | null;
+    onClose: () => void; 
+    onSave: (inv: RenovationInvestor) => void 
+}> = ({ investor, onClose, onSave }) => {
+    const [formData, setFormData] = useState<Partial<RenovationInvestor>>(investor || {
         name: '', email: '', phone: '', idNumber: '', residency: '', kraPin: '',
         nextOfKin: { name: '', phone: '', relationship: '' },
         authorizedRep: { name: '', phone: '', role: '' },
@@ -32,6 +36,12 @@ const AddInvestorModal: React.FC<{ onClose: () => void; onSave: (inv: Renovation
         investorType: 'Individual'
     });
 
+    useEffect(() => {
+        if(investor) {
+            setFormData(investor);
+        }
+    }, [investor]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -39,14 +49,14 @@ const AddInvestorModal: React.FC<{ onClose: () => void; onSave: (inv: Renovation
 
     const handleSubmit = () => {
         if (!formData.name || !formData.phone) return alert("Name and Phone are required.");
-        onSave({ ...formData, id: `inv-${Date.now()}` } as RenovationInvestor);
+        onSave({ ...formData, id: investor?.id || `inv-${Date.now()}` } as RenovationInvestor);
     };
 
     return (
         <div className="fixed inset-0 bg-black/60 z-[1300] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-gray-800">Add Investor</h3>
+                    <h3 className="text-xl font-bold text-gray-800">{investor ? 'Edit Investor' : 'Add Investor'}</h3>
                     <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-500" /></button>
                 </div>
                 <div className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -582,12 +592,17 @@ const RecordInvestmentModal: React.FC<{
 };
 
 const InvestmentPlans: React.FC = () => {
-    const { funds, updateFund, addFund, renovationInvestors, addRenovationInvestor, addInvestment } = useData();
+    const { 
+        funds, updateFund, addFund, deleteFund, 
+        renovationInvestors, addRenovationInvestor, updateRenovationInvestor, deleteRenovationInvestor,
+        addInvestment, checkPermission 
+    } = useData();
     const [activeMainTab, setActiveMainTab] = useState<'Projects' | 'Investors'>('Projects');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isInvestorModalOpen, setIsInvestorModalOpen] = useState(false);
     const [isInvestRecordOpen, setIsInvestRecordOpen] = useState(false);
     const [editingFund, setEditingFund] = useState<Fund | null>(null);
+    const [editingInvestor, setEditingInvestor] = useState<RenovationInvestor | null>(null);
     const [selectedFund, setSelectedFund] = useState<Fund | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [investFundId, setInvestFundId] = useState<string | undefined>(undefined);
@@ -596,6 +611,9 @@ const InvestmentPlans: React.FC = () => {
     const totalInvestors = renovationInvestors.length;
     const reserveFunds = totalAUM * 0.30;
     const availableFunds = totalAUM * 0.70;
+
+    const canEdit = checkPermission('R-Reits', 'edit');
+    const canDelete = checkPermission('R-Reits', 'delete');
 
     const handleSaveFund = (fund: Fund) => {
         if (editingFund) {
@@ -608,8 +626,26 @@ const InvestmentPlans: React.FC = () => {
     };
 
     const handleSaveInvestor = (inv: RenovationInvestor) => {
-        addRenovationInvestor(inv);
+        if (editingInvestor) {
+            updateRenovationInvestor(inv.id, inv);
+        } else {
+            addRenovationInvestor(inv);
+        }
         setIsInvestorModalOpen(false);
+        setEditingInvestor(null);
+    };
+    
+    const handleDeleteFund = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (confirm("Are you sure you want to delete this project?")) {
+            deleteFund(id);
+        }
+    };
+
+    const handleDeleteInvestor = (id: string) => {
+        if (confirm("Are you sure you want to delete this investor?")) {
+            deleteRenovationInvestor(id);
+        }
     };
 
     const handleEdit = (e: React.MouseEvent, fund: Fund) => {
@@ -618,9 +654,19 @@ const InvestmentPlans: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    const handleEditInvestor = (inv: RenovationInvestor) => {
+        setEditingInvestor(inv);
+        setIsInvestorModalOpen(true);
+    };
+
     const handleCreate = () => {
         setEditingFund(null);
         setIsModalOpen(true);
+    };
+
+    const handleAddInvestor = () => {
+        setEditingInvestor(null);
+        setIsInvestorModalOpen(true);
     };
 
     const handleInvestClick = (e: React.MouseEvent, fund: Fund) => {
@@ -681,9 +727,11 @@ const InvestmentPlans: React.FC = () => {
             {activeMainTab === 'Projects' && (
                 <>
                     <div className="flex justify-end">
-                        <button onClick={handleCreate} className="px-6 py-2 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-black hover:shadow-xl transition-all flex items-center">
-                            <Icon name="plus" className="w-5 h-5 mr-2" /> Create New Fund
-                        </button>
+                        {canEdit && (
+                            <button onClick={handleCreate} className="px-6 py-2 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-black hover:shadow-xl transition-all flex items-center">
+                                <Icon name="plus" className="w-5 h-5 mr-2" /> Create New Fund
+                            </button>
+                        )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {funds.map(fund => {
@@ -713,7 +761,18 @@ const InvestmentPlans: React.FC = () => {
                                     <div className="p-6 flex-grow flex flex-col">
                                         <div className="flex justify-between items-start mb-2">
                                             <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors line-clamp-1">{fund.name}</h3>
-                                            <button onClick={(e) => handleEdit(e, fund)} className="text-gray-400 hover:text-primary p-1 rounded-full hover:bg-gray-100"><Icon name="settings" className="w-5 h-5" /></button>
+                                            <div className="flex gap-1">
+                                                {canEdit && (
+                                                    <button onClick={(e) => handleEdit(e, fund)} className="text-gray-400 hover:text-primary p-1 rounded-full hover:bg-gray-100" title="Edit">
+                                                        <Icon name="settings" className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                {canDelete && (
+                                                     <button onClick={(e) => handleDeleteFund(e, fund.id)} className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100" title="Delete">
+                                                        <Icon name="close" className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         
                                         <p className="text-gray-500 text-sm mb-4 line-clamp-2 flex-grow">{fund.description}</p>
@@ -762,9 +821,11 @@ const InvestmentPlans: React.FC = () => {
                             <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search investors..." className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-primary focus:border-primary" />
                             <div className="absolute left-3 top-2.5 text-gray-400"><Icon name="search" className="w-5 h-5" /></div>
                         </div>
-                        <button onClick={() => setIsInvestorModalOpen(true)} className="px-6 py-2 bg-primary text-white font-bold rounded-lg shadow hover:bg-primary-dark flex items-center">
-                            <Icon name="plus" className="w-5 h-5 mr-2" /> Add Investor
-                        </button>
+                        {canEdit && (
+                            <button onClick={handleAddInvestor} className="px-6 py-2 bg-primary text-white font-bold rounded-lg shadow hover:bg-primary-dark flex items-center">
+                                <Icon name="plus" className="w-5 h-5 mr-2" /> Add Investor
+                            </button>
+                        )}
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm text-left">
@@ -775,6 +836,7 @@ const InvestmentPlans: React.FC = () => {
                                     <th className="px-6 py-3">ID / Residency</th>
                                     <th className="px-6 py-3">Joined</th>
                                     <th className="px-6 py-3 text-center">Status</th>
+                                    {(canEdit || canDelete) && <th className="px-6 py-3 text-right">Actions</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -785,6 +847,22 @@ const InvestmentPlans: React.FC = () => {
                                         <td className="px-6 py-4 text-gray-600">{inv.idNumber}</td>
                                         <td className="px-6 py-4 text-gray-600">{inv.joinDate}</td>
                                         <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">{inv.status}</span></td>
+                                        {(canEdit || canDelete) && (
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    {canEdit && (
+                                                        <button onClick={() => handleEditInvestor(inv)} className="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-50" title="Edit">
+                                                            <Icon name="settings" className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {canDelete && (
+                                                        <button onClick={() => handleDeleteInvestor(inv.id)} className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50" title="Delete">
+                                                            <Icon name="close" className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
@@ -794,7 +872,7 @@ const InvestmentPlans: React.FC = () => {
             )}
 
             {isModalOpen && <CreateEditFundModal fund={editingFund} onClose={() => setIsModalOpen(false)} onSave={handleSaveFund} />}
-            {isInvestorModalOpen && <AddInvestorModal onClose={() => setIsInvestorModalOpen(false)} onSave={handleSaveInvestor} />}
+            {isInvestorModalOpen && <AddInvestorModal investor={editingInvestor} onClose={() => setIsInvestorModalOpen(false)} onSave={handleSaveInvestor} />}
             {selectedFund && <ProjectDetailModal project={selectedFund} onClose={() => setSelectedFund(null)} />}
             {isInvestRecordOpen && (
                 <RecordInvestmentModal 

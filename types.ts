@@ -136,6 +136,7 @@ export interface Property {
   rentIsUniform?: boolean;
   rentType?: 'Inclusive' | 'Exclusive';
   deposit?: { required: boolean; months: number };
+  placementFee?: boolean; // If true, first month rent goes to agency
   bills?: {
       [key: string]: { applicable: boolean; amount: number };
   };
@@ -277,6 +278,7 @@ export interface StaffProfile {
   attendanceRecord?: Record<string, number[]>; // YYYY-MM -> array of absent days
   businessUnitAssignment?: string;
   passwordHash?: string;
+  assignedPropertyId?: string;
 }
 
 export interface StaffDeduction {
@@ -394,8 +396,12 @@ export interface Invoice {
 export interface Vendor {
   id: string;
   name: string;
+  username?: string;
   specialty: string;
   rating: number;
+  email?: string;
+  phone?: string;
+  passwordHash?: string;
 }
 
 export interface Message {
@@ -484,6 +490,8 @@ export interface SystemSettings {
   companyName: string;
   logo: string | null;
   profilePic: string | null;
+  address?: string;
+  phone?: string;
 }
 
 export interface PreventiveTask {
@@ -562,6 +570,7 @@ export interface WithdrawalRequest {
 export interface RenovationInvestor {
   id: string;
   name: string;
+  username?: string;
   email: string;
   phone: string;
   idNumber: string;
@@ -574,6 +583,9 @@ export interface RenovationInvestor {
   residency?: string;
   kraPin?: string;
   authorizedRep?: { name: string; phone: string; role: string };
+  referrerId?: string;
+  referrerType?: string;
+  passwordHash?: string;
 }
 
 export interface RFTransaction {
@@ -1022,6 +1034,8 @@ export interface DataContextType {
     addMessage: (m: Message) => void;
     addNotification: (n: Notification) => void;
     addVendor: (v: Vendor) => void;
+    updateVendor: (id: string, d: Partial<Vendor>) => void;
+    deleteVendor: (id: string) => void;
     addAuditLog: (log: AuditLogEntry) => void;
     updateExternalTransaction: (id: string, d: Partial<ExternalTransaction>) => void;
     updateOverpayment: (id: string, d: Partial<Overpayment>) => void;
@@ -1041,12 +1055,14 @@ export interface DataContextType {
     updateIncomeSource: (id: string, d: Partial<IncomeSource>) => void;
     addFund: (f: Fund) => void;
     updateFund: (id: string, d: Partial<Fund>) => void;
+    deleteFund: (id: string) => void;
     addInvestment: (inv: Investment) => void;
     updateInvestment: (id: string, d: Partial<Investment>) => void;
     addWithdrawal: (req: WithdrawalRequest) => void;
     updateWithdrawal: (id: string, d: Partial<WithdrawalRequest>) => void;
     addRenovationInvestor: (inv: RenovationInvestor) => void;
     updateRenovationInvestor: (id: string, d: Partial<RenovationInvestor>) => void;
+    deleteRenovationInvestor: (id: string) => void;
     addRFTransaction: (tx: RFTransaction) => void;
     updateRFTransaction: (id: string, d: Partial<RFTransaction>) => void;
     addRenovationProjectBill: (bill: RenovationProjectBill) => void;
@@ -1060,4 +1076,7 @@ export interface DataContextType {
     deleteScheduledReport: (id: string) => void;
     addTaxRecord: (record: TaxRecord) => void;
     updateTaxRecord: (id: string, d: Partial<TaxRecord>) => void;
+    
+    // New Helper to check permissions
+    checkPermission: (module: string, action: string) => boolean;
 }

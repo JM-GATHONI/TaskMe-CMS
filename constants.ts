@@ -25,9 +25,55 @@ export const NAVIGATION_ITEMS: NavItem[] = [
   { name: 'HR & Payroll', icon: 'hr', subModules: ['Staff Management', 'Payroll Processing', 'Commissions', 'Leave & Attendance', 'Performance', 'Reporting'] },
   { name: 'Accounting', icon: 'accounting', subModules: ['Overview', 'Income', 'Expenses', 'Financial Statements', 'Tax Compliance', 'Reconciliation', 'Reporting'] },
   { name: 'Reports & Analytics', icon: 'analytics', subModules: ['Reports', 'Analytics'] },
-  { name: 'User App Portal', icon: 'user-app', subModules: ['Tenant Portal', 'Agent Portal', 'Landlords Portal', 'Affiliate Portal', 'Investors Portal', 'Caretaker Portal', 'Contractor Portal', 'Referral Landing'] },
-  { name: 'Settings', icon: 'settings', subModules: ['Profile', 'Roles', 'Permissions', 'Widgets', 'Rates & Rules', 'Constants', 'Company Structure', 'Audit Trail'] },
+  { name: 'User App Portal', icon: 'user-app', subModules: ['Tenant Portal', 'Agent Portal', 'Landlords Portal', 'Affiliate Portal', 'Investors Portal', 'Caretaker Portal', 'Contractor Portal', 'Refer And Grow'] },
+  { name: 'Settings', icon: 'settings', subModules: ['Profile', 'Roles', 'Permissions', 'Widgets', 'Rates & Rules', 'Constants', 'Audit Trail'] },
 ];
+
+export const WIDGET_REGISTRY: Record<string, { id: string; name: string }[]> = {
+    'Dashboard': [
+        { id: 'dash_welcome', name: 'Welcome Banner' },
+        { id: 'dash_search', name: 'Search & Filter Bar' },
+        { id: 'dash_house_alerts', name: 'House Status Alerts' },
+        { id: 'dash_key_stats', name: 'Key Statistics Cards' },
+        { id: 'dash_quick_stats', name: 'Quick Stats Grid' },
+        { id: 'dash_financial_chart', name: 'Financial Health Chart' },
+        { id: 'dash_recent_activity', name: 'Recent Activities' },
+        { id: 'dash_upcoming_payments', name: 'Upcoming Payments' },
+        { id: 'dash_my_tasks', name: 'My Tasks' }
+    ],
+    'Registration': [
+        { id: 'reg_user_stats', name: 'User Statistics' },
+        { id: 'reg_quick_actions', name: 'Quick Actions' }
+    ],
+    'Tenants': [
+        { id: 'ten_kpi', name: 'Tenant KPI Cards' },
+        { id: 'ten_status_dist', name: 'Status Distribution Chart' },
+        { id: 'ten_lease_struct', name: 'Lease Structure Chart' },
+        { id: 'ten_expiring', name: 'Expiring Leases List' },
+        { id: 'ten_financials', name: 'Financial Health Shortcut' }
+    ],
+    'Landlords': [
+        { id: 'land_kpi', name: 'KPI Cards' },
+        { id: 'land_collection', name: 'Collection Performance Chart' },
+        { id: 'land_alerts', name: 'Insight Alerts' },
+        { id: 'land_quick_actions', name: 'Quick Actions' }
+    ],
+    'Operations': [
+        { id: 'ops_kpi', name: 'Pending Tasks & Efficiency' },
+        { id: 'ops_nav', name: 'Module Navigation Cards' }
+    ],
+    'Payments': [
+        { id: 'pay_kpi', name: 'Collection & Expenses KPIs' },
+        { id: 'pay_income_chart', name: 'Income vs Expense Chart' },
+        { id: 'pay_methods_chart', name: 'Payment Methods Doughnut' },
+        { id: 'pay_recent', name: 'Recent Transactions Table' }
+    ],
+    'Reports': [
+        { id: 'rep_modules', name: 'Report Modules Grid' },
+        { id: 'rep_health', name: 'System Health Status' },
+        { id: 'rep_insights', name: 'Quick Insights Cards' }
+    ]
+};
 
 export const QUICK_STATS_DATA: QuickStat[] = [
     { title: "Total Tenants", thisMonth: "1,240", icon: "tenants", color: "blue" },
@@ -397,7 +443,7 @@ const createMockPermissions = (isAdmin: boolean): RolePermissions => {
 
 // All submodules list for admin
 const ALL_SUBMODULES = [
-    'Dashboard', 'Dashboard/Quick Stats', 'Dashboard/Quick Search',
+    'Dashboard', 'Dashboard/Dashboard', 'Dashboard/Quick Stats', 'Dashboard/Quick Search', 'Dashboard/Welcome Banner', 'Dashboard/Search & Filter Bar', 'Dashboard/House Status Alerts', 'Dashboard/Key Statistics Cards', 'Dashboard/Quick Stats Grid', 'Dashboard/Financial Health Chart', 'Dashboard/Recent Activities', 'Dashboard/Upcoming Payments', 'Dashboard/My Tasks',
     'Registration', 'Registration/Overview', 'Registration/Users', 'Registration/Payment Setup', 'Registration/Commissions', 'Registration/Geospatial Mapping', 'Registration/Properties',
     'Landlords', 'Landlords/Overview', 'Landlords/Applications', 'Landlords/Active Landlords', 'Landlords/Deductions', 'Landlords/Offboarding',
     'Tenants', 'Tenants/Overview', 'Tenants/Applications', 'Tenants/Active Tenants', 'Tenants/Fines & Penalties', 'Tenants/Tenant Insights', 'Tenants/Offboarding',
@@ -408,8 +454,8 @@ const ALL_SUBMODULES = [
     'HR & Payroll', 'HR & Payroll/Staff Management', 'HR & Payroll/Payroll Processing', 'HR & Payroll/Commissions', 'HR & Payroll/Leave & Attendance', 'HR & Payroll/Performance', 'HR & Payroll/Reporting',
     'Accounting', 'Accounting/Overview', 'Accounting/Income', 'Accounting/Expenses', 'Accounting/Financial Statements', 'Accounting/Tax Compliance', 'Accounting/Reconciliation', 'Accounting/Reporting',
     'Reports & Analytics', 'Reports & Analytics/Reports', 'Reports & Analytics/Analytics',
-    'User App Portal', 'User App Portal/Tenant Portal', 'User App Portal/Agent Portal', 'User App Portal/Landlords Portal', 'User App Portal/Affiliate Portal', 'User App Portal/Investors Portal', 'User App Portal/Caretaker Portal', 'User App Portal/Contractor Portal', 'User App Portal/Referral Landing',
-    'Settings', 'Settings/Profile', 'Settings/Roles', 'Settings/Permissions', 'Settings/Widgets', 'Settings/Rates & Rules', 'Settings/Constants', 'Settings/Company Structure', 'Settings/Audit Trail'
+    'User App Portal', 'User App Portal/Tenant Portal', 'User App Portal/Agent Portal', 'User App Portal/Landlords Portal', 'User App Portal/Affiliate Portal', 'User App Portal/Investors Portal', 'User App Portal/Caretaker Portal', 'User App Portal/Contractor Portal', 'User App Portal/Refer And Grow', 'User App Portal/Referral Landing',
+    'Settings', 'Settings/Profile', 'Settings/Roles', 'Settings/Permissions', 'Settings/Widgets', 'Settings/Rates & Rules', 'Settings/Constants', 'Settings/Audit Trail'
 ];
 
 export const MOCK_ROLES: Role[] = [
@@ -420,27 +466,26 @@ export const MOCK_ROLES: Role[] = [
         isSystem: true, 
         permissions: createMockPermissions(true),
         accessibleSubmodules: ALL_SUBMODULES,
-        widgetAccess: []
+        widgetAccess: [
+            'dash_welcome', 'dash_search', 'dash_house_alerts', 'dash_key_stats', 
+            'dash_quick_stats', 'dash_financial_chart', 'dash_recent_activity', 
+            'dash_upcoming_payments', 'dash_my_tasks'
+        ]
     },
     { 
         id: 'role2', 
-        name: 'Property Manager', 
-        description: 'Manage properties and tenants', 
-        isSystem: false, 
-        permissions: createMockPermissions(false),
-        accessibleSubmodules: [
-            'Dashboard', 'Dashboard/Quick Stats', 
-            'Tenants', 'Tenants/Overview', 'Tenants/Active Tenants',
-            'Landlords', 'Landlords/Overview',
-            'Operations', 'Operations/Task Management', 'Operations/Communications'
-        ],
+        name: 'Branch Manager', 
+        description: 'Manage properties and tenants for a branch', 
+        isSystem: true, 
+        permissions: createMockPermissions(true),
+        accessibleSubmodules: ALL_SUBMODULES,
         widgetAccess: []
     },
     { 
         id: 'role3', 
         name: 'Accountant', 
         description: 'Financials only', 
-        isSystem: false, 
+        isSystem: true, 
         permissions: createMockPermissions(false),
         accessibleSubmodules: [
              'Dashboard', 'Dashboard/Quick Stats',
@@ -448,6 +493,105 @@ export const MOCK_ROLES: Role[] = [
              'Accounting', 'Accounting/Overview', 'Accounting/Income', 'Accounting/Expenses',
              'Reports & Analytics', 'Reports & Analytics/Reports'
         ],
+        widgetAccess: []
+    },
+    {
+        id: 'role-asst-admin',
+        name: 'Assistant Admin',
+        description: 'Support for Super Admin',
+        isSystem: true,
+        permissions: createMockPermissions(true),
+        accessibleSubmodules: ALL_SUBMODULES,
+        widgetAccess: []
+    },
+    {
+        id: 'role-finance-mgr',
+        name: 'Finance Manager',
+        description: 'Oversees all financial operations',
+        isSystem: true,
+        permissions: createMockPermissions(true),
+        accessibleSubmodules: ALL_SUBMODULES,
+        widgetAccess: []
+    },
+    {
+        id: 'role-office-admin',
+        name: 'Office Admin',
+        description: 'General office management',
+        isSystem: true,
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ALL_SUBMODULES,
+        widgetAccess: []
+    },
+    {
+        id: 'role-customer-care',
+        name: 'Customer Care',
+        description: 'Support and communications',
+        isSystem: true,
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['Dashboard', 'Operations/Communications', 'Tenants/Overview', 'Tenants/Applications'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-tenant', 
+        name: 'Tenant', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Tenant Portal', 'User App Portal/Refer And Grow'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-landlord', 
+        name: 'Landlord', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Landlords Portal', 'User App Portal/Refer And Grow'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-agent', 
+        name: 'Field Agent', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Agent Portal', 'User App Portal/Refer And Grow'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-caretaker', 
+        name: 'Caretaker', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Caretaker Portal', 'User App Portal/Refer And Grow'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-investor', 
+        name: 'Investor', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Investors Portal', 'User App Portal/Refer And Grow'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-affiliate', 
+        name: 'Affiliate', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Affiliate Portal', 'User App Portal/Refer And Grow'],
+        widgetAccess: []
+    },
+    { 
+        id: 'role-contractor', 
+        name: 'Contractor', 
+        description: 'User App Portal Access', 
+        isSystem: false, 
+        permissions: createMockPermissions(false),
+        accessibleSubmodules: ['User App Portal/Contractor Portal', 'User App Portal/Refer And Grow'],
         widgetAccess: []
     }
 ];

@@ -258,548 +258,404 @@ const AboutUsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                      <p className="text-sm text-gray-500">Digital Workflow</p>
                                  </div>
                                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex-1">
-                                     <h3 className="font-bold text-gray-800 text-2xl">24/7</h3>
-                                     <p className="text-sm text-gray-500">Support System</p>
+                                     <h3 className="font-bold text-gray-800 text-2xl">30%</h3>
+                                     <p className="text-sm text-gray-500">Avg. Investment APY</p>
                                  </div>
                              </div>
                          </div>
-                         <div className="grid grid-cols-2 gap-4">
-                             <img src="https://images.unsplash.com/photo-1554995207-c18c203602cb?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80" className="rounded-2xl shadow-lg mt-8" alt="Office" />
-                             <img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80" className="rounded-2xl shadow-lg" alt="Modern Home" />
+                         <div className="relative h-[400px] bg-gray-200 rounded-3xl overflow-hidden shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-500">
+                             <img src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80" className="w-full h-full object-cover" alt="Modern Architecture" />
                          </div>
                      </div>
                 </div>
 
-                {/* Stats Section */}
-                <div className="bg-gradient-to-r from-blue-900 to-indigo-900 py-20 text-white">
-                    <div className="max-w-6xl mx-auto px-6">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-white/20">
-                            <div className="p-4">
-                                <p className="text-5xl font-extrabold mb-2">500+</p>
-                                <p className="text-blue-200 font-medium uppercase text-sm tracking-widest">Units Managed</p>
-                            </div>
-                            <div className="p-4">
-                                <p className="text-5xl font-extrabold mb-2">KES 400M</p>
-                                <p className="text-blue-200 font-medium uppercase text-sm tracking-widest">Assets Under Mgmt</p>
-                            </div>
-                            <div className="p-4">
-                                <p className="text-5xl font-extrabold mb-2">98%</p>
-                                <p className="text-blue-200 font-medium uppercase text-sm tracking-widest">Occupancy Rate</p>
-                            </div>
-                            <div className="p-4">
-                                <p className="text-5xl font-extrabold mb-2">50+</p>
-                                <p className="text-blue-200 font-medium uppercase text-sm tracking-widest">Completed Projects</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Values / The TaskMe Difference */}
-                <div className="py-20 px-6 max-w-6xl mx-auto">
-                    <div className="text-center mb-16">
-                        <h2 className="text-3xl font-extrabold text-gray-900 mb-4">The TaskMe Difference</h2>
-                        <p className="text-gray-500 max-w-2xl mx-auto">We combine local market expertise with world-class technology.</p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 hover:-translate-y-2 transition-transform duration-300">
-                            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
-                                <Icon name="settings" className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-800 mb-3">Tech-First Approach</h3>
-                            <p className="text-gray-600 leading-relaxed">
-                                Our proprietary dashboard handles everything from automated rent collection via M-Pesa to real-time maintenance tracking.
-                            </p>
-                        </div>
-                        <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 hover:-translate-y-2 transition-transform duration-300">
-                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-2xl flex items-center justify-center mb-6">
-                                <Icon name="revenue" className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-800 mb-3">Wealth Creation</h3>
-                            <p className="text-gray-600 leading-relaxed">
-                                We don't just manage; we grow. Our R-REITs renovation funds allow anyone to invest in high-yield property projects with as little as KES 5,000.
-                            </p>
-                        </div>
-                        <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 hover:-translate-y-2 transition-transform duration-300">
-                            <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-6">
-                                <Icon name="check" className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-800 mb-3">Transparent Integrity</h3>
-                            <p className="text-gray-600 leading-relaxed">
-                                Full visibility for landlords and investors. Real-time reports, audit trails, and no hidden fees. Trust is our currency.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Team Section Placeholder */}
+                {/* Team / Values */}
                 <div className="bg-gray-50 py-20 px-6">
                     <div className="max-w-6xl mx-auto text-center">
-                        <h2 className="text-3xl font-extrabold text-gray-900 mb-12">Meet The Team</h2>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-                             {[1,2,3,4].map((i) => (
-                                 <div key={i} className="flex flex-col items-center group">
-                                     <div className="w-32 h-32 rounded-full bg-gray-300 mb-4 overflow-hidden border-4 border-white shadow-md grayscale group-hover:grayscale-0 transition-all duration-500">
-                                         <img src={`https://i.pravatar.cc/150?img=${i+10}`} alt="Team" className="w-full h-full object-cover" />
-                                     </div>
-                                     <h4 className="font-bold text-gray-800">Team Member {i}</h4>
-                                     <p className="text-sm text-gray-500">Position</p>
+                        <h2 className="text-3xl font-bold text-gray-900 mb-12">Driven by Innovation</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                             <div className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600">
+                                     <Icon name="check" className="w-8 h-8" />
                                  </div>
-                             ))}
+                                 <h3 className="text-xl font-bold text-gray-800 mb-3">Transparency</h3>
+                                 <p className="text-gray-600">No hidden fees. No paperwork chaos. Just clear, real-time data for landlords, tenants, and investors.</p>
+                             </div>
+                             <div className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600">
+                                     <Icon name="revenue" className="w-8 h-8" />
+                                 </div>
+                                 <h3 className="text-xl font-bold text-gray-800 mb-3">Community Wealth</h3>
+                                 <p className="text-gray-600">We believe in shared prosperity. Our R-REITs model allows anyone to participate in real estate growth.</p>
+                             </div>
+                             <div className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                                 <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6 text-purple-600">
+                                     <Icon name="analytics" className="w-8 h-8" />
+                                 </div>
+                                 <h3 className="text-xl font-bold text-gray-800 mb-3">Technology First</h3>
+                                 <p className="text-gray-600">From automated payments to AI-driven insights, we use tech to solve traditional property headaches.</p>
+                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    );
-};
 
-const PropertiesPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-    const { properties } = useData();
-    const listings = useMemo(() => {
-        return properties.flatMap(p => p.units.filter(u => u.status === 'Vacant').map(u => ({
-            id: u.id, title: `${u.unitNumber} at ${p.name}`, location: p.location || p.branch, price: u.rent || p.defaultMonthlyRent || 0, image: p.profilePictureUrl, type: u.unitType || 'Apartment', beds: u.bedrooms, baths: u.bathrooms
-        })));
-    }, [properties]);
-
-    return (
-        <div className="min-h-screen bg-gray-50 animate-fade-in flex flex-col">
-            <div className="bg-white border-b sticky top-0 z-50 px-6 py-4 flex justify-between items-center shadow-sm">
-                 <button onClick={onBack} className="flex items-center text-gray-600 hover:text-primary font-bold transition-colors">
-                    <Icon name="chevron-down" className="w-5 h-5 mr-2 rotate-90" />
-                    Back to Home
-                </button>
-                <div className="text-xl font-bold text-gray-800">Featured Properties</div>
-             </div>
-
-            <div className="max-w-7xl mx-auto px-6 py-12 w-full">
-                <div className="mb-8 text-center">
-                    <h1 className="text-3xl font-extrabold text-gray-900">Find Your Perfect Home</h1>
-                    <p className="text-gray-500 mt-2">Browse our exclusive selection of verified, move-in ready units.</p>
-                </div>
-
-                {listings.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {listings.map(l => (
-                            <div key={l.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-xl transition-all group flex flex-col">
-                                <div className="h-56 bg-gray-200 relative overflow-hidden">
-                                    {l.image ? <img src={l.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={l.title} /> : <div className="flex items-center justify-center h-full text-gray-300"><Icon name="branch" className="w-16 h-16 opacity-50" /></div>}
-                                    <div className="absolute top-4 right-4 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">Available</div>
-                                </div>
-                                <div className="p-6 flex-grow flex flex-col">
-                                    <h3 className="font-bold text-gray-800 text-xl mb-1 line-clamp-1 group-hover:text-primary transition-colors">{l.title}</h3>
-                                    <p className="text-sm text-gray-500 mb-4 flex items-center"><Icon name="branch" className="w-4 h-4 mr-1 text-gray-400"/> {l.location}</p>
-                                    
-                                    <div className="flex gap-3 mb-6 text-xs font-medium text-gray-600">
-                                        <span className="bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">{l.beds} Beds</span>
-                                        <span className="bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">{l.baths} Baths</span>
-                                        <span className="bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">{l.type}</span>
-                                    </div>
-                                    
-                                    <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-center">
-                                        <div>
-                                            <p className="text-xs text-gray-400 uppercase font-bold">Rent</p>
-                                            <p className="text-xl font-extrabold text-blue-600">KES {l.price.toLocaleString()}</p>
-                                        </div>
-                                        <button className="px-5 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-black transition-colors shadow-lg">View</button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                     <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-dashed border-gray-200">
-                        <Icon name="search" className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-gray-600">No properties available</h3>
-                        <p className="text-gray-400 mt-2">Check back later or contact us for upcoming listings.</p>
-                     </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-const FundsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-    const { funds } = useData();
-    const activeFunds = funds.length > 0 ? funds : INITIAL_FUNDS; 
-
-    return (
-        <div className="min-h-screen bg-gray-50 animate-fade-in flex flex-col">
-             <div className="bg-white border-b sticky top-0 z-50 px-6 py-4 flex justify-between items-center shadow-sm">
-                 <button onClick={onBack} className="flex items-center text-gray-600 hover:text-primary font-bold transition-colors">
-                    <Icon name="chevron-down" className="w-5 h-5 mr-2 rotate-90" />
-                    Back to Home
-                </button>
-                <div className="text-xl font-bold text-gray-800">Investment Funds</div>
-             </div>
-
-             <div className="max-w-7xl mx-auto px-6 py-12 w-full">
-                <div className="mb-10 text-center max-w-3xl mx-auto">
-                    <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-4">Renovation Funds (R-REITs)</h1>
-                    <p className="text-lg text-gray-500">
-                        Invest in high-yield, short-term property renovation projects. 
-                        We upgrade assets, increase value, and share the profits with you.
-                    </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {activeFunds.map(fund => (
-                        <div key={fund.id} className="bg-white rounded-2xl shadow-lg border border-gray-100 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col overflow-hidden group">
-                            <div className="h-52 bg-gray-800 relative">
-                                    {fund.projectPic ? <img src={fund.projectPic} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt={fund.name} /> : <div className="flex items-center justify-center h-full text-gray-500"><Icon name="reits" className="w-16 h-16 opacity-30" /></div>}
-                                <div className="absolute top-4 right-4 bg-white/95 backdrop-blur text-gray-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm uppercase tracking-wide border border-gray-200">{fund.status}</div>
-                                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
-                                    <h3 className="text-white font-bold text-2xl">{fund.name}</h3>
-                                </div>
-                            </div>
-                            <div className="p-8 flex-grow flex flex-col">
-                                <p className="text-gray-600 text-sm mb-6 line-clamp-3 leading-relaxed">{fund.description}</p>
-                                
-                                <div className="grid grid-cols-2 gap-4 mb-8">
-                                    <div className="bg-green-50 p-4 rounded-xl text-center border border-green-100">
-                                        <p className="text-[10px] text-green-700 uppercase font-bold tracking-wider">Target Return</p>
-                                        <p className="text-2xl font-extrabold text-green-800">{fund.targetApy}</p>
-                                    </div>
-                                    <div className="bg-blue-50 p-4 rounded-xl text-center border border-blue-100">
-                                        <p className="text-[10px] text-blue-700 uppercase font-bold tracking-wider">Term</p>
-                                        <p className="text-2xl font-extrabold text-blue-800">12-24 Mo</p>
-                                    </div>
-                                </div>
-
-                                <div className="mt-auto">
-                                    <div className="flex justify-between text-xs font-bold text-gray-500 mb-2">
-                                        <span>Raised: {(fund.capitalRaised/1000000).toFixed(1)}M</span>
-                                        <span>Target: {(fund.targetCapital/1000000).toFixed(1)}M</span>
-                                    </div>
-                                    <div className="w-full bg-gray-200 h-3 rounded-full overflow-hidden mb-6">
-                                        <div className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" style={{ width: `${Math.min(100, (fund.capitalRaised/fund.targetCapital)*100)}%` }}></div>
-                                    </div>
-                                    <button className="w-full py-4 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-all shadow-lg hover:shadow-xl transform active:scale-95">
-                                        View Investment Details
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-const LandingHeader: React.FC<{ 
-    persona: UserPersona; 
-    onSwitch: (p: UserPersona) => void; 
-    referrerName: string;
-    onNavigate: (page: PageType) => void;
-}> = ({ persona, onSwitch, referrerName, onNavigate }) => (
-    <div className="bg-white shadow-sm sticky top-0 z-40 transition-all">
-        <div className="bg-gray-100 px-4 py-2 flex items-center justify-between text-xs text-gray-500 border-b">
-            <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-gray-200 w-full md:w-auto mx-auto md:mx-0">
-                <Icon name="stack" className="w-3 h-3" />
-                <span className="truncate max-w-[200px] md:max-w-none">taskme.re/invite/{referrerName.toLowerCase().replace(' ', '')}</span>
-            </div>
-            <div className="hidden md:flex gap-2">
-                <span className="font-bold mr-2">Viewing as:</span>
-                {(['Tenant', 'Landlord', 'Investor'] as UserPersona[]).map(p => (
-                    <button key={p} onClick={() => onSwitch(p)} className={`px-2 py-0.5 rounded ${persona === p ? 'bg-primary text-white' : 'bg-gray-200 hover:bg-gray-300'}`}>{p}</button>
-                ))}
-            </div>
-        </div>
-        
-        <div className="px-6 py-4 flex justify-between items-center max-w-7xl mx-auto">
-            <div 
-                className="flex items-center gap-2 text-primary font-bold text-xl cursor-pointer"
-                onClick={() => onNavigate('Home')}
-            >
-                <div className="p-2 bg-primary rounded-lg text-white"><Icon name="branch" className="w-6 h-6" /></div>
-                TaskMe Realty
-            </div>
-            <div className="hidden md:flex gap-8 text-sm font-bold text-gray-600">
-                <button onClick={() => onNavigate('Properties')} className="hover:text-primary transition-colors uppercase tracking-wide text-xs">Properties</button>
-                <button onClick={() => onNavigate('Funds')} className="hover:text-primary transition-colors uppercase tracking-wide text-xs">Renovation Funds</button>
-                <button onClick={() => onNavigate('About')} className="hover:text-primary transition-colors uppercase tracking-wide text-xs">About Us</button>
-            </div>
-            <button className="px-6 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark shadow-md transition-transform active:scale-95 text-sm">
-                {persona === 'Tenant' ? 'Find a Home' : persona === 'Landlord' ? 'List Property' : 'Start Investing'}
-            </button>
-        </div>
-
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white text-center py-3 text-sm font-medium shadow-inner">
-            🎉 <span className="font-bold">{referrerName}</span> invited you! Join today for exclusive perks.
-        </div>
-    </div>
-);
-
-const TenantView: React.FC<{ referrerName: string }> = ({ referrerName }) => {
-    const { properties } = useData();
-    const [location, setLocation] = useState('All Locations');
-    const [type, setType] = useState('All Types');
-    const [priceRange, setPriceRange] = useState('Any Price');
-    const [bookingUnit, setBookingUnit] = useState<any>(null);
-    const [discountActive, setDiscountActive] = useState(false);
-
-    const vacantUnits = useMemo(() => {
-        return properties.flatMap(p => p.units.filter(u => u.status === 'Vacant').map(u => ({...u, propertyName: p.name, location: p.location || p.branch, image: p.profilePictureUrl, amenities: u.amenities || ['Water', 'Security'], rent: u.rent || p.defaultMonthlyRent || 0, type: u.unitType || 'Standard'})));
-    }, [properties]);
-
-    const locations = useMemo(() => ['All Locations', ...new Set(vacantUnits.map(u => u.location))], [vacantUnits]);
-    const types = useMemo(() => ['All Types', ...new Set(vacantUnits.map(u => u.type))], [vacantUnits]);
-    const prices = ['Any Price', '< 10k', '10k - 20k', '20k - 40k', '40k+'];
-
-    const filteredUnits = useMemo(() => {
-        return vacantUnits.filter(u => {
-            const matchLoc = location === 'All Locations' || u.location === location;
-            const matchType = type === 'All Types' || u.type === type;
-            let matchPrice = true;
-            if (priceRange === '< 10k') matchPrice = u.rent < 10000;
-            else if (priceRange === '10k - 20k') matchPrice = u.rent >= 10000 && u.rent < 20000;
-            else if (priceRange === '20k - 40k') matchPrice = u.rent >= 20000 && u.rent < 40000;
-            else if (priceRange === '40k+') matchPrice = u.rent >= 40000;
-            return matchLoc && matchType && matchPrice;
-        });
-    }, [vacantUnits, location, type, priceRange]);
-
-    const handleClaimOffer = () => { setDiscountActive(true); document.getElementById('listings-section')?.scrollIntoView({ behavior: 'smooth' }); };
-
-    return (
-        <div className="animate-fade-in">
-            <div className="relative bg-gray-900 text-white py-24 px-6 text-center overflow-hidden">
-                <div className="absolute inset-0 opacity-40"><img src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1600&q=80" className="w-full h-full object-cover" alt="Apartment" /></div>
-                <div className="relative z-10 max-w-4xl mx-auto">
-                    <h1 className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight">Find Your Next Home <br/> <span className="text-primary-light">Hassle-Free</span></h1>
-                    <p className="text-lg md:text-xl text-gray-200 mb-10 max-w-2xl mx-auto">{referrerName} thinks you'll love living with us. Browse verified listings, pay rent via M-Pesa, and enjoy 24/7 support.</p>
-                    <div className="bg-white p-3 rounded-2xl shadow-2xl max-w-4xl mx-auto flex flex-col md:flex-row gap-3">
-                        <div className="flex-1 relative border-b md:border-b-0 md:border-r border-gray-200">
-                            <label className="block text-xs text-gray-500 font-bold uppercase mb-1 text-left px-3 pt-1">Location</label>
-                            <select value={location} onChange={(e) => setLocation(e.target.value)} className="w-full p-2 bg-transparent text-gray-800 font-semibold focus:outline-none appearance-none cursor-pointer">{locations.map(l => <option key={l} value={l}>{l}</option>)}</select>
-                            <Icon name="chevron-down" className="w-4 h-4 text-gray-400 absolute right-4 bottom-3 pointer-events-none" />
-                        </div>
-                        <div className="flex-1 relative border-b md:border-b-0 md:border-r border-gray-200">
-                            <label className="block text-xs text-gray-500 font-bold uppercase mb-1 text-left px-3 pt-1">House Type</label>
-                            <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-2 bg-transparent text-gray-800 font-semibold focus:outline-none appearance-none cursor-pointer">{types.map(t => <option key={t} value={t}>{t}</option>)}</select>
-                            <Icon name="chevron-down" className="w-4 h-4 text-gray-400 absolute right-4 bottom-3 pointer-events-none" />
-                        </div>
-                        <div className="flex-1 relative">
-                            <label className="block text-xs text-gray-500 font-bold uppercase mb-1 text-left px-3 pt-1">Budget</label>
-                            <select value={priceRange} onChange={(e) => setPriceRange(e.target.value)} className="w-full p-2 bg-transparent text-gray-800 font-semibold focus:outline-none appearance-none cursor-pointer">{prices.map(p => <option key={p} value={p}>{p}</option>)}</select>
-                            <Icon name="chevron-down" className="w-4 h-4 text-gray-400 absolute right-4 bottom-3 pointer-events-none" />
-                        </div>
-                        <button className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:bg-primary-dark transition-colors shadow-md">Search</button>
-                    </div>
-                </div>
-            </div>
-            <div id="listings-section" className="max-w-6xl mx-auto px-6 py-16">
-                <div className="flex justify-between items-center mb-8"><h2 className="text-2xl font-bold text-gray-800">Available Units {location !== 'All Locations' && `in ${location}`}</h2>{discountActive && <span className="bg-green-100 text-green-800 px-4 py-1 rounded-full text-sm font-bold animate-pulse">Offer Applied: KES 1,000 Discount!</span>}</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {filteredUnits.length > 0 ? filteredUnits.map(unit => (
-                        <div key={unit.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 group flex flex-col">
-                            <div className="h-48 bg-gray-200 relative">
-                                {unit.image ? <img src={unit.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Property" /> : <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-100"><Icon name="vacant-house" className="w-12 h-12 opacity-20" /></div>}
-                                <div className="absolute top-3 right-3"><span className="px-2 py-1 bg-green-500 text-white text-xs font-bold rounded shadow">Available</span></div>
-                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4"><p className="text-white font-bold text-lg">KES {unit.rent.toLocaleString()} <span className="text-xs font-normal">/ month</span></p></div>
-                            </div>
-                            <div className="p-5 flex-grow flex flex-col">
-                                <h3 className="font-bold text-gray-800 text-lg mb-1 group-hover:text-primary transition-colors">{unit.propertyName}</h3>
-                                <p className="text-gray-500 text-sm flex items-center mb-2"><Icon name="branch" className="w-4 h-4 mr-1" /> {unit.location} • {unit.unitNumber}</p>
-                                <p className="text-sm text-gray-600 mb-4 flex-grow">{unit.bedrooms} Bedrooms • {unit.bathrooms} Bath • {unit.type}</p>
-                                <button onClick={() => setBookingUnit(unit)} className="w-full py-2.5 bg-primary text-white font-bold rounded-lg hover:bg-primary-dark shadow transition-transform active:scale-95">Book Now</button>
-                            </div>
-                        </div>
-                    )) : <div className="col-span-3 text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200"><Icon name="search" className="w-12 h-12 text-gray-300 mx-auto mb-3" /><h3 className="text-lg font-bold text-gray-600">No units found</h3></div>}
-                </div>
-            </div>
-            {!discountActive && (
-                <div className="bg-blue-50 py-12 text-center">
-                    <div className="max-w-4xl mx-auto px-6">
-                        <h3 className="text-2xl font-bold text-blue-900 mb-4">🎁 Exclusive Welcome Gift</h3>
-                        <p className="text-blue-700 mb-6">Sign a lease this week and get <span className="font-bold">KES 1,000 OFF</span> your first month's rent as a referral bonus from {referrerName}!</p>
-                        <button onClick={handleClaimOffer} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg transition-transform active:scale-95">Claim Offer</button>
-                    </div>
-                </div>
-            )}
-            {bookingUnit && <BookingModal unit={bookingUnit} discount={discountActive ? 1000 : 0} onClose={() => setBookingUnit(null)} />}
-        </div>
-    );
-};
-
-const LandlordView: React.FC<{ referrerName: string }> = ({ referrerName }) => {
-    const [showContact, setShowContact] = useState(false);
-
-    return (
-        <div className="animate-fade-in">
-            <div className="relative bg-white overflow-hidden">
-                <div className="max-w-7xl mx-auto">
-                    <div className="relative z-10 pb-8 bg-white sm:pb-16 md:pb-20 lg:max-w-2xl lg:w-full lg:pb-28 xl:pb-32">
-                        <main className="mt-10 mx-auto max-w-7xl px-4 sm:mt-12 sm:px-6 md:mt-16 lg:mt-20 lg:px-8 xl:mt-28">
-                            <div className="sm:text-center lg:text-left">
-                                <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
-                                    <span className="block xl:inline">Maximize your</span>{' '}
-                                    <span className="block text-primary xl:inline">property revenue</span>
-                                </h1>
-                                <p className="mt-3 text-base text-gray-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
-                                    Join {referrerName} and hundreds of other landlords automating collections, maintenance, and tenant screening with TaskMe Realty.
-                                </p>
-                                <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
-                                    <div className="rounded-md shadow">
-                                        <button onClick={() => setShowContact(true)} className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary-dark md:py-4 md:text-lg md:px-10">
-                                            List Property
-                                        </button>
-                                    </div>
-                                    <div className="mt-3 sm:mt-0 sm:ml-3">
-                                        <a href="#" className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/20 md:py-4 md:text-lg md:px-10">
-                                            Calculate ROI
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                        </main>
-                    </div>
-                </div>
-            </div>
-
-            <div className="bg-gray-50 py-16">
-                <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-                    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-4xl font-extrabold text-primary mb-2">98%</p>
-                        <p className="font-bold text-gray-800">Occupancy Rate</p>
-                        <p className="text-sm text-gray-500 mt-2">We fill vacancies faster with verified tenants.</p>
-                    </div>
-                    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-4xl font-extrabold text-green-600 mb-2">100%</p>
-                        <p className="font-bold text-gray-800">Rent Collection</p>
-                        <p className="text-sm text-gray-500 mt-2">Automated billing and reminders ensure on-time pay.</p>
-                    </div>
-                    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-100">
-                        <p className="text-4xl font-extrabold text-blue-600 mb-2">24/7</p>
-                        <p className="font-bold text-gray-800">Property Care</p>
-                        <p className="text-sm text-gray-500 mt-2">Maintenance requests handled automatically.</p>
-                    </div>
-                </div>
-            </div>
-            {showContact && <CallbackModal onClose={() => setShowContact(false)} type="Landlord" />}
-        </div>
-    );
-};
-
-const InvestorView: React.FC<{ referrerName: string }> = ({ referrerName }) => {
-    const [investingFund, setInvestingFund] = useState<any>(null);
-    const [isCallbackOpen, setIsCallbackOpen] = useState(false);
-
-    const handleStartInvesting = () => {
-        const fundsGrid = document.getElementById('funds-grid');
-        if (fundsGrid) {
-            fundsGrid.scrollIntoView({ behavior: 'smooth' });
-        }
-    };
-
-    return (
-        <div className="animate-fade-in bg-gray-50 min-h-screen">
-            <div className="bg-[#0f172a] text-white pt-20 pb-24 px-6 text-center">
-                <div className="inline-block px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-bold uppercase tracking-wide mb-6 border border-green-500/30">
-                    Invited by {referrerName}
-                </div>
-                <h1 className="text-4xl md:text-6xl font-extrabold mb-6">
-                    Smart Real Estate Investing <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Accessible to Everyone</span>
-                </h1>
-                <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10">
-                    Join our Renovation Funds and earn up to <strong>30% APY</strong> backed by tangible assets. Monthly payouts, zero hassle.
-                </p>
-                <div className="flex justify-center gap-4">
-                    <button 
-                        onClick={handleStartInvesting}
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:scale-105 transition-transform"
-                    >
-                        Start Investing
-                    </button>
-                    <button
-                        onClick={() => setIsCallbackOpen(true)}
-                        className="bg-white text-blue-900 px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-gray-100 transition-transform"
-                    >
-                        Request Call Back
+                {/* Footer CTA */}
+                <div className="bg-primary py-16 px-6 text-center text-white">
+                    <h2 className="text-3xl font-bold mb-4">Ready to Join the Revolution?</h2>
+                    <p className="text-white/80 mb-8 max-w-2xl mx-auto">Start your journey today. Find a home, list a property, or grow your capital.</p>
+                    <button onClick={onBack} className="px-8 py-3 bg-white text-primary font-bold rounded-full hover:bg-gray-100 transition-colors shadow-lg">
+                        Get Started
                     </button>
                 </div>
             </div>
-
-            <div id="funds-grid" className="max-w-6xl mx-auto px-6 -mt-16 pb-20">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {INITIAL_FUNDS.slice(0, 3).map(fund => (
-                        <div key={fund.id} className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden hover:-translate-y-2 transition-transform duration-300 flex flex-col">
-                             <div className="h-48 bg-gray-200 relative">
-                                 <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-100">
-                                    {fund.projectPic ? <img src={fund.projectPic} className="w-full h-full object-cover"/> : <Icon name="branch" className="w-12 h-12 opacity-20" />}
-                                 </div>
-                                 <div className="absolute top-4 right-4 bg-white text-gray-800 font-bold text-xs px-2 py-1 rounded shadow">
-                                    {fund.status}
-                                 </div>
-                            </div>
-                            <div className="p-6 flex-grow flex flex-col">
-                                <h3 className="font-bold text-xl text-gray-800 mb-2">{fund.name}</h3>
-                                <div className="flex justify-between items-end mb-4">
-                                    <div>
-                                        <p className="text-xs text-gray-500 uppercase font-bold">Target Return</p>
-                                        <p className="text-2xl font-extrabold text-green-600">30% APY</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xs text-gray-500 uppercase font-bold">Payout</p>
-                                        <p className="text-lg font-bold text-blue-600">Monthly</p>
-                                    </div>
-                                </div>
-                                <div className="w-full bg-gray-100 rounded-full h-2 mb-6">
-                                    <div className="bg-primary h-2 rounded-full" style={{ width: `${(fund.capitalRaised/fund.targetCapital)*100}%` }}></div>
-                                </div>
-                                <div className="mt-auto">
-                                    <button 
-                                        onClick={() => setInvestingFund(fund)}
-                                        className="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors shadow-md"
-                                    >
-                                        Invest Now
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            {investingFund && <InvestmentModal fund={investingFund} onClose={() => setInvestingFund(null)} />}
-            {isCallbackOpen && <CallbackModal onClose={() => setIsCallbackOpen(false)} />}
         </div>
     );
 };
 
 const ReferralLanding: React.FC = () => {
-    const { staff } = useData();
-    const [activePersona, setActivePersona] = useState<UserPersona>('Tenant');
-    const [currentPage, setCurrentPage] = useState<PageType>('Home');
-    
-    const referrer = staff[0]?.name || 'A Friend';
+    const { properties, funds } = useData();
+    const [viewMode, setViewMode] = useState<UserPersona>('Tenant'); // Default view
+    const [searchTerm, setSearchQuery] = useState('');
+    const [selectedFund, setSelectedFund] = useState<any>(null);
+    const [selectedUnit, setSelectedUnit] = useState<any>(null);
+    const [isCallbackOpen, setIsCallbackOpen] = useState(false);
+    const [callbackType, setCallbackType] = useState('General');
+    const [currentPage, setCurrentPage] = useState<PageType>('Home'); // Home acts as the main landing, Properties/Funds act as filtered views if needed, About is separate.
 
-    if (currentPage === 'About') return <AboutUsPage onBack={() => setCurrentPage('Home')} />;
-    if (currentPage === 'Properties') return <PropertiesPage onBack={() => setCurrentPage('Home')} />;
-    if (currentPage === 'Funds') return <FundsPage onBack={() => setCurrentPage('Home')} />;
+    // --- DERIVED DATA ---
+    const vacantUnits = useMemo(() => {
+        return properties.flatMap(p => p.units
+            .filter(u => u.status === 'Vacant')
+            .map(u => ({
+                id: u.id,
+                title: `${u.unitNumber} at ${p.name}`,
+                rent: u.rent || p.defaultMonthlyRent || 0,
+                location: p.location || p.branch,
+                image: p.profilePictureUrl || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=800&q=80',
+                type: u.unitType || p.type,
+                bedrooms: u.bedrooms,
+                property: p
+            }))
+        ).filter(u => u.title.toLowerCase().includes(searchTerm.toLowerCase()) || u.location?.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [properties, searchTerm]);
+
+    const activeFunds = useMemo(() => funds.filter(f => f.status === 'Active' || f.status === 'Closing Soon'), [funds]);
+
+    const handleOpenCallback = (type: string) => {
+        setCallbackType(type);
+        setIsCallbackOpen(true);
+    };
+
+    if (currentPage === 'About') {
+        return <AboutUsPage onBack={() => setCurrentPage('Home')} />;
+    }
 
     return (
-        <div className="min-h-screen bg-white font-sans relative">
-            <LandingHeader 
-                persona={activePersona} 
-                onSwitch={setActivePersona} 
-                referrerName={referrer}
-                onNavigate={setCurrentPage}
-            />
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-900 flex flex-col relative overflow-hidden">
             
-            {activePersona === 'Tenant' && <TenantView referrerName={referrer} />}
-            {activePersona === 'Landlord' && <LandlordView referrerName={referrer} />}
-            {activePersona === 'Investor' && <InvestorView referrerName={referrer} />}
-            
-            {/* Simple Footer */}
-            <footer className="bg-gray-900 text-gray-400 py-12 text-center text-sm">
-                <p>&copy; 2025 TaskMe Realty. All rights reserved.</p>
-                <div className="flex justify-center gap-4 mt-4">
-                    <a href="#" className="hover:text-white">Privacy</a>
-                    <a href="#" className="hover:text-white">Terms</a>
-                    <a href="#" className="hover:text-white">Contact</a>
+            {/* Navigation Bar */}
+            <nav className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-between h-20 items-center">
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentPage('Home')}>
+                            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white shadow-lg">
+                                <Icon name="branch" className="w-6 h-6" />
+                            </div>
+                            <span className="text-2xl font-extrabold tracking-tight text-gray-900">TaskMe<span className="text-primary">.</span></span>
+                        </div>
+                        
+                        <div className="hidden md:flex space-x-8">
+                            <button onClick={() => setViewMode('Tenant')} className={`text-sm font-bold transition-colors ${viewMode === 'Tenant' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>Rent</button>
+                            <button onClick={() => setViewMode('Investor')} className={`text-sm font-bold transition-colors ${viewMode === 'Investor' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>Invest</button>
+                            <button onClick={() => setViewMode('Landlord')} className={`text-sm font-bold transition-colors ${viewMode === 'Landlord' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>List Property</button>
+                            <button onClick={() => setCurrentPage('About')} className="text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors">About</button>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <button onClick={() => window.location.hash = '#/auth'} className="hidden sm:block text-sm font-bold text-gray-600 hover:text-primary">Login</button>
+                            <button onClick={() => window.location.hash = '#/auth'} className="px-5 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-full hover:bg-black transition-all shadow-md transform hover:-translate-y-0.5">
+                                Sign Up
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            {/* Content Switcher */}
+            <main className="flex-grow">
+                {viewMode === 'Tenant' && (
+                    <div className="animate-fade-in">
+                        {/* Tenant Hero */}
+                        <div className="relative bg-gray-900 text-white overflow-hidden h-[500px] flex items-center">
+                            <div className="absolute inset-0">
+                                <img src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1600&q=80" className="w-full h-full object-cover opacity-40" alt="Apartment" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent"></div>
+                            </div>
+                            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center sm:text-left">
+                                <span className="inline-block py-1 px-3 rounded-full bg-blue-600/30 border border-blue-500/50 text-blue-200 text-xs font-bold mb-4 uppercase tracking-wider backdrop-blur-sm">
+                                    Trusted by 1,200+ Tenants
+                                </span>
+                                <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+                                    Find Your Perfect <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-400">Sanctuary.</span>
+                                </h1>
+                                <p className="text-lg md:text-xl text-gray-300 mb-8 max-w-2xl">
+                                    Browse verified listings, book viewings instantly, and pay rent securely with M-Pesa. No agents, no hassle.
+                                </p>
+                                
+                                {/* Search Bar */}
+                                <div className="max-w-2xl bg-white p-2 rounded-2xl shadow-2xl flex flex-col sm:flex-row gap-2">
+                                    <div className="flex-grow relative">
+                                        <Icon name="search" className="absolute left-4 top-3.5 w-5 h-5 text-gray-400" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search by location, price, or type..." 
+                                            className="w-full pl-12 pr-4 py-3 rounded-xl text-gray-800 placeholder-gray-500 outline-none focus:ring-2 focus:ring-primary/20 h-full"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+                                    <button className="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark transition-colors shadow-lg">
+                                        Search
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Listings Grid */}
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+                            <h2 className="text-3xl font-bold text-gray-800 mb-8">Featured Vacancies</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                {vacantUnits.length > 0 ? vacantUnits.map(unit => (
+                                    <div key={unit.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden group flex flex-col">
+                                        <div className="relative h-64 overflow-hidden">
+                                            <img src={unit.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={unit.title} />
+                                            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur text-gray-800 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
+                                                {unit.type}
+                                            </div>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12">
+                                                <p className="text-white font-bold text-xl">KES {unit.rent.toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="p-6 flex-grow flex flex-col">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="font-bold text-lg text-gray-900 group-hover:text-primary transition-colors">{unit.title}</h3>
+                                            </div>
+                                            <p className="text-gray-500 text-sm mb-4 flex items-center">
+                                                <Icon name="branch" className="w-4 h-4 mr-1 text-gray-400" /> {unit.location}
+                                            </p>
+                                            <div className="flex gap-3 text-xs text-gray-600 mb-6">
+                                                <span className="bg-gray-100 px-2 py-1 rounded flex items-center"><Icon name="check" className="w-3 h-3 mr-1"/> Verified</span>
+                                                <span className="bg-gray-100 px-2 py-1 rounded">{unit.bedrooms} Beds</span>
+                                                <span className="bg-gray-100 px-2 py-1 rounded">WiFi Ready</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => setSelectedUnit(unit)}
+                                                className="w-full mt-auto py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-all shadow-md flex justify-center items-center group-hover:bg-primary"
+                                            >
+                                                Book Now
+                                            </button>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="col-span-full py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
+                                        <Icon name="vacant-house" className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                                        <h3 className="text-xl font-bold text-gray-500">No vacancies found</h3>
+                                        <p className="text-gray-400 mt-2">Try adjusting your search terms.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {viewMode === 'Investor' && (
+                    <div className="animate-fade-in">
+                        <div className="relative bg-gradient-to-br from-indigo-900 to-purple-900 text-white overflow-hidden h-[500px] flex items-center">
+                             <div className="absolute inset-0">
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+                                <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+                                <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+                            </div>
+                            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center">
+                                <span className="inline-block py-1 px-3 rounded-full bg-purple-500/30 border border-purple-400/50 text-purple-200 text-xs font-bold mb-4 uppercase tracking-wider backdrop-blur-sm">
+                                    High Yield Real Estate
+                                </span>
+                                <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+                                    Invest in <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400">Concrete Growth.</span>
+                                </h1>
+                                <p className="text-xl text-indigo-100 mb-10 max-w-3xl mx-auto">
+                                    Join Kenya's fastest growing Renovation REITs. Earn up to 30% APY backed by tangible property assets.
+                                </p>
+                                <button onClick={() => document.getElementById('funds-grid')?.scrollIntoView({behavior: 'smooth'})} className="px-10 py-4 bg-white text-indigo-900 font-bold rounded-full hover:bg-gray-100 transition-all shadow-xl text-lg transform hover:-translate-y-1">
+                                    Explore Opportunities
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="funds-grid" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+                            <div className="text-center mb-16">
+                                <h2 className="text-3xl font-bold text-gray-900">Active Investment Funds</h2>
+                                <p className="text-gray-500 mt-2">Curated high-potential renovation projects open for funding.</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                {activeFunds.map(fund => (
+                                    <div key={fund.id} className="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-2xl transition-all duration-300 flex flex-col group h-full">
+                                        <div className="h-56 bg-gray-200 relative">
+                                            {fund.projectPic ? (
+                                                <img src={fund.projectPic} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={fund.name} />
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-gray-400 bg-gray-100">
+                                                    <Icon name="revenue" className="w-12 h-12 opacity-30" />
+                                                </div>
+                                            )}
+                                            <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-indigo-900 shadow-sm">
+                                                {fund.riskProfile} Risk
+                                            </div>
+                                            <div className="absolute bottom-4 right-4 bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-lg">
+                                                {fund.targetApy} APY
+                                            </div>
+                                        </div>
+
+                                        <div className="p-8 flex-grow flex flex-col">
+                                            <h3 className="text-2xl font-bold text-gray-900 mb-2">{fund.name}</h3>
+                                            <p className="text-gray-600 text-sm mb-6 line-clamp-3">{fund.description}</p>
+                                            
+                                            <div className="space-y-4 mb-8">
+                                                <div>
+                                                    <div className="flex justify-between text-sm mb-2 font-medium text-gray-700">
+                                                        <span>Progress</span>
+                                                        <span>{Math.round((fund.capitalRaised/fund.targetCapital)*100)}%</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-100 rounded-full h-2.5">
+                                                        <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-2.5 rounded-full" style={{ width: `${(fund.capitalRaised/fund.targetCapital)*100}%` }}></div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-between text-sm text-gray-500">
+                                                    <span>Raised: <span className="text-gray-900 font-bold">KES {(fund.capitalRaised/1000000).toFixed(1)}M</span></span>
+                                                    <span>Goal: <span className="text-gray-900 font-bold">KES {(fund.targetCapital/1000000).toFixed(1)}M</span></span>
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => setSelectedFund(fund)}
+                                                className="w-full mt-auto py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-colors shadow-md flex justify-center items-center gap-2 group-hover:bg-primary"
+                                            >
+                                                Start Investing <Icon name="chevron-down" className="w-4 h-4 -rotate-90" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {viewMode === 'Landlord' && (
+                    <div className="animate-fade-in">
+                         <div className="relative bg-white overflow-hidden">
+                            <div className="max-w-7xl mx-auto">
+                                <div className="relative z-10 pb-8 bg-white sm:pb-16 md:pb-20 lg:max-w-2xl lg:w-full lg:pb-28 xl:pb-32">
+                                    <main className="mt-10 mx-auto max-w-7xl px-4 sm:mt-12 sm:px-6 md:mt-16 lg:mt-20 lg:px-8 xl:mt-28">
+                                        <div className="sm:text-center lg:text-left">
+                                            <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
+                                                <span className="block xl:inline">Modern Property</span>{' '}
+                                                <span className="block text-primary">Management Simplified.</span>
+                                            </h1>
+                                            <p className="mt-3 text-base text-gray-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
+                                                TaskMe Realty handles tenant screening, rent collection, maintenance, and compliance so you can enjoy passive income without the headache.
+                                            </p>
+                                            <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
+                                                <div className="rounded-md shadow">
+                                                    <button onClick={() => handleOpenCallback('Landlord')} className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-bold rounded-md text-white bg-primary hover:bg-primary-dark md:py-4 md:text-lg md:px-10">
+                                                        List Your Property
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </main>
+                                </div>
+                            </div>
+                            <div className="lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2">
+                                <img
+                                    className="h-56 w-full object-cover sm:h-72 md:h-96 lg:w-full lg:h-full"
+                                    src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1050&q=80"
+                                    alt="Modern building"
+                                />
+                            </div>
+                        </div>
+                        
+                        <div className="bg-gray-50 py-20">
+                             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                                <div className="text-center mb-12">
+                                    <h2 className="text-base text-primary font-semibold tracking-wide uppercase">Why Choose Us</h2>
+                                    <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+                                        Data-Driven Management
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-lg transition-shadow">
+                                        <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
+                                            <Icon name="tenants" className="w-8 h-8" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-gray-800 mb-2">98% Occupancy</h3>
+                                        <p className="text-gray-600">Our marketing reach and agent network ensures your units stay filled.</p>
+                                     </div>
+                                     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-lg transition-shadow">
+                                        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
+                                            <Icon name="payments" className="w-8 h-8" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-gray-800 mb-2">Guaranteed Rent</h3>
+                                        <p className="text-gray-600">Consistent monthly payouts on the 5th, backed by our financial reserves.</p>
+                                     </div>
+                                     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-lg transition-shadow">
+                                        <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-600">
+                                            <Icon name="analytics" className="w-8 h-8" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-gray-800 mb-2">Real-Time Portal</h3>
+                                        <p className="text-gray-600">Track collections, repairs, and financial reports from your phone 24/7.</p>
+                                     </div>
+                                </div>
+                             </div>
+                        </div>
+                    </div>
+                )}
+            </main>
+
+            {/* Footer */}
+            <footer className="bg-white border-t border-gray-200 mt-auto">
+                <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center">
+                    <p className="text-gray-400 text-sm">&copy; 2025 TaskMe Realty. All rights reserved.</p>
+                    <div className="flex space-x-6 mt-4 md:mt-0">
+                         <button className="text-gray-400 hover:text-gray-600 text-sm">Privacy</button>
+                         <button className="text-gray-400 hover:text-gray-600 text-sm">Terms</button>
+                         <button className="text-gray-400 hover:text-gray-600 text-sm">Contact</button>
+                    </div>
                 </div>
             </footer>
+
+            {/* Modals */}
+            {selectedFund && (
+                <InvestmentModal 
+                    fund={selectedFund} 
+                    onClose={() => setSelectedFund(null)} 
+                />
+            )}
+            
+            {selectedUnit && (
+                <BookingModal 
+                    unit={selectedUnit} 
+                    discount={0} 
+                    onClose={() => setSelectedUnit(null)} 
+                />
+            )}
+
+            {isCallbackOpen && (
+                <CallbackModal 
+                    type={callbackType} 
+                    onClose={() => setIsCallbackOpen(false)} 
+                />
+            )}
         </div>
     );
 };

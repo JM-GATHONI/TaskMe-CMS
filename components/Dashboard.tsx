@@ -302,7 +302,7 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie'; data: any; options?: any; 
 
 
 const Dashboard: React.FC = () => {
-    const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate } = useData();
+    const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles } = useData();
     const [searchQuery, setSearchQuery] = useState('');
 
     // --- Helper: Date Logic for "Today", "Week", "Month" Stats ---
@@ -503,56 +503,73 @@ const Dashboard: React.FC = () => {
         { label: 'Partial Payments', color: 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200' },
     ];
 
+    // Helper for widget permission check
+    const canView = (widgetId: string) => {
+        // If current user is undefined (shouldn't happen here), return false
+        if (!currentUser) return false;
+        
+        const roleDef = roles.find(r => r.name === currentUser.role);
+        
+        // If role definition not found (e.g. data sync issue), default to allow for Super Admin, deny others
+        if (!roleDef) return currentUser.role === 'Super Admin';
+        
+        return (roleDef.widgetAccess || []).includes(widgetId);
+    };
+
   return (
     <div className="space-y-8 pb-8">
       {/* Welcome Message */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800">
-          Welcome back <span className="text-primary">Ritch,</span>
-        </h1>
-        <p className="text-lg text-gray-500 mt-1">
-          Here is your portfolio performance overview.
-        </p>
-      </div>
+      {canView('dash_welcome') && (
+        <div>
+            <h1 className="text-3xl font-bold text-gray-800">
+            Welcome back <span className="text-primary">{currentUser?.name.split(' ')[0]},</span>
+            </h1>
+            <p className="text-lg text-gray-500 mt-1">
+            Here is your portfolio performance overview.
+            </p>
+        </div>
+      )}
 
       {/* Search & Filter Bar */}
-      <div className={`${MAJOR_CARD_CLASSES} p-4`}>
-        <div className="relative z-10">
-            <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                <div className="relative flex-grow">
-                    <input
-                    type="text"
-                    placeholder="Search by Tenant ID, Name..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-primary-light focus:border-primary-light"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-                    />
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Icon name="search" className="w-5 h-5 text-gray-400" />
+      {canView('dash_search') && (
+        <div className={`${MAJOR_CARD_CLASSES} p-4`}>
+            <div className="relative z-10">
+                <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                    <div className="relative flex-grow">
+                        <input
+                        type="text"
+                        placeholder="Search by Tenant ID, Name..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-primary-light focus:border-primary-light"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+                        />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Icon name="search" className="w-5 h-5 text-gray-400" />
+                        </div>
                     </div>
-                </div>
-                <button onClick={handleSearch} className="bg-primary text-white px-6 py-2 rounded-lg font-semibold hover:bg-primary-dark transition-colors duration-300 shadow-sm flex items-center justify-center">
-                    Search
-                </button>
-            </div>
-            
-            <div className="flex flex-wrap gap-2">
-                {FILTER_BUTTONS.map(btn => (
-                    <button 
-                        key={btn.label} 
-                        onClick={() => handleQuickFilterClick(btn.label)}
-                        className={`px-3 py-1.5 text-sm font-semibold rounded-full transition-colors duration-200 shadow-sm ${btn.color}`}
-                    >
-                        {btn.label}
+                    <button onClick={handleSearch} className="bg-primary text-white px-6 py-2 rounded-lg font-semibold hover:bg-primary-dark transition-colors duration-300 shadow-sm flex items-center justify-center">
+                        Search
                     </button>
-                ))}
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                    {FILTER_BUTTONS.map(btn => (
+                        <button 
+                            key={btn.label} 
+                            onClick={() => handleQuickFilterClick(btn.label)}
+                            className={`px-3 py-1.5 text-sm font-semibold rounded-full transition-colors duration-200 shadow-sm ${btn.color}`}
+                        >
+                            {btn.label}
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
-      </div>
+      )}
 
       {/* House Status Alerts (New Widget) */}
-      {houseStatusAlerts.length > 0 && (
+      {canView('dash_house_alerts') && houseStatusAlerts.length > 0 && (
           <div className="bg-red-50 border-l-8 border-red-500 p-4 rounded-xl shadow-sm animate-fade-in border-t border-b border-r border-gray-200">
               <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-bold text-red-800 flex items-center">
@@ -576,61 +593,73 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Key Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {keyStats.map(stat => <KeyStatCard key={stat.title} stat={stat} />)}
-      </div>
+      {canView('dash_key_stats') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {keyStats.map(stat => <KeyStatCard key={stat.title} stat={stat} />)}
+        </div>
+      )}
 
       {/* Quick Stats Grid */}
-      <div>
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Quick Stats</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {dynamicQuickStats.map(item => <QuickStatGridCard key={item.title} item={item} />)}
-        </div>
-      </div>
-
-      {/* Financial Health Chart */}
-      <div>
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Financial Health</h2>
-        <div className={`${MAJOR_CARD_CLASSES} p-6`}>
-            <div className="relative z-10">
-                <h3 className="text-lg font-semibold text-gray-700 mb-2 text-center">Monthly Collections vs. Arrears</h3>
-                <Chart type="line" data={COLLECTIONS_VS_ARREARS_CHART_DATA} />
+      {canView('dash_quick_stats') && (
+        <div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Quick Stats</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {dynamicQuickStats.map(item => <QuickStatGridCard key={item.title} item={item} />)}
             </div>
         </div>
-      </div>
+      )}
+
+      {/* Financial Health Chart */}
+      {canView('dash_financial_chart') && (
+        <div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Financial Health</h2>
+            <div className={`${MAJOR_CARD_CLASSES} p-6`}>
+                <div className="relative z-10">
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2 text-center">Monthly Collections vs. Arrears</h3>
+                    <Chart type="line" data={COLLECTIONS_VS_ARREARS_CHART_DATA} />
+                </div>
+            </div>
+        </div>
+      )}
       
       {/* Recent Activities, Upcoming Payments & My Tasks */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Recent Activities */}
-        <div className={`${MAJOR_CARD_CLASSES} p-6 flex flex-col h-full`}>
-          <div className="relative z-10 flex flex-col h-full">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Activities</h2>
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-2 flex-grow">
-                {recentActivities.length > 0 ? (
-                recentActivities.map((item, index) => <RecentActivityItem key={index} item={item} />)
-                ) : (
-                <p className="text-gray-500 text-sm py-4 text-center">No recent activities.</p>
-                )}
+        {canView('dash_recent_activity') && (
+            <div className={`${MAJOR_CARD_CLASSES} p-6 flex flex-col h-full`}>
+            <div className="relative z-10 flex flex-col h-full">
+                <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Activities</h2>
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-2 flex-grow">
+                    {recentActivities.length > 0 ? (
+                    recentActivities.map((item, index) => <RecentActivityItem key={index} item={item} />)
+                    ) : (
+                    <p className="text-gray-500 text-sm py-4 text-center">No recent activities.</p>
+                    )}
+                </div>
             </div>
-          </div>
-        </div>
+            </div>
+        )}
 
         {/* Upcoming Payments */}
-        <div className={`${MAJOR_CARD_CLASSES} p-6 flex flex-col h-full`}>
-          <div className="relative z-10 flex flex-col h-full">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Upcoming Payments</h2>
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-2 flex-grow">
-                {upcomingPayments.length > 0 ? (
-                    upcomingPayments.map((item, index) => <UpcomingPaymentItem key={index} item={item} />)
-                ) : (
-                    <p className="text-gray-500 text-sm py-4 text-center">No upcoming payments due soon.</p>
-                )}
+        {canView('dash_upcoming_payments') && (
+            <div className={`${MAJOR_CARD_CLASSES} p-6 flex flex-col h-full`}>
+            <div className="relative z-10 flex flex-col h-full">
+                <h2 className="text-xl font-semibold text-gray-800 mb-4">Upcoming Payments</h2>
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-2 flex-grow">
+                    {upcomingPayments.length > 0 ? (
+                        upcomingPayments.map((item, index) => <UpcomingPaymentItem key={index} item={item} />)
+                    ) : (
+                        <p className="text-gray-500 text-sm py-4 text-center">No upcoming payments due soon.</p>
+                    )}
+                </div>
             </div>
-          </div>
-        </div>
+            </div>
+        )}
 
         {/* My Tasks */}
-        <MyTasksCard tasks={myTasks} />
+        {canView('dash_my_tasks') && (
+            <MyTasksCard tasks={myTasks} />
+        )}
       </div>
 
     </div>

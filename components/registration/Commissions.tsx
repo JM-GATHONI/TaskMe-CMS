@@ -178,10 +178,6 @@ const Commissions: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <button onClick={handleBack} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
-                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Registration
-            </button>
-            
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Commissions & Fees</h1>

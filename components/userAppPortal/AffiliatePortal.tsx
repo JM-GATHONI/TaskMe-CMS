@@ -40,19 +40,25 @@ const AffiliatePortal: React.FC = () => {
                  <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
                     <Icon name="revenue" className="w-64 h-64 text-white" />
                 </div>
-                <div className="relative z-10">
-                    <h1 className="text-3xl font-bold mb-2">Affiliate Dashboard</h1>
-                    <p className="text-purple-200 mb-6">Track your earnings and grow your network.</p>
-                    
-                    <div className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 inline-flex flex-col sm:flex-row items-center gap-4">
-                        <div className="text-sm font-medium">Your Referral Link:</div>
-                        <div className="bg-black/30 px-3 py-1.5 rounded-lg font-mono text-sm tracking-wide">
-                            https://taskme.re/ref/{affiliate.referralCode}
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-2">Affiliate Dashboard</h1>
+                        <p className="text-purple-200 mb-6">Track your earnings and grow your network.</p>
+                        
+                        <div className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 inline-flex flex-col sm:flex-row items-center gap-4">
+                            <div className="text-sm font-medium">Your Referral Link:</div>
+                            <div className="bg-black/30 px-3 py-1.5 rounded-lg font-mono text-sm tracking-wide">
+                                https://taskme.re/ref/{affiliate.referralCode}
+                            </div>
+                            <button onClick={handleCopy} className="px-4 py-1.5 bg-white text-purple-900 font-bold rounded-lg hover:bg-purple-100 transition-colors text-sm">
+                                {copyText}
+                            </button>
                         </div>
-                        <button onClick={handleCopy} className="px-4 py-1.5 bg-white text-purple-900 font-bold rounded-lg hover:bg-purple-100 transition-colors text-sm">
-                            {copyText}
-                        </button>
                     </div>
+                    
+                    <button onClick={() => window.location.hash = '#/user-app-portal/refer-and-grow'} className="bg-green-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-600 shadow-md flex items-center transition-transform active:scale-95">
+                        <Icon name="communication" className="w-5 h-5 mr-2" /> Advanced Referrals
+                    </button>
                 </div>
             </div>
 

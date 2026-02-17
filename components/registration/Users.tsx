@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
-import { User, StaffProfile, TenantProfile } from '../../types';
+import { User, StaffProfile, TenantProfile, RenovationInvestor, Vendor } from '../../types';
 import Icon from '../Icon';
 import { hashPassword } from '../../utils/security';
 
@@ -14,8 +14,8 @@ interface UnifiedUser {
     phone: string;
     role: string;
     status: string;
-    type: 'Staff' | 'Landlord' | 'Tenant';
-    fullObject: StaffProfile | User | TenantProfile;
+    type: 'Staff' | 'Landlord' | 'Tenant' | 'Investor' | 'Vendor';
+    fullObject: StaffProfile | User | TenantProfile | RenovationInvestor | Vendor;
 }
 
 // Category Configuration
@@ -26,13 +26,6 @@ interface UserCategory {
     color: string;
     icon: string;
 }
-
-const CATEGORIES: UserCategory[] = [
-    { id: 'system', title: 'System Users', roles: ['Super Admin', 'Branch Manager', 'Accountant', 'Assistant Admin'], color: 'bg-blue-500', icon: 'system-user' },
-    { id: 'field', title: 'Field Team', roles: ['Field Agent', 'Caretaker'], color: 'bg-green-500', icon: 'agent' },
-    { id: 'partners', title: 'Partners', roles: ['Landlord', 'Affiliate', 'Contractor'], color: 'bg-purple-500', icon: 'landlords' },
-    { id: 'clients', title: 'Clients', roles: ['Tenant'], color: 'bg-orange-500', icon: 'tenants' },
-];
 
 const ResetPasswordModal: React.FC<{ user: UnifiedUser; onClose: () => void; onSave: (passwordHash: string) => void }> = ({ user, onClose, onSave }) => {
     const [newPassword, setNewPassword] = useState('');
@@ -95,11 +88,14 @@ const ResetPasswordModal: React.FC<{ user: UnifiedUser; onClose: () => void; onS
 
 const UserForm: React.FC<{ 
     existingUser?: UnifiedUser; 
+    category: UserCategory;
     onClose: () => void; 
     onSave: (data: any) => void;
     availableRoles: string[];
-}> = ({ existingUser, onClose, onSave, availableRoles }) => {
-    const [formData, setFormData] = useState({
+    properties: any[];
+    referralOptions: any[];
+}> = ({ existingUser, category, onClose, onSave, availableRoles, properties, referralOptions }) => {
+    const [formData, setFormData] = useState<any>({
         name: existingUser?.name || '',
         username: existingUser?.username || '',
         email: existingUser?.email || '',
@@ -108,7 +104,13 @@ const UserForm: React.FC<{
         kraPin: (existingUser?.fullObject as any)?.kraPin || '',
         role: existingUser?.role || availableRoles[0] || 'Tenant',
         status: existingUser?.status || 'Active',
-        password: '' // Only for creation
+        password: '', // Only for creation
+        
+        // Extended Fields
+        assignedPropertyId: (existingUser?.fullObject as StaffProfile)?.assignedPropertyId || '',
+        referrerId: (existingUser?.fullObject as RenovationInvestor)?.referrerId || '',
+        referrerType: (existingUser?.fullObject as RenovationInvestor)?.referrerType || 'Agent',
+        specialty: (existingUser?.fullObject as Vendor)?.specialty || ''
     });
     const [isSaving, setIsSaving] = useState(false);
 
@@ -130,11 +132,16 @@ const UserForm: React.FC<{
         setIsSaving(false);
     };
 
+    const isCaretaker = formData.role === 'Caretaker' || category.id === 'caretakers';
+    const isInvestor = category.id === 'investors' || formData.role === 'Investor';
+    const isContractor = category.id === 'contractors' || formData.role === 'Contractor';
+    const isAffiliate = category.id === 'affiliates' || formData.role === 'Affiliate';
+
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1500] p-4 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-lg border border-gray-200" onClick={e => e.stopPropagation()}>
+            <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-lg border border-gray-200 overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold text-gray-800">{existingUser ? 'Edit User' : 'Add New User'}</h2>
+                    <h2 className="text-xl font-bold text-gray-800">{existingUser ? 'Edit User' : `Add New ${category.title.slice(0, -1)}`}</h2>
                     <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
                 </div>
                 
@@ -144,10 +151,12 @@ const UserForm: React.FC<{
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name *</label>
                             <input name="name" value={formData.name} onChange={handleChange} placeholder="John Doe" className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" required />
                         </div>
+                        
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Username</label>
                             <input name="username" value={formData.username} onChange={handleChange} placeholder="jdoe" className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
                         </div>
+                        
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
                             <input name="phone" value={formData.phone} onChange={handleChange} placeholder="07..." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" required />
@@ -156,20 +165,94 @@ const UserForm: React.FC<{
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email *</label>
                             <input name="email" value={formData.email} onChange={handleChange} placeholder="john@example.com" className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" required type="email" />
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">ID Number</label>
-                            <input name="idNumber" value={formData.idNumber} onChange={handleChange} placeholder="ID No." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">KRA PIN</label>
-                            <input name="kraPin" value={formData.kraPin} onChange={handleChange} placeholder="A00..." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
-                        </div>
+                        
+                        {/* Specific Fields per Category */}
+                        {isCaretaker && (
+                             <div className="col-span-2 bg-orange-50 p-3 rounded border border-orange-100">
+                                <label className="block text-xs font-bold text-orange-800 uppercase mb-1">Assigned Property</label>
+                                <select 
+                                    name="assignedPropertyId" 
+                                    value={formData.assignedPropertyId} 
+                                    onChange={handleChange} 
+                                    className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-orange-500 outline-none"
+                                >
+                                    <option value="">-- Select Property --</option>
+                                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                                <p className="text-[10px] text-orange-600 mt-1">Caretaker will manage tickets for this property.</p>
+                            </div>
+                        )}
+
+                        {isInvestor && (
+                             <div className="col-span-2 bg-yellow-50 p-3 rounded border border-yellow-100">
+                                <label className="block text-xs font-bold text-yellow-800 uppercase mb-1">Referral / Attachment</label>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                     <select name="referrerType" value={formData.referrerType} onChange={handleChange} className="p-2 border rounded bg-white text-xs">
+                                         <option value="Agent">Agent</option>
+                                         <option value="Landlord">Landlord</option>
+                                         <option value="Tenant">Tenant</option>
+                                         <option value="Affiliate">Affiliate</option>
+                                         <option value="System User">System User</option>
+                                         <option value="Investor">Investor</option>
+                                         <option value="Caretaker">Caretaker</option>
+                                         <option value="Walkin">Walkin</option>
+                                     </select>
+                                     <select 
+                                        name="referrerId" 
+                                        value={formData.referrerId} 
+                                        onChange={handleChange} 
+                                        className="p-2 border rounded bg-white text-xs"
+                                        disabled={formData.referrerType === 'Walkin'}
+                                     >
+                                         <option value="">-- Select Referrer --</option>
+                                         {referralOptions.filter(r => 
+                                             (formData.referrerType === 'Agent' && r.type === 'Staff' && r.role === 'Field Agent') ||
+                                             (formData.referrerType === 'Landlord' && r.type === 'Landlord') ||
+                                             (formData.referrerType === 'Tenant' && r.type === 'Tenant') ||
+                                             (formData.referrerType === 'Affiliate' && r.type === 'Landlord' && r.role === 'Affiliate') ||
+                                             (formData.referrerType === 'System User' && r.type === 'Staff') ||
+                                             (formData.referrerType === 'Investor' && r.type === 'Investor') ||
+                                             (formData.referrerType === 'Caretaker' && r.type === 'Staff' && r.role === 'Caretaker')
+                                         ).map(opt => (
+                                             <option key={opt.id} value={opt.id}>{opt.name}</option>
+                                         ))}
+                                     </select>
+                                </div>
+                                <p className="text-[10px] text-yellow-600">Commissions will be tracked for the selected referrer.</p>
+                            </div>
+                        )}
+
+                        {isContractor && (
+                             <div className="col-span-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Specialty / Service</label>
+                                <input 
+                                    name="specialty" 
+                                    value={formData.specialty} 
+                                    onChange={handleChange} 
+                                    placeholder="e.g. Plumbing, Electrical..." 
+                                    className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" 
+                                />
+                            </div>
+                        )}
+
+                        {!isContractor && (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">ID Number</label>
+                                    <input name="idNumber" value={formData.idNumber} onChange={handleChange} placeholder="ID No." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">KRA PIN</label>
+                                    <input name="kraPin" value={formData.kraPin} onChange={handleChange} placeholder="A00..." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                          <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Role</label>
-                            <select name="role" value={formData.role} onChange={handleChange} className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-primary outline-none">
+                            <select name="role" value={formData.role} onChange={handleChange} className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-primary outline-none" disabled={!!existingUser}>
                                 {availableRoles.map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
                          </div>
@@ -204,10 +287,12 @@ const UserForm: React.FC<{
 
 const Users: React.FC = () => {
     const { 
-        staff, landlords, tenants, roles,
+        staff, landlords, tenants, roles, renovationInvestors, vendors, properties,
         addStaff, updateStaff, deleteStaff,
         addLandlord, updateLandlord, deleteLandlord,
-        addTenant, updateTenant, deleteTenant 
+        addTenant, updateTenant, deleteTenant,
+        addRenovationInvestor, updateRenovationInvestor, deleteRenovationInvestor,
+        addVendor, updateVendor, deleteVendor
     } = useData();
     
     // UI State
@@ -217,8 +302,25 @@ const Users: React.FC = () => {
     const [editUser, setEditUser] = useState<UnifiedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     
+    // Get dynamic system roles from context
+    const systemRoleNames = useMemo(() => {
+        return roles.filter(r => r.isSystem).map(r => r.name);
+    }, [roles]);
+
+    // Construct Categories with dynamic system roles
+    const categories: UserCategory[] = useMemo(() => [
+        { id: 'system', title: 'System Users', roles: systemRoleNames, color: 'bg-blue-500', icon: 'system-user' },
+        { id: 'field', title: 'Field Agents', roles: ['Field Agent'], color: 'bg-green-500', icon: 'agent' },
+        { id: 'caretakers', title: 'Caretakers', roles: ['Caretaker'], color: 'bg-orange-500', icon: 'caretaker' },
+        { id: 'landlords', title: 'Landlords', roles: ['Landlord'], color: 'bg-purple-500', icon: 'landlords' },
+        { id: 'tenants', title: 'Tenants', roles: ['Tenant'], color: 'bg-indigo-500', icon: 'tenants' },
+        { id: 'investors', title: 'Investors', roles: ['Investor'], color: 'bg-yellow-500', icon: 'revenue' },
+        { id: 'affiliates', title: 'Affiliates', roles: ['Affiliate'], color: 'bg-pink-500', icon: 'branch' },
+        { id: 'contractors', title: 'Contractors', roles: ['Contractor'], color: 'bg-gray-500', icon: 'tools' },
+    ], [systemRoleNames]);
+
     // Derived State
-    const activeCategory = CATEGORIES.find(c => c.id === activeCategoryId);
+    const activeCategory = categories.find(c => c.id === activeCategoryId) || categories[0];
 
     // --- AGGREGATE ALL USERS ---
     const allUsers: UnifiedUser[] = useMemo(() => {
@@ -231,9 +333,15 @@ const Users: React.FC = () => {
         const tenantUsers: UnifiedUser[] = tenants.map(t => ({
             id: t.id, name: t.name, username: t.username, email: t.email, phone: t.phone, role: t.role || 'Tenant', status: t.status, type: 'Tenant', fullObject: t
         }));
-        
-        return [...staffUsers, ...landlordUsers, ...tenantUsers];
-    }, [staff, landlords, tenants]);
+        const investors: UnifiedUser[] = renovationInvestors.map(i => ({
+            id: i.id, name: i.name, username: i.username || '', email: i.email, phone: i.phone, role: 'Investor', status: i.status, type: 'Investor', fullObject: i
+        }));
+        const contractors: UnifiedUser[] = vendors.map(v => ({
+            id: v.id, name: v.name, username: v.username || '', email: v.email || '', phone: v.phone || '', role: 'Contractor', status: 'Active', type: 'Vendor', fullObject: v
+        }));
+
+        return [...staffUsers, ...landlordUsers, ...tenantUsers, ...investors, ...contractors];
+    }, [staff, landlords, tenants, renovationInvestors, vendors]);
 
     // Filter Users by Active Category Roles
     const categoryUsers = useMemo(() => {
@@ -253,8 +361,8 @@ const Users: React.FC = () => {
     // --- ACTIONS ---
 
     const handleSaveUser = (data: any) => {
-        const { passwordHash, ...rest } = data;
-        const newId = rest.id || (rest.role === 'Tenant' ? `t-${Date.now()}` : rest.role === 'Landlord' ? `l-${Date.now()}` : `staff-${Date.now()}`);
+        const { passwordHash, assignedPropertyId, referrerId, referrerType, specialty, ...rest } = data;
+        const newId = rest.id || `${activeCategory.id}-${Date.now()}`;
         
         const commonFields = {
             id: newId,
@@ -269,23 +377,56 @@ const Users: React.FC = () => {
 
         if (editUser) {
             // Update logic
-            if (editUser.type === 'Staff') updateStaff(editUser.id, rest);
+            if (editUser.type === 'Staff') updateStaff(editUser.id, { ...rest, assignedPropertyId });
             else if (editUser.type === 'Landlord') updateLandlord(editUser.id, rest);
             else if (editUser.type === 'Tenant') updateTenant(editUser.id, rest);
+            else if (editUser.type === 'Investor') updateRenovationInvestor(editUser.id, { ...rest, referrerId, referrerType });
+            else if (editUser.type === 'Vendor') updateVendor(editUser.id, { ...rest, specialty });
             setEditUser(null);
         } else {
-            // Create Logic based on Role
-            if (rest.role === 'Landlord') {
+            // Create Logic based on Category/Role
+            if (activeCategory.id === 'landlords') {
                 addLandlord({ ...commonFields, role: 'Landlord' } as User);
-            } else if (rest.role === 'Tenant') {
+            } else if (activeCategory.id === 'tenants') {
                 addTenant({ 
                     ...commonFields, 
                     unit: '', rentAmount: 0, onboardingDate: new Date().toISOString().split('T')[0],
                     paymentHistory: [], outstandingBills: [], outstandingFines: [], maintenanceRequests: [] 
                 } as TenantProfile);
+            } else if (activeCategory.id === 'investors') {
+                addRenovationInvestor({
+                    ...commonFields,
+                    joinDate: new Date().toISOString().split('T')[0],
+                    referrerId,
+                    referrerType,
+                    status: 'Active'
+                } as RenovationInvestor);
+            } else if (activeCategory.id === 'contractors') {
+                addVendor({
+                    id: newId,
+                    name: rest.name,
+                    username: rest.username,
+                    specialty: specialty || 'General',
+                    rating: 5,
+                    email: rest.email,
+                    phone: rest.phone,
+                    // Although Vendor doesn't strictly have passwordHash in base type, 
+                    // we allow saving it to enable login as requested.
+                    // @ts-ignore 
+                    passwordHash: passwordHash 
+                } as Vendor);
+            } else if (activeCategory.id === 'affiliates') {
+                addLandlord({ ...commonFields, role: 'Affiliate' } as User); // Reuse User for affiliate login
             } else {
-                // Staff (System Users, Field Team, etc.)
-                addStaff({ ...commonFields, role: rest.role, branch: 'Headquarters', payrollInfo: { baseSalary: 0, nextPaymentDate: '' }, leaveBalance: { annual: 0 } } as StaffProfile);
+                // Staff (System, Field, Caretaker)
+                addStaff({ 
+                    ...commonFields, 
+                    role: rest.role, 
+                    branch: 'Headquarters', 
+                    payrollInfo: { baseSalary: 0, nextPaymentDate: '' }, 
+                    leaveBalance: { annual: 0 },
+                    assignedPropertyId // For Caretakers
+                } as StaffProfile);
             }
         }
         setIsFormVisible(false);
@@ -296,6 +437,8 @@ const Users: React.FC = () => {
         if (resetUser.type === 'Staff') updateStaff(resetUser.id, { passwordHash: hash });
         else if (resetUser.type === 'Landlord') updateLandlord(resetUser.id, { passwordHash: hash });
         else if (resetUser.type === 'Tenant') updateTenant(resetUser.id, { passwordHash: hash });
+        else if (resetUser.type === 'Investor') updateRenovationInvestor(resetUser.id, { passwordHash: hash });
+        else if (resetUser.type === 'Vendor') updateVendor(resetUser.id, { passwordHash: hash } as any);
         
         setResetUser(null);
         alert(`Password for ${resetUser.name} reset successfully.`);
@@ -306,25 +449,23 @@ const Users: React.FC = () => {
             if (user.type === 'Staff') deleteStaff(user.id);
             else if (user.type === 'Landlord') deleteLandlord(user.id);
             else if (user.type === 'Tenant') deleteTenant(user.id);
+            else if (user.type === 'Investor') deleteRenovationInvestor(user.id);
+            else if (user.type === 'Vendor') deleteVendor(user.id);
         }
     };
 
     // Get available roles for the current active category to populate dropdown
     const availableRolesForForm = useMemo(() => {
-        // Also ensure roles exist in system roles context
-        const contextRoleNames = roles.map(r => r.name);
-        // Filter category roles that are defined in system
-        return activeCategory ? activeCategory.roles.filter(r => contextRoleNames.includes(r) || ['Landlord', 'Tenant'].includes(r)) : []; 
-        // Landlord and Tenant might not be in "roles" state if not added yet, but handled as static options
-    }, [activeCategory, roles]);
+        return activeCategory ? activeCategory.roles : []; 
+    }, [activeCategory]);
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-6">
             {/* Header Area */}
             <div className="flex justify-between items-center">
                  <div>
                     <h1 className="text-3xl font-bold text-gray-800">User Management</h1>
-                    <p className="text-lg text-gray-500 mt-1">Organize users by role and access level.</p>
+                    <p className="text-lg text-gray-500 mt-1">Organize users, partners, and field staff.</p>
                  </div>
                  <button onClick={() => window.location.hash = '#/settings/roles-permissions'} className="text-sm font-bold text-primary hover:underline flex items-center">
                     <Icon name="settings" className="w-4 h-4 mr-1" /> Manage Roles & Permissions
@@ -332,8 +473,8 @@ const Users: React.FC = () => {
             </div>
 
             {/* Category Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {CATEGORIES.map(cat => {
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {categories.map(cat => {
                     const count = allUsers.filter(u => cat.roles.includes(u.role)).length;
                     const isActive = activeCategoryId === cat.id;
 
@@ -341,102 +482,126 @@ const Users: React.FC = () => {
                         <div 
                             key={cat.id} 
                             onClick={() => { setActiveCategoryId(cat.id); setSearchQuery(''); }}
-                            className={`p-6 rounded-2xl cursor-pointer transition-all duration-300 border-2 relative overflow-hidden group ${
+                            className={`p-4 rounded-xl cursor-pointer transition-all duration-300 border-2 relative overflow-hidden group ${
                                 isActive ? 'bg-white border-primary shadow-lg transform -translate-y-1' : 'bg-white border-transparent shadow-sm hover:border-gray-200'
                             }`}
                         >
-                            <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity`}>
-                                <Icon name={cat.icon} className={`w-24 h-24 ${isActive ? 'text-primary' : 'text-gray-400'}`} />
+                            <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity`}>
+                                <Icon name={cat.icon} className={`w-16 h-16 ${isActive ? 'text-primary' : 'text-gray-400'}`} />
                             </div>
-                            <div className="relative z-10">
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 text-white shadow-md ${cat.color}`}>
-                                    <Icon name={cat.icon} className="w-6 h-6" />
+                            <div className="relative z-10 flex flex-col items-start">
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 text-white shadow-md ${cat.color}`}>
+                                    <Icon name={cat.icon} className="w-5 h-5" />
                                 </div>
-                                <h3 className="text-lg font-bold text-gray-800">{cat.title}</h3>
-                                <p className="text-gray-500 text-sm mt-1">{count} Users</p>
+                                <h3 className="text-sm font-bold text-gray-800">{cat.title}</h3>
+                                <p className="text-gray-500 text-xs mt-1">{count} Users</p>
                             </div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* List Container */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px] flex flex-col">
-                <div className="p-5 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-100">
-                     <h3 className="font-bold text-gray-700 text-lg flex items-center">
-                        <Icon name="stack" className="w-5 h-5 mr-2 text-gray-400" />
-                        {activeCategory?.title} List
-                     </h3>
-                     <div className="flex gap-3 w-full md:w-auto">
-                         <div className="relative flex-grow md:flex-grow-0 md:w-64">
+            {/* List Container - Redesigned to match image */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="flex flex-col md:flex-row justify-between items-center p-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2 mb-4 md:mb-0">
+                         <Icon name="menu" className="w-5 h-5 text-gray-400" />
+                         <h3 className="font-bold text-gray-700 text-lg">
+                            {activeCategory?.title} List
+                         </h3>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-grow md:w-64">
                              <input 
                                  type="text" 
-                                 className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none transition-shadow"
+                                 className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-primary focus:border-primary outline-none text-sm"
                                  placeholder={`Search ${activeCategory?.title}...`}
                                  value={searchQuery}
                                  onChange={(e) => setSearchQuery(e.target.value)}
                              />
-                             <Icon name="search" className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                         </div>
-                         <button 
+                             <Icon name="search" className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                        </div>
+                        <button 
                             onClick={() => { setEditUser(null); setIsFormVisible(true); }} 
-                            className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg font-bold flex items-center shadow-md transition-transform active:scale-95 whitespace-nowrap"
+                            className="bg-[#9D1F15] hover:bg-[#7A1810] text-white px-4 py-2 rounded text-sm font-bold flex items-center whitespace-nowrap transition-colors"
                         >
-                            <Icon name="plus" className="w-5 h-5 mr-2" /> Add User
+                            <Icon name="plus" className="w-4 h-4 mr-2" /> Add User
                         </button>
-                     </div>
+                    </div>
                 </div>
 
-                <div className="flex-grow overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead className="bg-gray-50">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm text-left">
+                        <thead className="bg-white border-b border-gray-100 text-gray-500 font-bold text-xs uppercase">
                             <tr>
-                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Name</th>
-                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Username</th>
-                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Tel</th>
-                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">Role</th>
-                                <th className="px-6 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-xs">RegDate</th>
-                                <th className="px-6 py-3 text-center font-bold text-gray-500 uppercase tracking-wider text-xs">Active</th>
-                                <th className="px-6 py-3 text-center font-bold text-gray-500 uppercase tracking-wider text-xs">Actions</th>
+                                <th className="px-6 py-4">Name</th>
+                                <th className="px-6 py-4">Username</th>
+                                <th className="px-6 py-4">Tel</th>
+                                <th className="px-6 py-4">Role</th>
+                                <th className="px-6 py-4">RegDate</th>
+                                <th className="px-6 py-4 text-center">Active</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-100">
-                            {filteredUsers.map((user) => (
-                                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-800">{user.name}</div>
-                                        <div className="text-xs text-gray-500">{user.email}</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-gray-700 font-medium">
-                                        {user.username || '-'}
-                                    </td>
-                                    <td className="px-6 py-4 text-gray-600">{user.phone}</td>
-                                    <td className="px-6 py-4 text-gray-600">{user.role}</td>
-                                    <td className="px-6 py-4 text-gray-600">{(user.fullObject as any).dateRegistered || 'N/A'}</td>
-                                     <td className="px-6 py-4 text-center">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                                            user.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                        }`}>
-                                            {user.status === 'Active' ? 'Yes' : 'No'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <div className="flex justify-center gap-2">
-                                            <button onClick={() => { setEditUser(user); setIsFormVisible(true); }} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded flex items-center hover:bg-blue-700 transition-colors">
-                                                <Icon name="settings" className="w-3 h-3 mr-1" /> Edit
-                                            </button>
-                                            <button onClick={() => setResetUser(user)} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-bold rounded flex items-center hover:bg-gray-300 transition-colors">
-                                                <Icon name="keys" className="w-3 h-3 mr-1" /> Set Pwd
-                                            </button>
-                                            <button onClick={() => handleDeleteUser(user)} className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded flex items-center hover:bg-red-700 transition-colors">
-                                                <Icon name="trash" className="w-3 h-3 mr-1" /> Del
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                        <tbody className="divide-y divide-gray-100">
+                            {filteredUsers.map(user => {
+                                const fullObj = user.fullObject as any;
+                                const regDate = fullObj.dateRegistered || fullObj.onboardingDate || fullObj.joinDate || 'N/A';
+                                const isActive = user.status === 'Active';
+
+                                return (
+                                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="font-bold text-gray-800 text-sm uppercase">{user.name}</div>
+                                            <div className="text-xs text-gray-500 lowercase">{user.email}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                            {user.username || '-'}
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                            {user.phone}
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                            {user.role}
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-600">
+                                            {regDate}
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`inline-block px-3 py-1 rounded text-xs font-bold ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                {isActive ? 'Yes' : 'No'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button 
+                                                    onClick={() => { setEditUser(user); setIsFormVisible(true); }}
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
+                                                >
+                                                    <Icon name="settings" className="w-3 h-3 mr-1" /> Edit
+                                                </button>
+                                                
+                                                <button 
+                                                    onClick={() => setResetUser(user)}
+                                                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
+                                                >
+                                                    <Icon name="keys" className="w-3 h-3 mr-1" /> Set Pwd
+                                                </button>
+
+                                                <button 
+                                                    onClick={() => handleDeleteUser(user)}
+                                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
+                                                >
+                                                    <Icon name="trash" className="w-3 h-3 mr-1" /> Del
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             {filteredUsers.length === 0 && (
-                                <tr><td colSpan={7} className="text-center py-16 text-gray-400 bg-gray-50/50">No users found in {activeCategory?.title}.</td></tr>
+                                <tr><td colSpan={7} className="text-center py-16 text-gray-400">No users found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -444,12 +609,15 @@ const Users: React.FC = () => {
             </div>
 
             {/* Modals */}
-            {isFormVisible && (
+            {isFormVisible && activeCategory && (
                 <UserForm 
                     existingUser={editUser || undefined} 
+                    category={activeCategory}
                     onClose={() => { setIsFormVisible(false); setEditUser(null); }} 
                     onSave={handleSaveUser} 
                     availableRoles={availableRolesForForm}
+                    properties={properties}
+                    referralOptions={allUsers}
                 />
             )}
             {resetUser && <ResetPasswordModal user={resetUser} onClose={() => setResetUser(null)} onSave={handleResetPassword} />}

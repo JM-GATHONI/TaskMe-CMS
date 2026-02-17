@@ -69,17 +69,6 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
     });
   };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      try {
-        const resizedLogo = await resizeImage(e.target.files[0], 150, 150);
-        updateSystemSettings({ logo: resizedLogo });
-      } catch (error) {
-        console.error("Error processing logo", error);
-      }
-    }
-  };
-
   const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       try {
@@ -105,16 +94,15 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
       {/* 1. Top Band: Primary Color */}
       <div className="bg-primary h-16 flex items-center justify-between px-4 md:px-6 relative z-20">
         
-        {/* Left: Company Logo */}
+        {/* Left: Company Logo (Display Only) */}
         <div className="h-full flex items-center py-2">
-            <label className="cursor-pointer group relative h-12 w-12 bg-white rounded-lg flex items-center justify-center shadow-md hover:bg-gray-50 transition-colors overflow-hidden border-2 border-white" title="Upload Company Logo">
-                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+            <div className="h-12 w-12 bg-white rounded-lg flex items-center justify-center shadow-md overflow-hidden border-2 border-white">
                 {logo ? (
                     <img src={logo} alt="Logo" className="h-full w-full object-contain p-1" />
                 ) : (
                     <Icon name="branch" className="w-6 h-6 text-primary" />
                 )}
-            </label>
+            </div>
         </div>
 
         {/* Center: Title (White Text) */}

@@ -1,44 +1,33 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
-import { Property, Unit, User, Task, Bill, Fund, Investment, TenantProfile } from '../../types';
+import { Property, Unit, User, Task, Bill, Fund, Investment, TenantProfile, LandlordApplication } from '../../types';
 import Icon from '../Icon';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, Filler } from 'chart.js';
+import { Line, Bar } from 'react-chartjs-2';
+import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
 
-// --- HELPER COMPONENTS (Ported from ActiveLandlords) ---
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
-const Chart: React.FC<{ type: 'line' | 'bar'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const chartRef = useRef<any>(null);
+// --- Helper Components ---
 
-    useEffect(() => {
-        if (!canvasRef.current || !(window as any).Chart) return;
-        if (chartRef.current) chartRef.current.destroy();
-
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-            chartRef.current = new (window as any).Chart(ctx, {
-                type,
-                data,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    ...options
-                },
-            });
-        }
-        return () => chartRef.current?.destroy();
-    }, [type, data, options]);
-
-    return <div className={`relative ${height}`}><canvas ref={canvasRef}></canvas></div>;
+const ChartContainer: React.FC<{ type: 'line' | 'bar'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
+    return (
+        <div className={`relative ${height} w-full`}>
+            {type === 'line' ? <Line data={data} options={options} /> : <Bar data={data} options={options} />}
+        </div>
+    );
 };
 
-const MetricCard: React.FC<{ title: string; value: string; subtext?: string; color: 'blue' | 'green' | 'red' | 'orange' | 'indigo' }> = ({ title, value, subtext, color }) => {
+const MetricCard: React.FC<{ title: string; value: string; subtext?: string; color: 'blue' | 'green' | 'red' | 'orange' | 'indigo' | 'purple' }> = ({ title, value, subtext, color }) => {
     const colors = {
         blue: 'bg-blue-50 text-blue-700 border-blue-200',
         green: 'bg-green-50 text-green-700 border-green-200',
         red: 'bg-red-50 text-red-700 border-red-200',
         orange: 'bg-orange-50 text-orange-700 border-orange-200',
         indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        purple: 'bg-purple-50 text-purple-700 border-purple-200',
     };
     return (
         <div className={`p-4 rounded-xl border ${colors[color]} flex flex-col justify-between h-full transition-transform hover:-translate-y-1 shadow-sm`}>
@@ -51,20 +40,61 @@ const MetricCard: React.FC<{ title: string; value: string; subtext?: string; col
     );
 };
 
-const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: boolean }> = ({ unit, tenant, isNewTenant }) => {
+const AIInsightCard: React.FC<{ title: string; description: string; type: 'success' | 'warning' | 'info'; icon: string }> = ({ title, description, type, icon }) => {
+    const styles = {
+        success: 'bg-green-50 border-green-200 text-green-800',
+        warning: 'bg-orange-50 border-orange-200 text-orange-800',
+        info: 'bg-blue-50 border-blue-200 text-blue-800'
+    };
+
+    return (
+        <div className={`p-4 rounded-xl border ${styles[type]} shadow-sm flex items-start gap-3 bg-white`}>
+            <div className="mt-1 flex-shrink-0 p-1.5 rounded-lg bg-white/50">
+                 <Icon name={icon} className="w-5 h-5" />
+            </div>
+            <div>
+                <h4 className="font-bold text-sm mb-1">{title}</h4>
+                <p className="text-xs opacity-90 leading-relaxed">{description}</p>
+            </div>
+        </div>
+    );
+};
+
+const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: boolean; onManage?: () => void }> = ({ unit, tenant, isNewTenant, onManage }) => {
     const statusColor = useMemo(() => {
-        if (unit.status === 'Vacant') return 'bg-red-50 border-red-200 text-red-800';
+        // Unit status priorities
+        if (unit.status === 'Unhabitable') return 'bg-gray-800 border-gray-900 text-white';
+        if (unit.status === 'Distressed') return 'bg-purple-50 border-purple-200 text-purple-800';
         if (unit.status === 'Under Maintenance') return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+        if (unit.status === 'Vacant') return 'bg-red-50 border-red-200 text-red-800';
+        
+        // Tenant statuses
+        if (tenant?.houseStatus?.includes('Distressed')) return 'bg-purple-50 border-purple-200 text-purple-800';
+        if (tenant?.houseStatus?.includes('Under Maintenance')) return 'bg-orange-50 border-orange-200 text-orange-800';
+
         if (tenant?.status === 'Notice') return 'bg-orange-50 border-orange-200 text-orange-800';
         if (tenant?.status === 'Overdue') return 'bg-red-50 border-red-200 text-red-900';
         return 'bg-green-50 border-green-200 text-green-800';
     }, [unit.status, tenant]);
 
+    const handleClick = () => {
+        if (tenant) {
+            // Landlords can view tenant details but we route carefully
+            // In landlord portal context, we might not want full tenant drill down or just basic info
+            // Disabling drill down for now based on "landlord should not be able to change status" implication of restricted access
+        } else if (onManage) {
+            onManage();
+        }
+    };
+
     return (
-        <div className={`p-3 rounded-lg border ${statusColor} flex flex-col justify-between h-28 text-xs relative group cursor-pointer transition-all hover:shadow-md overflow-hidden`} onClick={() => tenant ? window.location.hash = `#/tenants/active-tenants?tenantId=${tenant.id}` : null}>
+        <div 
+            className={`p-3 rounded-lg border ${statusColor} flex flex-col justify-between h-28 text-xs relative group cursor-default transition-all hover:shadow-md overflow-hidden`} 
+            onClick={handleClick}
+        >
             <div className="flex justify-between items-start">
                 <span className="font-bold text-lg">{unit.unitNumber}</span>
-                <span className="opacity-70 bg-white/50 px-1.5 py-0.5 rounded">{unit.bedrooms}BR</span>
+                <span className="opacity-70 bg-white/20 px-1.5 py-0.5 rounded">{unit.bedrooms}BR</span>
             </div>
            
             <div className="mt-1">
@@ -72,13 +102,13 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
                     <>
                         <p className="font-semibold truncate text-sm" title={tenant.name}>{tenant.name}</p>
                         {isNewTenant && (
-                            <div className="inline-block bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded mt-1 font-bold uppercase shadow-sm">
-                                New
+                            <div className="inline-block bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded mt-1 font-bold uppercase shadow-sm animate-pulse">
+                                New Tenant
                             </div>
                         )}
                     </>
                 ) : (
-                    <span className="italic opacity-60 text-sm">{unit.status}</span>
+                    <span className="italic opacity-80 text-sm font-semibold">{unit.status}</span>
                 )}
             </div>
 
@@ -91,6 +121,12 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
                 )}
             </div>
 
+            {/* Badges */}
+            {(!tenant && unit.status !== 'Occupied' && unit.status !== 'Vacant') && (
+                <div className="absolute top-0 right-0 bg-gray-900 text-white text-[9px] px-1.5 py-0.5 rounded-bl shadow-sm font-bold opacity-80">
+                    {unit.status.toUpperCase()}
+                </div>
+            )}
             {tenant?.status === 'Notice' && (
                 <div className="absolute top-0 right-0 bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded-bl shadow-sm font-bold">
                     VACATING
@@ -105,7 +141,7 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
     );
 };
 
-// --- MODALS ---
+// --- Modals ---
 
 const IncomeStatementModal: React.FC<{ 
     data: any; 
@@ -204,8 +240,7 @@ const IncomeStatementModal: React.FC<{
         </div>
     );
 };
-
-const NewRequestModal: React.FC<{ 
+export const NewRequestModal: React.FC<{ 
     type: 'General' | 'Maintenance' | 'Eviction';
     landlord: User;
     onClose: () => void;
@@ -245,8 +280,7 @@ const NewRequestModal: React.FC<{
         </div>
     );
 };
-
-const LandlordInvestModal: React.FC<{ 
+export const LandlordInvestModal: React.FC<{ 
     fund: Fund; 
     landlordName: string;
     onClose: () => void; 
@@ -318,25 +352,47 @@ const LandlordInvestModal: React.FC<{
 // --- MAIN COMPONENT ---
 
 const LandlordsPortal: React.FC = () => {
-    const { landlords, properties, tenants, tasks, deductionRules, bills, funds, addInvestment, rfTransactions, investments } = useData();
+    const { landlords, properties, tenants, tasks, deductionRules, bills, addInvestment, currentUser, funds, rfTransactions, investments } = useData();
     
     // Tab State
     const [activeTab, setActiveTab] = useState<'dashboard' | 'properties' | 'financials' | 'requests' | 'growth'>('dashboard');
+    const [financialView, setFinancialView] = useState<'summary' | 'revenue'>('summary');
     const [financialPeriod, setFinancialPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [selectedDayFilter, setSelectedDayFilter] = useState<number>(30); // Default to end of month
     
-    // Modals
+    const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
+    const [selectedInvestFund, setSelectedInvestFund] = useState<Fund | null>(null);
+
     const [isStatementOpen, setIsStatementOpen] = useState(false);
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
     const [requestType, setRequestType] = useState<'General' | 'Maintenance' | 'Eviction'>('General');
-    const [selectedInvestFund, setSelectedInvestFund] = useState<Fund | null>(null);
 
-    // Multi-Select Properties State
-    const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
-
-    // 1. Identify Current Landlord (Simulation)
+    // 1. Identify Current Landlord (Use Logged In User)
     const currentLandlord = useMemo(() => {
-        return landlords.find(l => l.name === 'Peter Owner') || landlords[0];
-    }, [landlords]);
+        if (currentUser && (currentUser.role === 'Landlord' || currentUser.role === 'Landlord (Individual)' || currentUser.role === 'Landlord (Corporate)')) {
+            return currentUser as User;
+        }
+        // Fallback for demo if no landlord logged in (safety)
+        return landlords[0]; 
+    }, [currentUser, landlords]);
+
+    // Handle Deep Linking / Routing based on Hash
+    useEffect(() => {
+        const hash = window.location.hash;
+        if (hash.endsWith('/properties')) setActiveTab('properties');
+        else if (hash.endsWith('/financials')) setActiveTab('financials');
+        else if (hash.endsWith('/requests')) setActiveTab('requests');
+        else if (hash.endsWith('/growth')) setActiveTab('growth');
+        else setActiveTab('dashboard'); 
+    }, []);
+
+    const navigateToTab = (tab: string) => {
+        // Reset sub-views when changing main tabs
+        if (tab !== 'financials') setFinancialView('summary');
+        
+        window.location.hash = `#/user-app-portal/landlords-portal/${tab === 'dashboard' ? '' : tab}`;
+        setActiveTab(tab as any);
+    };
 
     // 2. Filter Data Context
     const allLandlordProperties = useMemo(() => properties.filter(p => p.landlordId === currentLandlord?.id), [properties, currentLandlord]);
@@ -349,28 +405,7 @@ const LandlordsPortal: React.FC = () => {
     const myTenants = useMemo(() => tenants.filter(t => myProperties.some(p => p.id === t.propertyId)), [tenants, myProperties]);
     const myTasks = useMemo(() => tasks.filter(t => myProperties.some(p => p.name === t.property)), [tasks, myProperties]);
 
-    // 3. Invest & Earn Data
-    const referralEarnings = useMemo(() => {
-        return rfTransactions.filter(tx => 
-            tx.type === 'Referral Commission' && 
-            tx.partyName === currentLandlord?.name
-        ).reduce((sum, tx) => sum + tx.amount, 0);
-    }, [rfTransactions, currentLandlord]);
-
-    const myActiveInvestments = useMemo(() => {
-        // Mock matching investments by investor name usually, but for demo we filter by hardcoded ID or assume link
-        // Here assuming we fetch by landlord ID match in a real backend, or simulating via name
-        return investments.filter(inv => inv.status === 'Active' /* && inv.investorId === currentLandlord.id */);
-    }, [investments]);
-
-    const activeInvestmentTotal = myActiveInvestments.reduce((sum, inv) => sum + inv.amount, 0);
-
-    const commissionHistory = useMemo(() => {
-        return rfTransactions.filter(tx => tx.type === 'Referral Commission' && tx.partyName === currentLandlord?.name);
-    }, [rfTransactions, currentLandlord]);
-
-
-    // 3. Calculate Financials (Same logic as ActiveLandlords)
+    // 3. Calculate Financials
     const financials = useMemo(() => {
         const grossRevenueMonth = myTenants.reduce((sum, t) => sum + (t.status !== 'Overdue' ? (t.rentAmount || 0) : 0), 0);
         const allTimeRevenue = grossRevenueMonth * 12; // Mock projection
@@ -387,13 +422,34 @@ const LandlordsPortal: React.FC = () => {
 
         // Rule Deductions
         let ruleDeductionsTotal = 0;
-        deductionRules.filter(r => 
+        const activeRules = deductionRules.filter(r => 
             r.status === 'Active' &&
-            (r.applicability === 'Global' || (r.applicability === 'Specific Landlord' && r.targetId === currentLandlord?.id) || (r.applicability === 'Specific Property' && myProperties.some(p => p.id === r.targetId)))
-        ).forEach(r => {
-            let amount = r.type === 'Fixed' ? r.value : (grossRevenueMonth * (r.value / 100));
+            (r.applicability === 'Global' || 
+            (r.applicability === 'Specific Landlord' && r.targetId === currentLandlord?.id) ||
+            (r.applicability === 'Specific Property' && myProperties.some(p => p.id === r.targetId)))
+        );
+
+        activeRules.forEach(r => {
+            let amount = 0;
+            if (r.type === 'Fixed') {
+                amount = r.value;
+            } else {
+                if (r.applicability === 'Specific Property') {
+                    const prop = myProperties.find(p => p.id === r.targetId);
+                    if (prop) {
+                        const propRevenue = myTenants.filter(t => t.propertyId === prop.id && t.status !== 'Overdue').reduce((s, t) => s + (t.rentAmount || 0), 0);
+                        amount = (propRevenue * (r.value / 100));
+                    }
+                } else {
+                    amount = (grossRevenueMonth * (r.value / 100));
+                }
+            }
             ruleDeductionsTotal += amount;
-            detailedDeductions.push({ category: 'Management & Rules', description: r.name, amount });
+            detailedDeductions.push({
+                category: 'Management & Rules',
+                description: r.name,
+                amount: amount
+            });
         });
 
         // Bills
@@ -411,7 +467,20 @@ const LandlordsPortal: React.FC = () => {
 
         const totalDeductions = ruleDeductionsTotal + billDeductionsTotal + maintenanceDeductionsTotal + placementFeeDeduction;
        
-        return { grossRevenueMonth, unpaidRevenue, monthlyDeductions: totalDeductions, netIncome: grossRevenueMonth - totalDeductions, detailedDeductions };
+        return { 
+            grossRevenueMonth, 
+            allTimeRevenue, 
+            unpaidRevenue, 
+            ruleDeductions: ruleDeductionsTotal,
+            billDeductions: billDeductionsTotal,
+            maintenanceDeductions: maintenanceDeductionsTotal,
+            placementFeeDeduction,
+            newTenants,
+            monthlyDeductions: totalDeductions, 
+            netIncome: grossRevenueMonth - totalDeductions,
+            activeRules,
+            detailedDeductions
+        };
     }, [myTenants, myProperties, deductionRules, bills, myTasks, financialPeriod, currentLandlord]);
 
     // Occupancy
@@ -420,12 +489,72 @@ const LandlordsPortal: React.FC = () => {
     const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
     const vacantCount = totalUnits - occupiedUnits;
 
-    // Payment Performance Chart Data
-    const collectionData = {
-        labels: ['1st', '5th', '10th', '15th', '20th', '25th', '30th'],
+    // Collection Rate
+    const collectionStats = useMemo(() => {
+        const expected = myTenants
+            .filter(t => t.status !== 'Vacated' && t.status !== 'Evicted')
+            .reduce((sum, t) => sum + (t.rentAmount || 0), 0);
+        
+        const collected = myTenants.reduce((sum, t) => {
+            return sum + t.paymentHistory
+                .filter(p => p.date.startsWith(financialPeriod))
+                .reduce((s, p) => s + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
+        }, 0);
+
+        const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+        const health = Math.round((occupancyRate * 0.5) + (rate * 0.5));
+        
+        return { expected, collected, rate, health };
+    }, [myTenants, financialPeriod, occupancyRate]);
+
+    // Payment Performance Graph Data Logic
+    const paymentPerformanceLogic = useMemo(() => {
+        const days = [1, 5, 10, 15, 20, 25, 30];
+        const currentMonthPayments = myTenants.flatMap(t => t.paymentHistory.filter(p => p.date.startsWith(financialPeriod)).map(p => ({
+             ...p,
+             tenantName: t.name,
+             unit: t.unit,
+             amountVal: parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0,
+             day: parseInt(p.date.split('-')[2])
+        }))).sort((a,b) => b.day - a.day);
+
+        // Fallback for demo graph visual
+        const useMockData = currentMonthPayments.length === 0;
+
+        const graphData = days.map(day => {
+             if (useMockData) {
+                 let pct = 0;
+                 if (day === 1) pct = 5;
+                 else if (day === 5) pct = 30;
+                 else if (day === 10) pct = 55;
+                 else if (day === 15) pct = 70;
+                 else if (day === 20) pct = 80;
+                 else if (day === 25) pct = 85;
+                 else if (day === 30) pct = collectionStats.rate > 0 ? collectionStats.rate : 89;
+                 return { day, percentage: pct };
+            } else {
+                 const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
+                 const percentage = collectionStats.expected > 0 ? Math.round((collectedUntilDay / collectionStats.expected) * 100) : 0;
+                 return { day, percentage };
+            }
+        });
+
+        const tablePayments = useMockData 
+            ? myTenants.slice(0, 6).map(t => ({
+                tenantName: t.name, unit: t.unit, amount: `KES ${t.rentAmount.toLocaleString()}`, date: `${financialPeriod}-${selectedDayFilter < 10 ? '0'+selectedDayFilter : selectedDayFilter}`
+              }))
+            : currentMonthPayments.filter(p => p.day <= selectedDayFilter);
+
+        const currentBucket = graphData.find(d => d.day === selectedDayFilter) || graphData[graphData.length-1];
+
+        return { graphData, tablePayments, currentPercentage: currentBucket.percentage };
+    }, [myTenants, financialPeriod, collectionStats, selectedDayFilter]);
+
+    const paymentTrendData = {
+        labels: paymentPerformanceLogic.graphData.map(d => `${d.day}${d.day === 1 ? 'st' : d.day === 2 ? 'nd' : 'th'}`),
         datasets: [{
             label: 'Collection %',
-            data: [10, 45, 60, 75, 80, 85, 92],
+            data: paymentPerformanceLogic.graphData.map(d => d.percentage),
             borderColor: '#10b981',
             backgroundColor: 'rgba(16, 185, 129, 0.1)',
             fill: true,
@@ -433,42 +562,102 @@ const LandlordsPortal: React.FC = () => {
         }]
     };
 
-    // Group units for Property View
+    // Alerts Logic
+    const alerts = useMemo(() => {
+        const list = [];
+        if (vacantCount > 0) {
+            list.push({ 
+                type: 'critical', 
+                title: `${vacantCount} Vacant Units`,
+                text: `Action required to fill vacancies in ${myProperties.filter(p => p.units.some(u => u.status === 'Vacant')).map(p => p.name).join(', ')}.` 
+            });
+        }
+        if (financials.unpaidRevenue > 0) {
+            list.push({ 
+                type: 'warning', 
+                title: 'Collections Alert',
+                text: `KES ${financials.unpaidRevenue.toLocaleString()} outstanding from ${myTenants.filter(t => t.status === 'Overdue').length} tenants.` 
+            });
+        }
+        
+        list.push({ 
+            type: 'info', 
+            title: 'Performance',
+            text: 'Revenue is stable compared to last month.' 
+        });
+        
+        return list;
+    }, [vacantCount, financials.unpaidRevenue, myProperties, myTenants]);
+
+
+    // Group units by property and floor
     const propertyLayouts = useMemo(() => {
         return myProperties.map(prop => {
-            const floors: Record<number, Unit[]> = {};
-            if (prop.floors) { for(let i=0; i<prop.floors; i++) floors[i] = []; }
+            const unitMap: Record<number, Unit[]> = {};
+            if (prop.floors) {
+                for(let i=0; i<prop.floors; i++) unitMap[i] = [];
+            }
             prop.units.forEach(u => {
                 const floorNum = u.floor !== undefined ? u.floor : 0;
-                if (!floors[floorNum]) floors[floorNum] = [];
-                floors[floorNum].push(u);
+                if (!unitMap[floorNum]) unitMap[floorNum] = [];
+                unitMap[floorNum].push(u);
             });
             
-            // Calculate Prop Specific Stats
             const propTenants = tenants.filter(t => t.propertyId === prop.id);
             const newTenantsCount = propTenants.filter(t => new Date(t.onboardingDate) >= new Date(new Date().setDate(new Date().getDate() - 30))).length;
             const arrearsCount = propTenants.filter(t => t.status === 'Overdue').length;
+            const distressedCount = propTenants.filter(t => t.houseStatus?.includes('Distressed')).length;
+            const maintenanceCount = propTenants.filter(t => t.houseStatus?.includes('Under Maintenance')).length;
 
-            return { ...prop, floors, newTenantsCount, arrearsCount };
+            return { ...prop, unitMap, newTenantsCount, arrearsCount, distressedCount, maintenanceCount };
         });
     }, [myProperties, tenants]);
+
+    // Invest & Earn Data
+    const referralEarnings = useMemo(() => {
+        return rfTransactions.filter(tx => 
+            tx.type === 'Referral Commission' && 
+            tx.partyName === currentLandlord?.name
+        ).reduce((sum, tx) => sum + tx.amount, 0);
+    }, [rfTransactions, currentLandlord]);
+
+    const myActiveInvestments = useMemo(() => {
+        return investments.filter(inv => inv.status === 'Active');
+    }, [investments]);
+
+    const activeInvestmentTotal = myActiveInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+
+    const commissionHistory = useMemo(() => {
+        return rfTransactions.filter(tx => tx.type === 'Referral Commission' && tx.partyName === currentLandlord?.name);
+    }, [rfTransactions, currentLandlord]);
 
     // Referrals
     const referralLinkAgency = `https://taskme.re/join/landlord?ref=${currentLandlord?.id}`;
     const referralLinkInvestor = `https://taskme.re/invest?ref=${currentLandlord?.id}`;
 
     const handleCopy = (text: string) => { navigator.clipboard.writeText(text); alert("Link copied to clipboard!"); };
+    const handleShare = (platform: string, link: string) => { alert(`Opening ${platform} to share: ${link}`); };
 
-    const handleShare = (platform: string, link: string) => {
-        alert(`Opening ${platform} to share: ${link}`);
+    const handleDownloadStatement = (type: 'Revenue' | 'Income') => {
+        if (type === 'Income') {
+            setIsStatementOpen(true);
+        } else {
+            const data = myTenants.map(t => ({
+                Tenant: t.name,
+                Property: t.propertyName,
+                Unit: t.unit,
+                Rent: t.rentAmount,
+                Status: t.status,
+                New_Tenant: t.onboardingDate.startsWith(financialPeriod) ? 'Yes' : 'No',
+                Date: new Date().toLocaleDateString()
+            }));
+            exportToCSV(data, `${currentLandlord.name}_Revenue_Report`);
+        }
     };
 
-    const handleInvestmentConfirm = (amount: number) => {
-        if (selectedInvestFund && currentLandlord) {
-            const newInv: Investment = { id: `inv-${Date.now()}`, fundId: selectedInvestFund.id, fundName: selectedInvestFund.name, amount: amount, date: new Date().toISOString().split('T')[0], strategy: 'Monthly Payout', status: 'Active', accruedInterest: 0 };
-            addInvestment(newInv);
-            setSelectedInvestFund(null);
-        }
+    const handleNewRequest = (type: 'General' | 'Maintenance' | 'Eviction') => {
+        setRequestType(type);
+        setIsRequestModalOpen(true);
     };
 
     const submitRequest = (req: any) => {
@@ -482,450 +671,744 @@ const LandlordsPortal: React.FC = () => {
         );
     };
 
+    const handleInvestmentConfirm = (amount: number) => {
+        if (selectedInvestFund && currentLandlord) {
+            const newInv: Investment = { id: `inv-${Date.now()}`, fundId: selectedInvestFund.id, fundName: selectedInvestFund.name, amount: amount, date: new Date().toISOString().split('T')[0], strategy: 'Monthly Payout', status: 'Active', accruedInterest: 0 };
+            addInvestment(newInv);
+            setSelectedInvestFund(null);
+            alert(`Investment of KES ${amount.toLocaleString()} confirmed.`);
+        }
+    };
+
+    // Calculate arrears count for AI card usage
+    const arrearsCount = myTenants.filter(t => t.status === 'Overdue').length;
+    const arrearsAmount = myTenants.filter(t => t.status === 'Overdue').reduce((sum, t) => sum + t.rentAmount, 0);
+
+    // Task Data for Doughnut Chart
+    const taskData = {
+        labels: ['Completed', 'Pending', 'In Progress'],
+        datasets: [{
+            data: [
+                myTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length,
+                myTasks.filter(t => t.status === 'Issued' || t.status === 'Pending').length,
+                myTasks.filter(t => t.status === 'In Progress').length
+            ],
+            backgroundColor: ['#10b981', '#f59e0b', '#3b82f6'],
+            borderWidth: 0
+        }]
+    };
+
     if (!currentLandlord) return <div className="p-8 text-center text-gray-500">Loading Profile...</div>;
 
     return (
-        <div className="space-y-8">
+        <div className="flex flex-col min-h-screen bg-gray-50 pb-20"> 
+            
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white shadow-sm sticky top-0 z-40">
                 <div className="flex items-center gap-4">
-                    <div className="h-14 w-14 rounded-full bg-primary text-white flex items-center justify-center text-xl font-bold border-2 border-white shadow-sm">
-                        {currentLandlord.name.charAt(0)}
+                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary border-2 border-white shadow-sm">
+                        {currentLandlord.name.split(' ').map(n => n[0]).join('')}
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800">{currentLandlord.name}</h1>
-                        <p className="text-sm text-gray-500">Landlord Portal • {myProperties.length} Properties</p>
+                        <h1 className="text-2xl font-bold text-gray-900">{currentLandlord.name}</h1>
+                        <p className="text-sm text-gray-500 flex items-center gap-2">
+                            <Icon name="mail" className="w-3 h-3" /> {currentLandlord.email}
+                            <span className="text-gray-300">|</span>
+                            <Icon name="communication" className="w-3 h-3" /> {currentLandlord.phone}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-bold rounded border border-blue-100">
+                                {myProperties.length} Properties
+                            </span>
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-bold rounded border border-purple-100">
+                                {totalUnits} Units
+                            </span>
+                        </div>
                     </div>
                 </div>
-                <div className="bg-gray-100 p-1 rounded-lg flex overflow-x-auto">
+            </div>
+
+            {/* Navigation Bar */}
+            <div className="px-6 bg-white border-b border-gray-200 sticky top-[88px] z-30 shadow-sm">
+                <div className="flex space-x-6 overflow-x-auto">
                     {['dashboard', 'properties', 'financials', 'requests', 'growth'].map(tab => (
                         <button
                             key={tab}
-                            onClick={() => setActiveTab(tab as any)}
-                            className={`px-4 py-2 rounded-md text-sm font-bold capitalize transition-colors whitespace-nowrap ${
-                                activeTab === tab ? 'bg-white text-primary shadow' : 'text-gray-600 hover:text-gray-900'
+                            onClick={() => navigateToTab(tab)}
+                            className={`py-4 px-2 text-sm font-medium border-b-2 transition-colors capitalize whitespace-nowrap ${
+                                activeTab === tab ? 'border-primary text-primary font-bold' : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                         >
-                            {tab === 'growth' ? 'Invest & Earn' : tab === 'properties' ? 'My Properties' : tab}
+                            {tab === 'growth' ? 'Invest & Earn' : tab === 'properties' ? 'Portfolio' : tab}
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* DASHBOARD TAB */}
-            {activeTab === 'dashboard' && (
-                <div className="space-y-6 animate-fade-in">
-                    {/* KPI Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <MetricCard title="Net Payout (Est)" value={`KES ${(financials.netIncome).toLocaleString()}`} subtext="Pending Disbursement" color="green" />
-                        <MetricCard title="Unpaid Rent" value={`KES ${(financials.unpaidRevenue).toLocaleString()}`} subtext="Arrears" color="red" />
-                        <MetricCard title="Occupancy" value={`${occupancyRate}%`} subtext={`${occupiedUnits}/${totalUnits} Units`} color="blue" />
-                        <MetricCard title="Vacant" value={vacantCount.toString()} subtext="Ready to Let" color="orange" />
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Collection Chart */}
-                        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                            <h3 className="text-lg font-bold text-gray-800 mb-4">Collection Performance</h3>
-                            <Chart type="line" data={collectionData} height="h-64" />
-                        </div>
-
-                        {/* Alerts & Quick Actions */}
-                        <div className="space-y-6">
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4">Alerts</h3>
-                                <div className="space-y-3">
-                                    {vacantCount > 0 && (
-                                        <div className="p-3 bg-red-50 text-red-800 rounded border border-red-100 text-sm flex items-start">
-                                            <Icon name="vacant-house" className="w-4 h-4 mr-2 mt-0.5" />
-                                            <span>{vacantCount} Vacant Units require marketing.</span>
-                                        </div>
-                                    )}
-                                    {financials.unpaidRevenue > 0 && (
-                                        <div className="p-3 bg-orange-50 text-orange-800 rounded border border-orange-100 text-sm flex items-start">
-                                            <Icon name="arrears" className="w-4 h-4 mr-2 mt-0.5" />
-                                            <span>KES {financials.unpaidRevenue.toLocaleString()} in arrears.</span>
-                                        </div>
-                                    )}
-                                    <div className="p-3 bg-blue-50 text-blue-800 rounded border border-blue-100 text-sm flex items-start">
-                                        <Icon name="check" className="w-4 h-4 mr-2 mt-0.5" />
-                                        <span>System is up to date.</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4">Quick Actions</h3>
-                                <div className="space-y-2">
-                                    <button onClick={() => { setRequestType('Maintenance'); setIsRequestModalOpen(true); }} className="w-full p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm font-bold text-gray-700 flex items-center transition-colors">
-                                        <Icon name="tools" className="w-4 h-4 mr-3 text-primary" /> Report Maintenance
-                                    </button>
-                                    <button onClick={() => { setIsStatementOpen(true); }} className="w-full p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm font-bold text-gray-700 flex items-center transition-colors">
-                                        <Icon name="download" className="w-4 h-4 mr-3 text-primary" /> Download Statement
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* MY PROPERTIES TAB */}
-            {activeTab === 'properties' && (
-                <div className="space-y-8 animate-fade-in">
-                    {/* Multi-Select Filter */}
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Filter Properties</p>
-                        <div className="flex flex-wrap gap-2">
-                            <button
-                                onClick={() => setSelectedPropertyIds([])}
-                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${selectedPropertyIds.length === 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                            >
-                                All Properties
-                            </button>
-                            {allLandlordProperties.map(p => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => togglePropertySelection(p.id)}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors flex items-center ${selectedPropertyIds.includes(p.id) ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+            {/* Content Container */}
+            <div className="w-full max-w-7xl mx-auto p-6 space-y-6">
+               
+                {activeTab === 'dashboard' && (
+                    <div className="grid grid-cols-1 gap-6 animate-fade-in">
+                        {/* Property Selector */}
+                        {allLandlordProperties.length > 1 && (
+                            <div className="mb-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+                                <label className="text-xs font-bold text-gray-500 uppercase">Viewing Data For:</label>
+                                <select
+                                    className="p-2 border rounded-lg bg-gray-50 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-primary/50 outline-none flex-grow md:w-64"
+                                    value={selectedPropertyIds.length === 1 ? selectedPropertyIds[0] : 'all'}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setSelectedPropertyIds(val === 'all' ? [] : [val]);
+                                    }}
                                 >
-                                    {p.name}
-                                    {selectedPropertyIds.includes(p.id) && <Icon name="check" className="w-3 h-3 ml-1" />}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                                    <option value="all">All Properties ({allLandlordProperties.length})</option>
+                                    {allLandlordProperties.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
-                    {propertyLayouts.map(prop => (
-                        <div key={prop.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                            <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
-                                <div>
-                                    <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                        {prop.name}
-                                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${prop.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                            {prop.status}
-                                        </span>
-                                    </h3>
-                                    <p className="text-sm text-gray-500">{prop.location || prop.branch} • {prop.units.length} Units</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    {prop.newTenantsCount > 0 && (
-                                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold flex items-center">
-                                            <span className="w-2 h-2 bg-blue-600 rounded-full mr-1.5 animate-pulse"></span>
-                                            {prop.newTenantsCount} New Tenants
-                                        </span>
-                                    )}
-                                    {prop.arrearsCount > 0 && (
-                                        <span className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-bold flex items-center">
-                                            <span className="w-2 h-2 bg-red-600 rounded-full mr-1.5"></span>
-                                            {prop.arrearsCount} Arrears
-                                        </span>
-                                    )}
-                                </div>
+                        {/* AI Intelligence Section */}
+                        <div className="bg-gradient-to-r from-indigo-900 to-purple-900 rounded-xl p-5 text-white shadow-md relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-6 opacity-10">
+                                <Icon name="analytics" className="w-32 h-32 text-white" />
                             </div>
-
-                            <div className="space-y-6">
-                                {Object.entries(prop.floors).sort((a,b) => Number(a[0]) - Number(b[0])).map(([floorNum, units]: [string, Unit[]]) => (
-                                    <div key={floorNum}>
-                                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">
-                                            {Number(floorNum) === 0 ? 'Ground Floor' : `Floor ${floorNum}`}
-                                        </h4>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                                            {units.map(u => {
-                                                const t = myTenants.find(tn => tn.unitId === u.id);
-                                                const isNew = t ? (new Date(t.onboardingDate) >= new Date(new Date().setDate(new Date().getDate() - 30))) : false;
-                                                return <UnitBox key={u.id} unit={u} tenant={t} isNewTenant={isNew} />;
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* FINANCIALS TAB */}
-            {activeTab === 'financials' && (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                        <div className="flex items-center gap-4">
-                            <label className="text-sm font-medium text-gray-700">Statement Period:</label>
-                            <input
-                                type="month"
-                                value={financialPeriod}
-                                onChange={e => setFinancialPeriod(e.target.value)}
-                                className="p-2 border rounded-md text-sm font-medium bg-gray-50"
-                            />
-                        </div>
-                        <button onClick={() => setIsStatementOpen(true)} className="px-4 py-2 bg-primary text-white font-bold rounded-md shadow-sm hover:bg-primary-dark flex items-center">
-                            <Icon name="revenue" className="w-4 h-4 mr-2" /> View Full Report
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                         {/* Summary List */}
-                        <div className="space-y-4">
-                            <div className="flex justify-between p-4 bg-gray-50 rounded-lg">
-                                <span className="text-gray-600 font-medium">Gross Revenue</span>
-                                <span className="text-gray-900 font-bold">KES {financials.grossRevenueMonth.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between p-4 bg-red-50 rounded-lg text-red-800">
-                                <span className="font-medium">Total Deductions</span>
-                                <span className="font-bold">- KES {financials.monthlyDeductions.toLocaleString()}</span>
-                            </div>
-                             <div className="flex justify-between p-4 bg-green-50 rounded-lg text-green-800 border border-green-200">
-                                <span className="font-bold uppercase">Net Payout</span>
-                                <span className="font-extrabold text-xl">KES {financials.netIncome.toLocaleString()}</span>
-                            </div>
-                        </div>
-
-                        {/* Deductions Chart/List */}
-                        <div className="border rounded-lg p-4 bg-white">
-                            <h4 className="text-sm font-bold text-gray-500 uppercase mb-3">Deductions Breakdown</h4>
-                            <div className="space-y-2 text-sm">
-                                {financials.detailedDeductions.slice(0, 5).map((d, i) => (
-                                    <div key={i} className="flex justify-between">
-                                        <span className="text-gray-600">{d.description}</span>
-                                        <span className="text-red-500 font-medium">{d.amount.toLocaleString()}</span>
-                                    </div>
-                                ))}
-                                {financials.detailedDeductions.length > 5 && (
-                                    <p className="text-xs text-gray-400 text-center pt-2">...and {financials.detailedDeductions.length - 5} more</p>
-                                )}
-                                {financials.detailedDeductions.length === 0 && <p className="text-gray-400 italic">No deductions.</p>}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* REQUESTS TAB */}
-            {activeTab === 'requests' && (
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 animate-fade-in">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-gray-800">My Requests</h2>
-                        <div className="flex gap-2">
-                            <button onClick={() => { setRequestType('General'); setIsRequestModalOpen(true); }} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-sm font-bold text-gray-700">General</button>
-                            <button onClick={() => { setRequestType('Maintenance'); setIsRequestModalOpen(true); }} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded text-sm font-bold text-blue-700">Maintenance</button>
-                            <button onClick={() => { setRequestType('Eviction'); setIsRequestModalOpen(true); }} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 rounded text-sm font-bold text-red-700">Eviction</button>
-                        </div>
-                    </div>
-                    
-                    <div className="space-y-4">
-                        {/* Mock requests for landlord view */}
-                        <div className="p-4 border rounded-lg hover:shadow-sm transition-shadow">
-                            <div className="flex justify-between mb-2">
-                                <span className="font-bold text-gray-800">Roof Leak - Block A</span>
-                                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded font-bold">Pending</span>
-                            </div>
-                            <p className="text-sm text-gray-600">Submitted on 2025-11-12. Awaiting contractor assignment.</p>
-                        </div>
-                        <div className="p-4 border rounded-lg hover:shadow-sm transition-shadow bg-gray-50 opacity-75">
-                            <div className="flex justify-between mb-2">
-                                <span className="font-bold text-gray-800">Monthly Statement Inquiry</span>
-                                <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold">Resolved</span>
-                            </div>
-                            <p className="text-sm text-gray-600">Submitted on 2025-10-05. Statement resent via email.</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* GROWTH (INVEST) TAB */}
-            {activeTab === 'growth' && (
-                <div className="animate-fade-in space-y-8">
-                    {/* Hero Section */}
-                    <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-8 text-white relative overflow-hidden shadow-lg">
-                        <div className="relative z-10 max-w-3xl">
-                            <h2 className="text-3xl font-bold mb-4">Grow Your Wealth with TaskMe</h2>
-                            <p className="text-blue-100 mb-8 text-lg">
-                                Leverage your position. Earn passive income by referring peers or investing your payout surplus into high-yield projects.
-                            </p>
-                            <div className="flex flex-wrap gap-6">
-                                <div>
-                                    <p className="text-xs text-blue-300 uppercase font-bold mb-1">Total Referral Earnings</p>
-                                    <p className="text-3xl font-extrabold">KES {referralEarnings.toLocaleString()}</p>
-                                </div>
-                                <div className="w-px bg-blue-700 h-12 hidden sm:block"></div>
-                                <div>
-                                    <p className="text-xs text-blue-300 uppercase font-bold mb-1">Active R-REIT Investments</p>
-                                    <p className="text-3xl font-extrabold">KES {activeInvestmentTotal.toLocaleString()}</p>
+                            <div className="relative z-10">
+                                <h3 className="text-sm font-bold mb-3 flex items-center uppercase tracking-wider opacity-90">
+                                    <Icon name="analytics" className="w-4 h-4 mr-2 text-yellow-400" />
+                                    TaskMe AI Intelligence
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-800">
+                                     {alerts.map((insight: any, i: number) => (
+                                        <AIInsightCard 
+                                            key={i}
+                                            title={insight.title} 
+                                            description={insight.text}
+                                            type={insight.type}
+                                            icon={insight.type === 'critical' ? 'arrears' : insight.type === 'warning' ? 'task-escalated' : 'check'}
+                                        />
+                                     ))}
                                 </div>
                             </div>
                         </div>
-                        <Icon name="reits" className="absolute -right-10 -bottom-10 w-80 h-80 text-white/5" />
-                    </div>
 
-                    {/* My Investments & Earnings */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* Active Investments */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                            <h3 className="font-bold text-gray-800 mb-4">My Active Investments</h3>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full text-sm text-left">
-                                    <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
-                                        <tr>
-                                            <th className="px-3 py-2">Fund</th>
-                                            <th className="px-3 py-2 text-right">Amount</th>
-                                            <th className="px-3 py-2 text-center">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {myActiveInvestments.length > 0 ? myActiveInvestments.map((inv, idx) => (
-                                            <tr key={idx}>
-                                                <td className="px-3 py-2 font-medium">{inv.fundName}</td>
-                                                <td className="px-3 py-2 text-right">KES {inv.amount.toLocaleString()}</td>
-                                                <td className="px-3 py-2 text-center">
-                                                    <span className="px-2 py-0.5 bg-green-100 text-green-800 text-[10px] rounded font-bold">{inv.status}</span>
-                                                </td>
-                                            </tr>
-                                        )) : (
-                                            <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 italic">No active investments found.</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
+                        {/* Top KPIs */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <MetricCard title="Properties" value={myProperties.length.toString()} subtext="Managed Assets" color="blue" />
+                            <MetricCard title="Total Units" value={totalUnits.toString()} subtext="Portfolio Size" color="indigo" />
+                            <MetricCard title="Occupancy" value={`${occupancyRate}%`} subtext={`${occupiedUnits} Occupied`} color="green" />
+                            <MetricCard title="Collection (MTD)" value={`KES ${(collectionStats.collected/1000).toFixed(1)}k`} subtext={`${collectionStats.rate}% Collected`} color="purple" />
                         </div>
 
-                         {/* Commission History */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                            <h3 className="font-bold text-gray-800 mb-4">Commission History</h3>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full text-sm text-left">
-                                    <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
-                                        <tr>
-                                            <th className="px-3 py-2">Date</th>
-                                            <th className="px-3 py-2">Description</th>
-                                            <th className="px-3 py-2 text-right">Amount</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {commissionHistory.length > 0 ? commissionHistory.map((tx, idx) => (
-                                            <tr key={idx}>
-                                                <td className="px-3 py-2 text-gray-600">{tx.date}</td>
-                                                <td className="px-3 py-2 font-medium">{tx.description || 'Referral Commission'}</td>
-                                                <td className="px-3 py-2 text-right text-green-600 font-bold">KES {tx.amount.toLocaleString()}</td>
-                                            </tr>
-                                        )) : (
-                                            <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 italic">No commissions earned yet.</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Referral Center */}
-                    <div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-6">Referral Center</h3>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Refer Landlord */}
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                                        <Icon name="landlords" className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-gray-800 text-lg">Refer a Landlord</h4>
-                                        <p className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded inline-block mt-1">Earn 10% of Mgmt Fee</p>
-                                    </div>
-                                </div>
-                                <p className="text-gray-600 text-sm mb-6 flex-grow">
-                                    Invite other property owners to join TaskMe Realty. You earn a recurring commission on the management fees we collect from their properties.
-                                </p>
-                                <div className="space-y-3">
-                                    <div className="flex gap-2">
-                                        <input readOnly value={referralLinkAgency} className="flex-grow p-2.5 bg-gray-50 border rounded-lg text-sm text-gray-600 focus:ring-2 focus:ring-blue-100 outline-none" />
-                                        <button onClick={() => handleCopy(referralLinkAgency)} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-300">Copy</button>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => handleShare('WhatsApp', referralLinkAgency)} className="py-2 bg-green-50 text-green-700 text-sm font-bold rounded-lg hover:bg-green-100 flex items-center justify-center">
-                                            <Icon name="communication" className="w-4 h-4 mr-2" /> WhatsApp
-                                        </button>
-                                        <button onClick={() => handleShare('SMS', referralLinkAgency)} className="py-2 bg-blue-50 text-blue-700 text-sm font-bold rounded-lg hover:bg-blue-100 flex items-center justify-center">
-                                            <Icon name="mail" className="w-4 h-4 mr-2" /> Message
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Refer Investor */}
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
-                                        <Icon name="revenue" className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-gray-800 text-lg">Refer R-REIT Investor</h4>
-                                        <p className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded inline-block mt-1">Earn 2.5% Commission</p>
-                                    </div>
-                                </div>
-                                <p className="text-gray-600 text-sm mb-6 flex-grow">
-                                    Know someone looking for high-yield investments? Invite them to our Renovation Funds. You earn a one-off commission on their invested capital.
-                                </p>
-                                <div className="space-y-3">
-                                    <div className="flex gap-2">
-                                        <input readOnly value={referralLinkInvestor} className="flex-grow p-2.5 bg-gray-50 border rounded-lg text-sm text-gray-600 focus:ring-2 focus:ring-purple-100 outline-none" />
-                                        <button onClick={() => handleCopy(referralLinkInvestor)} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-300">Copy</button>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => handleShare('WhatsApp', referralLinkInvestor)} className="py-2 bg-green-50 text-green-700 text-sm font-bold rounded-lg hover:bg-green-100 flex items-center justify-center">
-                                            <Icon name="communication" className="w-4 h-4 mr-2" /> WhatsApp
-                                        </button>
-                                        <button onClick={() => handleShare('SMS', referralLinkInvestor)} className="py-2 bg-blue-50 text-blue-700 text-sm font-bold rounded-lg hover:bg-blue-100 flex items-center justify-center">
-                                            <Icon name="mail" className="w-4 h-4 mr-2" /> Message
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Investment Section */}
-                    <div>
-                        <div className="flex items-center justify-between mb-6">
-                             <h3 className="text-xl font-bold text-gray-800">Invest in R-REITs</h3>
-                             <button onClick={() => window.location.hash = '#/reits/investment-plans'} className="text-sm text-primary font-bold hover:underline">View All Funds</button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {funds.filter(f => f.status === 'Active').slice(0, 3).map(fund => (
-                                <div key={fund.id} className="p-5 border border-gray-200 rounded-xl hover:shadow-md transition-shadow bg-white">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <h4 className="font-bold text-gray-800 text-lg line-clamp-1">{fund.name}</h4>
-                                        <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded whitespace-nowrap">30% APY</span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 mb-4 line-clamp-2">{fund.description}</p>
+                        {/* Main Content Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Left Column: Performance Graph & Table */}
+                            <div className="lg:col-span-2 space-y-6">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                    <h3 className="font-bold text-gray-800 mb-4">Payment Performance</h3>
                                     
-                                    <div className="space-y-2 mb-4">
-                                        <div className="flex justify-between text-xs text-gray-600">
-                                            <span>Progress</span>
-                                            <span className="font-bold">{Math.round((fund.capitalRaised/fund.targetCapital)*100)}%</span>
+                                    <div className="grid grid-cols-1 gap-8">
+                                        {/* Graph */}
+                                        <div>
+                                            <div className="flex justify-end mb-2">
+                                                <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">
+                                                    Collection %
+                                                </span>
+                                            </div>
+                                            <ChartContainer type="line" data={paymentTrendData} options={{ 
+                                                responsive: true, 
+                                                maintainAspectRatio: false,
+                                                scales: { y: { beginAtZero: true, max: 100 } },
+                                                plugins: { legend: { display: false } }
+                                            }} height="h-64" />
+                                            <p className="text-center text-xs text-gray-400 mt-4 italic">Typically 60% of rent is collected by the 10th.</p>
                                         </div>
-                                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                            <div className="h-full bg-primary" style={{ width: `${(fund.capitalRaised/fund.targetCapital)*100}%` }}></div>
+                                        
+                                        {/* Interactive Table */}
+                                        <div>
+                                            {/* Date Buttons */}
+                                            <div className="flex flex-wrap gap-2 mb-4 bg-gray-50 p-1 rounded-lg">
+                                                {[1, 5, 10, 15, 20, 25, 30].map(day => (
+                                                    <button
+                                                        key={day}
+                                                        onClick={() => setSelectedDayFilter(day)}
+                                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                                                            selectedDayFilter === day 
+                                                            ? 'bg-green-600 text-white shadow-sm' 
+                                                            : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                                        }`}
+                                                    >
+                                                        {day === 1 ? '1st' : day === 2 ? '2nd' : day === 3 ? '3rd' : `${day}th`}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <div className="flex justify-between items-center mb-3 bg-green-50 p-3 rounded-lg border border-green-100">
+                                                <span className="text-sm font-bold text-green-800">Collection by Day {selectedDayFilter}</span>
+                                                <span className="text-xl font-extrabold text-green-600">{paymentPerformanceLogic.currentPercentage}%</span>
+                                            </div>
+
+                                            <div className="border rounded-lg overflow-hidden h-48 overflow-y-auto">
+                                                <table className="min-w-full text-xs text-left">
+                                                    <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left">TENANT</th>
+                                                            <th className="px-3 py-2 text-left">UNIT</th>
+                                                            <th className="px-3 py-2 text-right">PAID</th>
+                                                            <th className="px-3 py-2 text-right">DATE</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {paymentPerformanceLogic.tablePayments.slice(0, 5).map((p: any, i: number) => (
+                                                            <tr key={i} className="border-b border-gray-50 last:border-0">
+                                                                <td className="py-2 font-medium text-gray-800">{p.tenantName} <span className="text-gray-400 text-[9px] ml-1">{p.unit}</span></td>
+                                                                <td className="py-2 text-gray-500">{p.unit}</td>
+                                                                <td className="py-2 text-right text-green-600 font-bold">
+                                                                    {p.amount ? p.amount : `KES ${p.amountVal.toLocaleString()}`}
+                                                                </td>
+                                                                <td className="py-2 text-right text-gray-500">{p.date}</td>
+                                                            </tr>
+                                                        ))}
+                                                        {paymentPerformanceLogic.tablePayments.length === 0 && <tr><td colSpan={3} className="py-4 text-center text-gray-400 italic">No payments recorded by this date.</td></tr>}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Health & Insights */}
+                            <div className="space-y-6">
+                                {/* Portfolio Health Card */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                    <h3 className="font-bold text-gray-800 mb-4">Portfolio Health</h3>
+                                    <div className="space-y-6">
+                                        <div>
+                                            <div className="flex justify-between items-end mb-1">
+                                                <span className="text-sm font-medium text-gray-600">Occupancy</span>
+                                                <span className="text-sm font-bold text-gray-900">{occupancyRate}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 rounded-full h-2">
+                                                <div
+                                                    className={`h-2 rounded-full transition-all duration-500 ${occupancyRate < 80 ? 'bg-red-500' : 'bg-blue-600'}`}
+                                                    style={{ width: `${occupancyRate}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between items-end mb-1">
+                                                <span className="text-sm font-medium text-gray-600">Collection Efficiency</span>
+                                                <span className="text-sm font-bold text-gray-900">{collectionStats.rate}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 rounded-full h-2">
+                                                <div
+                                                    className={`h-2 rounded-full transition-all duration-500 ${collectionStats.rate < 80 ? 'bg-orange-500' : 'bg-green-500'}`}
+                                                    style={{ width: `${collectionStats.rate}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Insights & Alerts Cards */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                    <h3 className="font-bold text-gray-800 mb-4">Insights & Alerts</h3>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {alerts.map((alert, idx) => (
+                                            <div key={idx} className={`p-4 rounded-lg border-l-4 flex items-start ${
+                                                alert.type === 'critical' ? 'bg-red-50 border-red-400 text-red-800' :
+                                                alert.type === 'warning' ? 'bg-orange-50 border-orange-400 text-orange-800' :
+                                                'bg-blue-50 border-blue-400 text-blue-800'
+                                            }`}>
+                                                <Icon name={alert.type === 'critical' ? 'vacant-house' : alert.type === 'warning' ? 'arrears' : 'analytics'} className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                                                <div>
+                                                    <p className="font-bold text-sm mb-1">{alert.title}</p>
+                                                    <p className="text-xs opacity-90">{alert.text}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'properties' && (
+                    <div className="space-y-8 animate-fade-in">
+                        {/* Multi-Select Filter */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Filter Properties</p>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setSelectedPropertyIds([])}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${selectedPropertyIds.length === 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                >
+                                    All Properties
+                                </button>
+                                {allLandlordProperties.map(p => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => togglePropertySelection(p.id)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors flex items-center ${selectedPropertyIds.includes(p.id) ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                    >
+                                        {p.name}
+                                        {selectedPropertyIds.includes(p.id) && <Icon name="check" className="w-3 h-3 ml-1" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {propertyLayouts.map(prop => (
+                            <div key={prop.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                            {prop.name}
+                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${prop.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                                {prop.status}
+                                            </span>
+                                        </h3>
+                                        <p className="text-sm text-gray-500">{prop.location || prop.branch} • {prop.units.length} Units</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {prop.newTenantsCount > 0 && (
+                                            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold flex items-center">
+                                                <span className="w-2 h-2 bg-blue-600 rounded-full mr-1.5 animate-pulse"></span>
+                                                {prop.newTenantsCount} New Tenants
+                                            </span>
+                                        )}
+                                        {prop.arrearsCount > 0 && (
+                                            <span className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-bold flex items-center">
+                                                <span className="w-2 h-2 bg-red-600 rounded-full mr-1.5"></span>
+                                                {prop.arrearsCount} Arrears
+                                            </span>
+                                        )}
+                                        {prop.distressedCount > 0 && (
+                                            <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold flex items-center">
+                                                <span className="w-2 h-2 bg-purple-600 rounded-full mr-1.5 animate-pulse"></span>
+                                                {prop.distressedCount} Distressed
+                                            </span>
+                                        )}
+                                        {prop.maintenanceCount > 0 && (
+                                            <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-lg text-xs font-bold flex items-center">
+                                                <span className="w-2 h-2 bg-orange-600 rounded-full mr-1.5"></span>
+                                                {prop.maintenanceCount} Maint.
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    {Object.entries(prop.unitMap).sort((a,b) => Number(a[0]) - Number(b[0])).map(([floorNum, units]: [string, Unit[]]) => (
+                                        <div key={floorNum}>
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">
+                                                {Number(floorNum) === 0 ? 'Ground Floor' : `Floor ${floorNum}`}
+                                            </h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                                {units.map(u => {
+                                                    const t = myTenants.find(tn => tn.unitId === u.id);
+                                                    const isNew = t ? (new Date(t.onboardingDate) >= new Date(new Date().setDate(new Date().getDate() - 30))) : false;
+                                                    return <UnitBox 
+                                                                key={u.id} 
+                                                                unit={u} 
+                                                                tenant={t} 
+                                                                isNewTenant={isNew} 
+                                                                // No onManage prop for Landlord view (read only status)
+                                                            />;
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* FINANCIALS TAB */}
+                {activeTab === 'financials' && (
+                    <div className="space-y-6 animate-fade-in">
+                        {financialView === 'summary' ? (
+                            <>
+                                <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                                    <div className="flex items-center gap-4">
+                                        <label className="text-sm font-medium text-gray-700">Statement Period:</label>
+                                        <input
+                                            type="month"
+                                            value={financialPeriod}
+                                            onChange={e => setFinancialPeriod(e.target.value)}
+                                            className="p-2 border rounded-md text-sm font-medium bg-gray-50"
+                                        />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setFinancialView('revenue')} className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded hover:bg-gray-200 text-sm flex items-center">
+                                            <Icon name="revenue" className="w-4 h-4 mr-2" /> View Tenant Revenue
+                                        </button>
+                                        <button onClick={() => handleDownloadStatement('Income')} className="px-4 py-2 bg-primary text-white font-medium rounded hover:bg-primary-dark text-sm flex items-center">
+                                            <Icon name="download" className="w-4 h-4 mr-2" /> Income Statement
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Income Statement Preview */}
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4">Income Statement Preview</h3>
+                                        <div className="space-y-3 text-sm">
+                                            <div className="flex justify-between pb-2 border-b border-gray-100">
+                                                <span className="text-gray-600">Total Gross Revenue</span>
+                                                <span className="font-bold text-gray-900">KES {financials.grossRevenueMonth.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between pb-2 border-b border-gray-100 text-red-600">
+                                                <span>Total Deductions</span>
+                                                <span>- KES {financials.monthlyDeductions.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between pt-2 text-lg font-extrabold text-green-700">
+                                                <span>Net Income</span>
+                                                <span>KES {financials.netIncome.toLocaleString()}</span>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <button 
-                                        onClick={() => setSelectedInvestFund(fund)}
-                                        className="w-full py-2.5 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-black transition-colors"
-                                    >
-                                        Invest Now
-                                    </button>
+                                    {/* Deductions Summary */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white p-4 rounded-xl border-t-4 border-indigo-500 shadow-sm">
+                                            <p className="text-xs text-gray-500 uppercase">Placement Fees</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.placementFeeDeduction.toLocaleString()}</p>
+                                            <p className="text-xs text-gray-400">{financials.newTenants.length} New Tenants</p>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border-t-4 border-orange-500 shadow-sm">
+                                            <p className="text-xs text-gray-500 uppercase">Bills & Utilities</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.billDeductions.toLocaleString()}</p>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border-t-4 border-blue-500 shadow-sm">
+                                            <p className="text-xs text-gray-500 uppercase">Mgmt & Rules</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.ruleDeductions.toLocaleString()}</p>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border-t-4 border-gray-500 shadow-sm">
+                                            <p className="text-xs text-gray-500 uppercase">Maintenance</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.maintenanceDeductions.toLocaleString()}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                            ))}
-                            {funds.filter(f => f.status === 'Active').length === 0 && (
-                                <div className="col-span-full text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-500">
-                                    No active funds available for investment right now.
+                            </>
+                        ) : (
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 animate-fade-in">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-800">Tenant Revenue Report</h3>
+                                        <p className="text-sm text-gray-500">Period: {financialPeriod}</p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setFinancialView('summary')} className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded hover:bg-gray-200 text-sm">
+                                            Back to Financials
+                                        </button>
+                                        <button onClick={() => handleDownloadStatement('Revenue')} className="px-4 py-2 bg-primary text-white font-medium rounded hover:bg-primary-dark text-sm flex items-center">
+                                            <Icon name="download" className="w-4 h-4 mr-2" /> Download CSV
+                                        </button>
+                                    </div>
                                 </div>
-                            )}
+                               
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase">Unit</th>
+                                                <th className="px-4 py-3 text-right font-medium text-gray-500 uppercase">Rent Amount</th>
+                                                <th className="px-4 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase">Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {myTenants.map((t, idx) => {
+                                                const isNew = t.onboardingDate.startsWith(financialPeriod);
+                                                return (
+                                                    <tr key={idx} className="hover:bg-gray-50">
+                                                        <td className="px-4 py-3 font-medium text-gray-800">{t.name}</td>
+                                                        <td className="px-4 py-3 text-gray-600">{t.propertyName}</td>
+                                                        <td className="px-4 py-3 text-gray-600">{t.unit}</td>
+                                                        <td className="px-4 py-3 text-right font-bold text-gray-800">KES {t.rentAmount.toLocaleString()}</td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {isNew ? (
+                                                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">NEW</span>
+                                                            ) : (
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${t.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                    {t.status}
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-xs">
+                                                            {isNew ? (
+                                                                <span className="text-red-600 font-bold">Placement Fee Applied (100%)</span>
+                                                            ) : (
+                                                                <span className="text-green-600">Revenue Recognized</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                            {myTenants.length === 0 && (
+                                                <tr><td colSpan={6} className="text-center py-8 text-gray-500">No tenant records found.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'requests' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+                        {/* Request Management */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold text-gray-800">Requests & Feedback</h3>
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleNewRequest('General')} className="text-xs bg-gray-100 px-3 py-1 rounded hover:bg-gray-200">General</button>
+                                    <button onClick={() => handleNewRequest('Maintenance')} className="text-xs bg-gray-100 px-3 py-1 rounded hover:bg-gray-200">Maintenance</button>
+                                    <button onClick={() => handleNewRequest('Eviction')} className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200">Eviction</button>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                {/* Mock requests for landlord view */}
+                                <div className="p-3 bg-gray-50 rounded border border-gray-100">
+                                    <div className="flex justify-between">
+                                        <span className="font-bold text-sm">Roof Repair Request</span>
+                                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Pending</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mt-1">Submitted on 2025-11-10 regarding Block A.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Notices & Tasks */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">Notices & Active Tasks</h3>
+                            <div className="space-y-3">
+                                {myTenants.filter(t => t.status === 'Notice').map(t => (
+                                    <div key={t.id} className="p-3 bg-orange-50 rounded border border-orange-100 flex items-start">
+                                        <Icon name="offboarding" className="w-5 h-5 text-orange-600 mr-2 mt-0.5" />
+                                        <div>
+                                            <p className="font-bold text-sm text-orange-800">Vacation Notice</p>
+                                            <p className="text-xs text-orange-700">Tenant <strong>{t.name}</strong> (Unit {t.unit}) is vacating on {t.leaseEnd}.</p>
+                                        </div>
+                                    </div>
+                                ))}
+                                {myTasks.slice(0, 3).map(t => (
+                                    <div key={t.id} className="p-3 bg-blue-50 rounded border border-blue-100 flex items-start">
+                                        <Icon name="maintenance" className="w-5 h-5 text-blue-600 mr-2 mt-0.5" />
+                                        <div>
+                                            <p className="font-bold text-sm text-blue-800">{t.title}</p>
+                                            <p className="text-xs text-blue-700">{t.property} • {t.status}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+                
+                 {activeTab === 'growth' && (
+                    <div className="animate-fade-in space-y-8">
+                        {/* Hero Section */}
+                        <div className="bg-gradient-to-r from-indigo-900 to-blue-900 rounded-2xl p-8 text-white relative overflow-hidden shadow-lg">
+                            <div className="relative z-10 max-w-3xl">
+                                <h2 className="text-3xl font-bold mb-4">Grow Your Wealth with TaskMe</h2>
+                                <p className="text-blue-100 mb-8 text-lg">
+                                    Leverage your position. Earn passive income by referring peers or investing your payout surplus into high-yield projects.
+                                </p>
+                                <div className="flex flex-wrap gap-6">
+                                    <div>
+                                        <p className="text-xs text-blue-300 uppercase font-bold mb-1">Total Referral Earnings</p>
+                                        <p className="text-3xl font-extrabold">KES {referralEarnings.toLocaleString()}</p>
+                                    </div>
+                                    <div className="w-px bg-blue-700 h-12 hidden sm:block"></div>
+                                    <div>
+                                        <p className="text-xs text-blue-300 uppercase font-bold mb-1">Active R-REIT Investments</p>
+                                        <p className="text-3xl font-extrabold">KES {activeInvestmentTotal.toLocaleString()}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <Icon name="reits" className="absolute -right-10 -bottom-10 w-80 h-80 text-white/5" />
+                        </div>
 
-            {/* MODALS */}
+                        {/* My Investments & Earnings */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Active Investments */}
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-800 mb-4">My Active Investments</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
+                                            <tr>
+                                                <th className="px-3 py-2">Fund</th>
+                                                <th className="px-3 py-2 text-right">Amount</th>
+                                                <th className="px-3 py-2 text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {myActiveInvestments.length > 0 ? myActiveInvestments.map((inv, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="px-3 py-2 font-medium">{inv.fundName}</td>
+                                                    <td className="px-3 py-2 text-right">KES {inv.amount.toLocaleString()}</td>
+                                                    <td className="px-3 py-2 text-center">
+                                                        <span className="px-2 py-0.5 bg-green-100 text-green-800 text-[10px] rounded font-bold">{inv.status}</span>
+                                                    </td>
+                                                </tr>
+                                            )) : (
+                                                <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 italic">No active investments found.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                             {/* Commission History */}
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-800 mb-4">Commission History</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
+                                            <tr>
+                                                <th className="px-3 py-2">Date</th>
+                                                <th className="px-3 py-2">Description</th>
+                                                <th className="px-3 py-2 text-right">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {commissionHistory.length > 0 ? commissionHistory.map((tx, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="px-3 py-2 text-gray-600">{tx.date}</td>
+                                                    <td className="px-3 py-2 font-medium">{tx.description || 'Referral Commission'}</td>
+                                                    <td className="px-3 py-2 text-right text-green-600 font-bold">KES {tx.amount.toLocaleString()}</td>
+                                                </tr>
+                                            )) : (
+                                                <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 italic">No commissions earned yet.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Referral Center */}
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-800 mb-6">Referral Center</h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {/* Refer Landlord */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                                            <Icon name="landlords" className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-lg">Refer a Landlord</h4>
+                                            <p className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded inline-block mt-1">Earn 10% of Mgmt Fee</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-gray-600 text-sm mb-6 flex-grow">
+                                        Invite other property owners to join TaskMe Realty. You earn a recurring commission on the management fees we collect from their properties.
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-2">
+                                            <input readOnly value={referralLinkAgency} className="flex-grow p-2.5 bg-gray-50 border rounded-lg text-sm text-gray-600 focus:ring-2 focus:ring-blue-100 outline-none" />
+                                            <button onClick={() => handleCopy(referralLinkAgency)} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-300">Copy</button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button onClick={() => handleShare('WhatsApp', referralLinkAgency)} className="py-2 bg-green-50 text-green-700 text-sm font-bold rounded-lg hover:bg-green-100 flex items-center justify-center">
+                                                <Icon name="communication" className="w-4 h-4 mr-2" /> WhatsApp
+                                            </button>
+                                            <button onClick={() => handleShare('SMS', referralLinkAgency)} className="py-2 bg-blue-50 text-blue-700 text-sm font-bold rounded-lg hover:bg-blue-100 flex items-center justify-center">
+                                                <Icon name="mail" className="w-4 h-4 mr-2" /> Message
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Refer Investor */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
+                                            <Icon name="revenue" className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-lg">Refer R-REIT Investor</h4>
+                                            <p className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded inline-block mt-1">Earn 2.5% Commission</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-gray-600 text-sm mb-6 flex-grow">
+                                        Know someone looking for high-yield investments? Invite them to our Renovation Funds. You earn a one-off commission on their invested capital.
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-2">
+                                            <input readOnly value={referralLinkInvestor} className="flex-grow p-2.5 bg-gray-50 border rounded-lg text-sm text-gray-600 focus:ring-2 focus:ring-purple-100 outline-none" />
+                                            <button onClick={() => handleCopy(referralLinkInvestor)} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-300">Copy</button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button onClick={() => handleShare('WhatsApp', referralLinkInvestor)} className="py-2 bg-green-50 text-green-700 text-sm font-bold rounded-lg hover:bg-green-100 flex items-center justify-center">
+                                                <Icon name="communication" className="w-4 h-4 mr-2" /> WhatsApp
+                                            </button>
+                                            <button onClick={() => handleShare('SMS', referralLinkInvestor)} className="py-2 bg-blue-50 text-blue-700 text-sm font-bold rounded-lg hover:bg-blue-100 flex items-center justify-center">
+                                                <Icon name="mail" className="w-4 h-4 mr-2" /> Message
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Investment Section */}
+                        <div>
+                            <div className="flex items-center justify-between mb-6">
+                                 <h3 className="text-xl font-bold text-gray-800">Invest in R-REITs</h3>
+                                 <button onClick={() => window.location.hash = '#/reits/investment-plans'} className="text-sm text-primary font-bold hover:underline">View All Funds</button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {funds.filter(f => f.status === 'Active').slice(0, 3).map(fund => (
+                                    <div key={fund.id} className="p-5 border border-gray-200 rounded-xl hover:shadow-md transition-shadow bg-white">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <h4 className="font-bold text-gray-800 text-lg line-clamp-1">{fund.name}</h4>
+                                            <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded whitespace-nowrap">30% APY</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mb-4 line-clamp-2">{fund.description}</p>
+                                        
+                                        <div className="space-y-2 mb-4">
+                                            <div className="flex justify-between text-xs font-bold text-gray-600">
+                                                <span>Raised: KES {(fund.capitalRaised/1000000).toFixed(1)}M</span>
+                                                <span>{Math.round((fund.capitalRaised/fund.targetCapital)*100)}%</span>
+                                            </div>
+                                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                <div className="h-full bg-primary" style={{ width: `${(fund.capitalRaised/fund.targetCapital)*100}%` }}></div>
+                                            </div>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => setSelectedInvestFund(fund)}
+                                            className="w-full py-2.5 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-black transition-colors"
+                                        >
+                                            Invest Now
+                                        </button>
+                                    </div>
+                                ))}
+                                {funds.filter(f => f.status === 'Active').length === 0 && (
+                                    <div className="col-span-full text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-500">
+                                        No active funds available for investment right now.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                 )}
+            </div>
+            
+             {/* MODALS */}
             {isStatementOpen && (
                 <IncomeStatementModal 
                     data={financials} 

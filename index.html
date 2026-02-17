@@ -37,7 +37,7 @@
     <style>
       :root {
         --header-height: 112px; /* 64px top + 48px nav */
-        --sidebar-width: 220px;
+        --sidebar-width: 180px;
         --primary-color: #9D1F15;
         --secondary-color: #F39C2A;
         --sidebar-bg: #9D1F15;
@@ -129,12 +129,6 @@
         .app-sidebar {
             z-index: 60 !important; /* Force above header backdrop */
             box-shadow: 5px 0 25px rgba(0,0,0,0.2);
-        }
-
-        /* On mobile, opening sidebar should NOT push content, just overlay */
-        [data-sidebar-open="true"] .app-main {
-            margin-left: 0 !important;
-            width: 100% !important;
         }
 
         /* Glass Backdrop for mobile menu */

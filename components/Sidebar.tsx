@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { NAVIGATION_ITEMS } from '../constants';
 import { NavItem } from '../types';
 import Icon from './Icon';
@@ -37,21 +37,21 @@ const NavLink: React.FC<{ item: NavItem; isActive: boolean; isSubMenuOpen: boole
   };
 
   return (
-    <div className="text-sm">
+    <div className="text-xs">
       <button
         onClick={toggleSubMenu}
-        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-md transition-colors duration-200 group focus:outline-none focus:ring-2 focus:ring-secondary/50 ${isActive ? 'bg-secondary text-white font-semibold' : 'text-gray-300 hover:bg-secondary hover:text-white'}`}
+        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-colors duration-200 group focus:outline-none focus:ring-2 focus:ring-secondary/50 ${isActive ? 'bg-secondary text-white font-semibold' : 'text-gray-300 hover:bg-secondary hover:text-white'}`}
         aria-expanded={isSubMenuOpen}
       >
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2">
           <Icon name={item.icon} className={`w-5 h-5 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} />
-          <span className="font-medium">{item.name}</span>
+          <span className="font-medium truncate">{item.name}</span>
         </div>
-        <Icon name={isSubMenuOpen ? 'chevron-up' : 'chevron-down'} className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} />
+        <Icon name={isSubMenuOpen ? 'chevron-up' : 'chevron-down'} className={`w-3 h-3 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} />
       </button>
       {isSubMenuOpen && (
-        <div className="py-2 pl-8 pr-4 bg-black/10 rounded-b-md">
-          <ul className="space-y-2">
+        <div className="py-2 pl-6 pr-2 bg-black/10 rounded-b-md">
+          <ul className="space-y-1">
             {item.subModules.map(sub => {
               const path = generatePath(item.name, sub);
               const isSubActive = activeRoute === path;
@@ -59,7 +59,7 @@ const NavLink: React.FC<{ item: NavItem; isActive: boolean; isSubMenuOpen: boole
                  <li key={sub}>
                    <button 
                      onClick={() => handleSubmoduleClick(path)}
-                     className={`block w-full text-left transition-colors duration-200 focus:outline-none focus:text-white ${isSubActive ? 'text-secondary font-semibold' : 'text-gray-400 hover:text-secondary'}`}
+                     className={`block w-full text-left transition-colors duration-200 focus:outline-none focus:text-white truncate py-1 ${isSubActive ? 'text-secondary font-semibold' : 'text-gray-400 hover:text-secondary'}`}
                    >
                      {sub}
                    </button>
@@ -81,17 +81,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
   
   // Filter Navigation based on Role
   const filteredNav = NAVIGATION_ITEMS.map(item => {
-    // 1. Check if Module is allowed
-    // We check if "Module Name" exists in accessibleSubmodules OR if any submodule is accessible.
-    // However, the simplest logic based on the user's prompt is implicit access. 
-    // Let's rely on the explicit list.
-    
     // Check if user has access to ANY submodules of this module
     const allowedSubs = item.subModules.filter(sub => 
         userRole?.accessibleSubmodules?.includes(`${item.name}/${sub}`) || 
-        userRole?.accessibleSubmodules?.includes(item.name) // Allow all if parent is checked (simplification) - but prompt implies granular. 
-        // Actually prompt says "If a card/submodule/module is unticked, user dont see it".
-        // So we strictly filter submodules.
+        userRole?.accessibleSubmodules?.includes(item.name) 
     );
 
     if (allowedSubs.length === 0) return null; // Hide module if no subs allowed
@@ -136,6 +129,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
   const toggleSubMenu = (name: string) => {
     setOpenSubMenus(prev => ({...prev, [name]: !prev[name]}));
   };
+
+  // Visibility logic for Branch Selector
+  const showBranchSelector = useMemo(() => {
+    if (!userRole) return false;
+    // Show for System Roles (Admin, Manager etc) OR Landlords
+    return userRole.isSystem || currentUser?.role === 'Landlord';
+  }, [userRole, currentUser]);
   
   return (
     <aside
@@ -144,26 +144,28 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
       aria-label="Sidebar"
     >
         {/* Top Section - Branch Filter */}
-        <div className="px-4 pt-4 pb-2 flex-shrink-0 bg-primary z-10">
-            <div className="relative">
-            <select 
-                className="w-full px-3 py-2 text-sm text-white bg-black/20 border border-white/10 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-secondary"
-                aria-label="Branch filter"
-            >
-                <option>All Branches</option>
-                <option>Kericho Branch</option>
-                <option>Kisii Branch</option>
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-300">
-                <Icon name="chevron-down" className="w-4 h-4" />
-            </div>
-            </div>
-            <div className="mt-4 border-b border-white/10 w-full"></div>
-        </div>
+        {showBranchSelector && (
+          <div className="px-3 pt-4 pb-2 flex-shrink-0 bg-primary z-10">
+              <div className="relative">
+              <select 
+                  className="w-full px-2 py-2 text-xs text-white bg-black/20 border border-white/10 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-secondary"
+                  aria-label="Branch filter"
+              >
+                  <option>All Branches</option>
+                  <option>Kericho</option>
+                  <option>Kisii</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-300">
+                  <Icon name="chevron-down" className="w-3 h-3" />
+              </div>
+              </div>
+              <div className="mt-4 border-b border-white/10 w-full"></div>
+          </div>
+        )}
         
         {/* Navigation Menu - Scrollable Area */}
-        <nav className="px-4 py-2 pb-4 flex-grow overflow-y-auto sidebar-nav-scroll">
-            <ul className="space-y-2">
+        <nav className={`px-3 py-2 pb-4 flex-grow overflow-y-auto sidebar-nav-scroll ${!showBranchSelector ? 'pt-4' : ''}`}>
+            <ul className="space-y-1">
             {filteredNav.map(item => (
                 <li key={item.name}>
                     <NavLink 
@@ -180,14 +182,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
         </nav>
 
       {/* Footer Section */}
-      <div className="p-4 bg-black/20 mt-auto flex-shrink-0">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center font-bold text-white text-xs">
+      <div className="p-3 bg-black/20 mt-auto flex-shrink-0">
+        <div className="flex items-center space-x-2">
+          <div className="w-7 h-7 bg-secondary rounded-full flex items-center justify-center font-bold text-white text-[10px]">
             {currentUser?.name?.charAt(0) || 'U'}
           </div>
-          <div className="overflow-hidden">
-            <p className="text-white text-sm font-semibold truncate">{currentUser?.name || 'User'}</p>
-            <p className="text-gray-400 text-xs truncate">{currentUser?.email || 'email@example.com'}</p>
+          <div className="overflow-hidden min-w-0">
+            <p className="text-white text-xs font-semibold truncate">{currentUser?.name || 'User'}</p>
+            <p className="text-gray-400 text-[10px] truncate">{currentUser?.email || 'email@example.com'}</p>
           </div>
         </div>
       </div>

@@ -33,13 +33,20 @@ const LAST_NAMES = ['Smith', 'Johnson', 'Williams', 'Jones', 'Brown', 'Davis', '
 const getRandomName = () => `${FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]}`;
 const getRandomPhone = () => `07${Math.floor(Math.random() * 90000000 + 10000000)}`;
 
+// SHA-256 Hash of '123456'
+const DEFAULT_PASS_HASH = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+
 // --- 1. LANDLORDS ---
 export const SEED_LANDLORDS: User[] = [
-    { id: 'landlord1', name: 'Peter Owner', idNumber: '12345678', phone: '0711000001', email: 'peter@owner.com', role: 'Landlord', status: 'Active', branch: 'Headquarters' },
-    { id: 'landlord2', name: 'Sarah Holdings', idNumber: '87654321', phone: '0722000002', email: 'sarah@holdings.com', role: 'Landlord', status: 'Active', branch: 'Kisii Branch' },
-    { id: 'landlord3', name: 'Mega Properties Ltd', idNumber: '11223344', phone: '0733000003', email: 'info@mega.com', role: 'Landlord', status: 'Active', branch: 'Kericho Branch' },
-    { id: 'landlord4', name: 'James Investor', idNumber: '99887766', phone: '0744000004', email: 'james@invest.com', role: 'Landlord', status: 'Active', branch: 'Headquarters' },
-    { id: 'landlord5', name: 'City Ventures', idNumber: '55443322', phone: '0755000005', email: 'contact@cityventures.co.ke', role: 'Landlord', status: 'Active', branch: 'Kisii Branch' },
+    { id: 'landlord1', name: 'Peter Owner', idNumber: '12345678', phone: '0711000001', email: 'peter@owner.com', role: 'Landlord', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
+    { id: 'landlord2', name: 'Sarah Holdings', idNumber: '87654321', phone: '0722000002', email: 'sarah@holdings.com', role: 'Landlord', status: 'Active', branch: 'Kisii Branch', passwordHash: DEFAULT_PASS_HASH },
+    { id: 'landlord3', name: 'Mega Properties Ltd', idNumber: '11223344', phone: '0733000003', email: 'info@mega.com', role: 'Landlord', status: 'Active', branch: 'Kericho Branch', passwordHash: DEFAULT_PASS_HASH },
+    { id: 'landlord4', name: 'James Investor', idNumber: '99887766', phone: '0744000004', email: 'james@invest.com', role: 'Landlord', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
+    { id: 'landlord5', name: 'City Ventures', idNumber: '55443322', phone: '0755000005', email: 'contact@cityventures.co.ke', role: 'Landlord', status: 'Active', branch: 'Kisii Branch', passwordHash: DEFAULT_PASS_HASH },
+    // Mock Users for Other Roles
+    { id: 'investor1', name: 'Ivan Investor', idNumber: '11122233', phone: '0766000001', email: 'ivan@invest.com', role: 'Investor', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
+    { id: 'affiliate1', name: 'Aaron Affiliate', idNumber: '44455566', phone: '0766000002', email: 'aaron@affiliate.com', role: 'Affiliate', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
+    { id: 'contractor1', name: 'Ken Contractor', idNumber: '77788899', phone: '0766000003', email: 'ken@contract.com', role: 'Contractor', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
 ];
 
 // --- 2. STAFF ---
@@ -61,7 +68,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         leaveBalance: { annual: 30 },
         commissions: [],
         deductions: [],
-        attendanceRecord: {}
+        attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
     // --- JOB OSINDI (Embedded Super Admin) ---
     {
@@ -82,7 +90,7 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         commissions: [],
         deductions: [],
         attendanceRecord: {},
-        passwordHash: '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92' // Hash of 123456
+        passwordHash: DEFAULT_PASS_HASH
     },
     { 
         id: 'staff1', name: 'Admin Alice', role: 'Super Admin', email: 'alice@taskme.re', phone: '0700111222', branch: 'Headquarters', status: 'Active', avatar: 'AA',
@@ -90,7 +98,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         salaryConfig: { type: 'Monthly', amount: 80000 },
         bankDetails: { bankName: 'KCB', accountNumber: '1234567890', kraPin: 'A123456789Z', defaultMethod: 'Bank' },
         payrollInfo: { baseSalary: 80000, nextPaymentDate: getRelativeDate(25) }, leaveBalance: { annual: 15 }, commissions: [],
-        deductions: [], attendanceRecord: {}
+        deductions: [], attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
     { 
         id: 'staff2', name: 'Manager Mike', role: 'Branch Manager', email: 'mike@taskme.re', phone: '0700111333', branch: 'Kericho Branch', status: 'Active', avatar: 'MM',
@@ -98,7 +107,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         salaryConfig: { type: 'Monthly', amount: 60000 },
         bankDetails: { bankName: 'Equity', accountNumber: '0987654321', kraPin: 'A987654321Y', defaultMethod: 'Bank' },
         payrollInfo: { baseSalary: 60000, nextPaymentDate: getRelativeDate(25) }, leaveBalance: { annual: 10 }, commissions: [],
-        deductions: [], attendanceRecord: {}
+        deductions: [], attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
     { 
         id: 'staff3', name: 'Agent Ann', role: 'Field Agent', email: 'ann@taskme.re', phone: '0700111444', branch: 'Kericho Branch', status: 'Active', avatar: 'AA',
@@ -106,7 +116,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         salaryConfig: { type: 'Target Based', amount: 60000 }, 
         bankDetails: { bankName: 'Co-op', accountNumber: '1122334455', kraPin: 'A112233445X', defaultMethod: 'Bank' },
         payrollInfo: { baseSalary: 60000, nextPaymentDate: getRelativeDate(25) }, leaveBalance: { annual: 5 }, commissions: [{date: getRelativeDate(-5), amount: 5000, source: 'New Tenant'}],
-        deductions: [], attendanceRecord: {}
+        deductions: [], attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
     { 
         id: 'staff8', name: 'Agent Brian', role: 'Field Agent', email: 'brian@taskme.re', phone: '0700111999', branch: 'Kisii Branch', status: 'Active', avatar: 'AB',
@@ -114,7 +125,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         salaryConfig: { type: 'Target Based', amount: 55000 }, 
         bankDetails: { bankName: 'Equity', accountNumber: '2233445566', kraPin: 'A223344556Y', defaultMethod: 'Bank' },
         payrollInfo: { baseSalary: 55000, nextPaymentDate: getRelativeDate(25) }, leaveBalance: { annual: 12 }, commissions: [],
-        deductions: [], attendanceRecord: {}
+        deductions: [], attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
     { 
         id: 'staff9', name: 'Agent Chloe', role: 'Field Agent', email: 'chloe@taskme.re', phone: '0700111000', branch: 'Headquarters', status: 'Active', avatar: 'AC',
@@ -122,7 +134,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         salaryConfig: { type: 'Target Based', amount: 58000 }, 
         bankDetails: { bankName: 'KCB', accountNumber: '3344556677', kraPin: 'A334455667Z', defaultMethod: 'Bank' },
         payrollInfo: { baseSalary: 58000, nextPaymentDate: getRelativeDate(25) }, leaveBalance: { annual: 8 }, commissions: [{date: getRelativeDate(-2), amount: 3000, source: 'Lease Renewal'}],
-        deductions: [], attendanceRecord: {}
+        deductions: [], attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
     { 
         id: 'staff4', name: 'Caretaker Charles', role: 'Caretaker', email: 'charles@taskme.re', phone: '0700111555', branch: 'Kisii Branch', status: 'Active', avatar: 'CC',
@@ -130,7 +143,8 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         salaryConfig: { type: 'Monthly', amount: 25000 },
         bankDetails: { bankName: '', accountNumber: '', kraPin: 'A001122334W', mpesaNumber: '0700111555', defaultMethod: 'M-Pesa' },
         payrollInfo: { baseSalary: 25000, nextPaymentDate: getRelativeDate(25) }, leaveBalance: { annual: 12 }, commissions: [],
-        deductions: [], attendanceRecord: {}
+        deductions: [], attendanceRecord: {},
+        passwordHash: DEFAULT_PASS_HASH
     },
 ];
 
@@ -327,6 +341,7 @@ SEED_PROPERTIES.forEach(prop => {
                 rentDueDate: 5,
                 depositPaid: rentAmount,
                 status: status,
+                role: 'Tenant',
                 email: `${tenantName.toLowerCase().replace(' ', '.')}@email.com`,
                 phone: getRandomPhone(),
                 paymentHistory: paymentHistory,
@@ -338,7 +353,8 @@ SEED_PROPERTIES.forEach(prop => {
                 requests: [], 
                 idNumber: Math.floor(Math.random() * 30000000 + 10000000).toString(),
                 dateRegistered: joinDate,
-                houseStatus: []
+                houseStatus: [],
+                passwordHash: DEFAULT_PASS_HASH
             });
 
             // --- TASK GENERATION ---

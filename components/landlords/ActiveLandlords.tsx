@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { User, Property, TenantProfile, Task, Unit, TaskStatus, TaskPriority, Bill, Fund, Investment } from '../../types';
@@ -459,19 +461,25 @@ export const LandlordDetailView: React.FC<{
        
         const detailedDeductions: Array<{ category: string; description: string; amount: number }> = [];
 
-        // 1. Placement Fees (New Tenants in Period)
+        // 1. Placement Fees (New Tenants in Period, based on property setting)
         const newTenants = myTenants.filter(t => t.onboardingDate.startsWith(financialPeriod));
-        const placementFeeDeduction = newTenants.reduce((sum, t) => sum + (t.rentAmount || 0), 0);
+        let placementFeeDeduction = 0;
         
-        if (placementFeeDeduction > 0) {
-             newTenants.forEach(t => {
-                 detailedDeductions.push({
-                     category: 'Placement Fees',
-                     description: `Placement Fee: ${t.name}`,
-                     amount: t.rentAmount || 0
-                 });
-             });
-        }
+        newTenants.forEach(t => {
+            const prop = properties.find(p => p.id === t.propertyId);
+            // Check property specific placement fee setting. Default to true if undefined for backward compatibility/safety
+            const isPlacementFeeActive = prop?.placementFee !== false; 
+
+            if (isPlacementFeeActive) {
+                const amount = t.rentAmount || 0;
+                placementFeeDeduction += amount;
+                detailedDeductions.push({
+                    category: 'Placement Fees',
+                    description: `Placement Fee: ${t.name}`,
+                    amount: amount
+                });
+            }
+        });
 
         // 2. Rule Deductions
         let ruleDeductionsTotal = 0;
@@ -554,7 +562,7 @@ export const LandlordDetailView: React.FC<{
             activeRules,
             detailedDeductions
         };
-    }, [myTenants, myProperties, deductionRules, bills, myTasks, financialPeriod, landlord.id]);
+    }, [myTenants, myProperties, deductionRules, bills, myTasks, financialPeriod, landlord.id, properties]);
 
     // Occupancy Stats
     const totalUnits = myProperties.reduce((acc, p) => acc + p.units.length, 0);
@@ -1125,7 +1133,12 @@ export const LandlordDetailView: React.FC<{
                                         <div className="bg-white p-4 rounded-xl border-t-4 border-indigo-500 shadow-sm">
                                             <p className="text-xs text-gray-500 uppercase">Placement Fees</p>
                                             <p className="text-xl font-extrabold text-red-600">- KES {financials.placementFeeDeduction.toLocaleString()}</p>
-                                            <p className="text-xs text-gray-400">{financials.newTenants.length} New Tenants</p>
+                                            <p className="text-xs text-gray-400">
+                                                {financials.newTenants.filter(t => {
+                                                    const prop = properties.find(p => p.id === t.propertyId);
+                                                    return prop?.placementFee !== false;
+                                                }).length} Fees Charged
+                                            </p>
                                         </div>
                                         <div className="bg-white p-4 rounded-xl border-t-4 border-orange-500 shadow-sm">
                                             <p className="text-xs text-gray-500 uppercase">Bills & Utilities</p>
@@ -1174,6 +1187,9 @@ export const LandlordDetailView: React.FC<{
                                         <tbody className="divide-y divide-gray-100">
                                             {myTenants.map((t, idx) => {
                                                 const isNew = t.onboardingDate.startsWith(financialPeriod);
+                                                const prop = properties.find(p => p.id === t.propertyId);
+                                                const isPlacementFeeActive = prop?.placementFee !== false;
+
                                                 return (
                                                     <tr key={idx} className="hover:bg-gray-50">
                                                         <td className="px-4 py-3 font-medium text-gray-800">{t.name}</td>
@@ -1191,7 +1207,11 @@ export const LandlordDetailView: React.FC<{
                                                         </td>
                                                         <td className="px-4 py-3 text-xs">
                                                             {isNew ? (
-                                                                <span className="text-red-600 font-bold">Placement Fee Applied (100%)</span>
+                                                                isPlacementFeeActive ? (
+                                                                    <span className="text-red-600 font-bold">Placement Fee Applied</span>
+                                                                ) : (
+                                                                    <span className="text-green-600 font-bold">Placement Fee Inactive (Paid to Landlord)</span>
+                                                                )
                                                             ) : (
                                                                 <span className="text-green-600">Revenue Recognized</span>
                                                             )}

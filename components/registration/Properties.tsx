@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MOCK_PROPERTIES, GEOSPATIAL_DATA } from '../../constants';
 import { Property, Unit, User, PropertyAsset, FloorPlan, UnitType, StaffProfile } from '../../types';
@@ -9,7 +7,7 @@ import Icon from '../Icon';
 
 const UNIT_TYPES: string[] = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
 
-const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; }> = ({ property, onEdit, onAddUnit }) => {
+export const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; }> = ({ property, onEdit, onAddUnit }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const statusClasses = {
         Active: 'bg-green-100 text-green-800',
@@ -112,6 +110,7 @@ export const PropertyForm: React.FC<{
             rentIsUniform: true,
             rentType: 'Exclusive',
             deposit: { required: true, months: 1 },
+            placementFee: true, // Default to true as per requirements
             bills: {
                 water: { applicable: false, amount: 0 },
                 electricity: { applicable: false, amount: 0 },
@@ -196,6 +195,13 @@ export const PropertyForm: React.FC<{
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
+        // Handle Checkbox
+        if (type === 'checkbox') {
+             const checked = (e.target as HTMLInputElement).checked;
+             setFormData(prev => ({ ...prev, [name]: checked }));
+             return;
+        }
+        
         const isNumber = type === 'number';
         setFormData(prev => ({ ...prev, [name]: isNumber ? parseInt(value) || 0 : value }));
     };
@@ -220,10 +226,13 @@ export const PropertyForm: React.FC<{
 
         setFormData(prev => {
             const newState: any = { ...prev, [field]: value };
-            if(field === 'county') { newState.subCounty=''; newState.location=''; newState.zone=''; newState.subLocation=''; }
-            if(field === 'subCounty') { newState.location=''; newState.zone=''; newState.subLocation=''; }
-            if(field === 'location') { newState.zone=''; newState.subLocation=''; }
-            if(field === 'zone') { newState.subLocation=''; setIsAddingSubLocation(false); setCustomSubLocation(''); }
+            const resetFields = (f: string) => {
+                if(f === 'county') { newState.subCounty=''; newState.location=''; newState.zone=''; newState.subLocation=''; }
+                if(f === 'subCounty') { newState.location=''; newState.zone=''; newState.subLocation=''; }
+                if(f === 'location') { newState.zone=''; newState.subLocation=''; }
+                if(f === 'zone') { newState.subLocation=''; }
+            };
+            resetFields(field);
             return newState;
         });
     };
@@ -268,6 +277,7 @@ export const PropertyForm: React.FC<{
                 }
             };
             
+            // Auto-recalculate gross rent if Uniform and Inclusive
             if (prev.rentIsUniform && prev.rentType === 'Inclusive') {
                 const totalBills = Object.values(newBills).reduce<number>((acc, b: any) => acc + (b?.applicable ? (Number(b?.amount) || 0) : 0), 0);
                 return { ...prev, bills: newBills, defaultMonthlyRent: baseRent + totalBills };
@@ -325,6 +335,7 @@ export const PropertyForm: React.FC<{
 
     const totalIncludedBills = Object.values(formData.bills || {}).reduce<number>((acc, b: any) => acc + (b?.applicable ? (Number(b?.amount) || 0) : 0), 0);
 
+    // Filter staff for Field Agents
     const fieldAgents = staff.filter(s => s.role === 'Field Agent');
 
     return (
@@ -373,6 +384,7 @@ export const PropertyForm: React.FC<{
                             </div>
                         </div>
                         
+                        {/* Assigned Agent (New) */}
                         <div>
                             <label className="block text-sm font-bold text-blue-700 mb-1">Assigned Field Agent*</label>
                             <select name="assignedAgentId" value={formData.assignedAgentId || ''} onChange={handleChange} className="w-full p-2 border border-blue-200 rounded bg-blue-50 text-gray-800 font-medium">
@@ -382,6 +394,7 @@ export const PropertyForm: React.FC<{
                             <p className="text-xs text-gray-500 mt-1">This agent will be responsible for occupancy & collection targets.</p>
                         </div>
 
+                        {/* Financial & Remittance Section */}
                         <div className="pt-4 mt-2 border-t">
                             <h4 className="text-sm font-bold text-gray-700 mb-3">Financial & Remittance</h4>
                             <div className="grid grid-cols-2 gap-4">
@@ -396,6 +409,22 @@ export const PropertyForm: React.FC<{
                                     <label className="block text-xs font-medium text-gray-600 mb-1">Cutoff Day</label>
                                     <input type="number" name="remittanceCutoffDay" value={formData.remittanceCutoffDay || ''} onChange={handleChange} placeholder="e.g. 5" className="w-full p-2 border rounded text-sm"/>
                                 </div>
+                            </div>
+                            <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                <label className="flex items-center space-x-3 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        name="placementFee" 
+                                        checked={formData.placementFee ?? true} // Default to true if undefined
+                                        onChange={handleChange}
+                                        className="h-4 w-4 text-primary rounded focus:ring-primary border-gray-300"
+                                    />
+                                    <span className="text-sm font-bold text-gray-700">Placement Fee Active?</span>
+                                </label>
+                                <p className="text-xs text-gray-500 mt-1 ml-7">
+                                    If active, the <strong>first month's rent</strong> for new tenants is collected as Agency Revenue (Placement Fee). 
+                                    If inactive, it goes to the Landlord.
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -416,68 +445,49 @@ export const PropertyForm: React.FC<{
 
                     <div className="md:col-span-2 mt-2">
                         <h3 className="font-bold text-gray-800 mb-3 border-b pb-2">Location & Mapping</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">County</label>
-                                <select name="county" value={formData.county || ''} onChange={e => handleGeospatialChange('county', e.target.value)} className="w-full p-2 border rounded bg-white">
-                                    <option value="">Select County</option>{Object.keys(geoData).map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sub-County</label>
-                                <select name="subCounty" value={formData.subCounty || ''} onChange={e => handleGeospatialChange('subCounty', e.target.value)} disabled={!formData.county} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
-                                    <option value="">Select Sub-County</option>{subCountyOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Location</label>
-                                <select name="location" value={formData.location || ''} onChange={e => handleGeospatialChange('location', e.target.value)} disabled={!formData.subCounty} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
-                                    <option value="">Select Location</option>{locationOptions.map(l => <option key={l} value={l}>{l}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Zone / Ward</label>
-                                <select name="zone" value={formData.zone || ''} onChange={e => handleGeospatialChange('zone', e.target.value)} disabled={!formData.location} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
-                                    <option value="">Select Zone</option>{zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sub-Location / Village</label>
-                                {isAddingSubLocation ? (
-                                    <div className="flex gap-2">
-                                        <input 
-                                            value={customSubLocation} 
-                                            onChange={e => setCustomSubLocation(e.target.value)} 
-                                            placeholder="Enter New Village Name" 
-                                            className="w-full p-2 border rounded bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                                            autoFocus
-                                        />
-                                        <button 
-                                            onClick={() => { setIsAddingSubLocation(false); setCustomSubLocation(''); setFormData(p => ({...p, subLocation: ''})); }}
-                                            className="px-2 bg-gray-200 rounded text-xs font-bold hover:bg-gray-300"
-                                            title="Cancel"
-                                        >
-                                            <Icon name="close" className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <select name="subLocation" value={formData.subLocation || ''} onChange={e => handleGeospatialChange('subLocation', e.target.value)} disabled={!formData.zone} className="w-full p-2 border rounded bg-white disabled:bg-gray-100">
-                                        <option value="">Select Village</option>
-                                        {subLocationOptions.map(sl => <option key={sl} value={sl}>{sl}</option>)}
-                                        <option value="ADD_NEW" className="font-bold text-green-600">+ Add New Village</option>
-                                    </select>
-                                )}
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nearest Landmark</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <select name="county" value={formData.county || ''} onChange={e => handleGeospatialChange('county', e.target.value)} className="p-2 border rounded bg-white">
+                                <option value="">County</option>{Object.keys(geoData).map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <select name="subCounty" value={formData.subCounty || ''} onChange={e => handleGeospatialChange('subCounty', e.target.value)} disabled={!formData.county} className="p-2 border rounded bg-white disabled:bg-gray-100">
+                                <option value="">Sub-County</option>{subCountyOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <select name="location" value={formData.location || ''} onChange={e => handleGeospatialChange('location', e.target.value)} disabled={!formData.subCounty} className="p-2 border rounded bg-white disabled:bg-gray-100">
+                                <option value="">Location</option>{locationOptions.map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                            <select name="zone" value={formData.zone || ''} onChange={e => handleGeospatialChange('zone', e.target.value)} disabled={!formData.location} className="p-2 border rounded bg-white disabled:bg-gray-100">
+                                <option value="">Zone</option>{zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                            </select>
+                            <select name="subLocation" value={formData.subLocation || ''} onChange={e => handleGeospatialChange('subLocation', e.target.value)} disabled={!formData.zone} className="p-2 border rounded bg-white disabled:bg-gray-100">
+                                <option value="">Sub-Location / Village</option>{subLocationOptions.map(sl => <option key={sl} value={sl}>{sl}</option>)}
+                                <option value="ADD_NEW" className="font-bold text-green-600">+ Add New Village</option>
+                            </select>
+                            {isAddingSubLocation ? (
+                                <div className="flex gap-2 w-full">
+                                    <input 
+                                        value={customSubLocation} 
+                                        onChange={e => setCustomSubLocation(e.target.value)} 
+                                        placeholder="Enter New Village Name" 
+                                        className="w-full p-2 border rounded bg-white focus:ring-2 focus:ring-green-500 outline-none"
+                                        autoFocus
+                                    />
+                                    <button 
+                                        onClick={() => { setIsAddingSubLocation(false); setCustomSubLocation(''); setFormData(p => ({...p, subLocation: ''})); }}
+                                        className="px-2 bg-gray-200 rounded text-xs font-bold hover:bg-gray-300"
+                                        title="Cancel"
+                                    >
+                                        <Icon name="close" className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ) : (
                                 <input 
                                     name="nearestLandmark" 
                                     value={formData.nearestLandmark || ''} 
                                     onChange={handleChange} 
-                                    placeholder="e.g. Near Main Market" 
-                                    className="w-full p-2 border rounded bg-white"
+                                    placeholder="Nearest Road / Landmark" 
+                                    className="p-2 border rounded bg-white w-full"
                                 />
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -939,9 +949,6 @@ const Properties: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <button onClick={() => window.location.hash = '#/landlords/overview'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
-                <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Overview
-            </button>
             
             <div className="flex justify-between items-center">
                 <div>

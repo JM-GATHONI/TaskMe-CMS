@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { LedgerEntry, RevenueStreamCategory, TaskStatus } from '../../types';
@@ -42,17 +44,23 @@ const Income: React.FC = () => {
             });
 
             // Tenancy Placement Fee
-            entries.push({
-                id: `placement-${t.id}`,
-                date: t.onboardingDate,
-                property: `${t.propertyName} - ${t.unit}`,
-                description: `Placement Fee: ${t.name}`,
-                totalAmount: t.rentAmount || 0,
-                agencyAmount: t.rentAmount || 0,
-                landlordAmount: 0,
-                category: 'Tenancy Placement Fee',
-                type: 'Income'
-            });
+            // Only add if placement fee is active for the property
+            const prop = properties.find(p => p.id === t.propertyId);
+            const isPlacementFeeActive = prop?.placementFee !== false; // Default true if undefined
+
+            if (isPlacementFeeActive) {
+                entries.push({
+                    id: `placement-${t.id}`,
+                    date: t.onboardingDate,
+                    property: `${t.propertyName} - ${t.unit}`,
+                    description: `Placement Fee: ${t.name}`,
+                    totalAmount: t.rentAmount || 0,
+                    agencyAmount: t.rentAmount || 0,
+                    landlordAmount: 0,
+                    category: 'Tenancy Placement Fee',
+                    type: 'Income'
+                });
+            }
         });
 
         // 2. Maintenance Markup
@@ -75,7 +83,7 @@ const Income: React.FC = () => {
         });
 
         return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [tenants, tasks]);
+    }, [tenants, tasks, properties]);
 
     // --- FILTERING ---
     const filteredLedger = useMemo(() => {

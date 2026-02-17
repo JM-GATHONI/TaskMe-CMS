@@ -81,7 +81,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
 };
 
 const TenantPortal: React.FC = () => {
-    const { tenants, updateTenant, tasks, addTask, messages, addMessage } = useData();
+    const { tenants, updateTenant, tasks, addTask, messages, addMessage, currentUser } = useData();
     const [requestType, setRequestType] = useState<'Maintenance' | 'General'>('Maintenance');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -89,34 +89,32 @@ const TenantPortal: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
     const [newMessageContent, setNewMessageContent] = useState('');
 
-    // Simulate logged-in user
-    const currentUser = tenants[0]; // Fallback to first tenant
+    // Use logged-in user if available, fallback to first tenant only for dev/demo if not logged in correctly
+    const activeUser = (currentUser as TenantProfile) || tenants[0];
 
     const myTasks = useMemo(() => {
-        if (!currentUser) return [];
-        return tasks.filter(t => t.tenant.name === currentUser.name && t.tenant.unit === currentUser.unit);
-    }, [tasks, currentUser]);
+        if (!activeUser) return [];
+        return tasks.filter(t => t.tenant.name === activeUser.name && t.tenant.unit === activeUser.unit);
+    }, [tasks, activeUser]);
 
     const myMessages = useMemo(() => {
-        if (!currentUser) return [];
+        if (!activeUser) return [];
         return messages.filter(m => {
-            const isDirect = m.recipient.name === currentUser.name || m.recipient.contact === currentUser.phone;
+            const isDirect = m.recipient.name === activeUser.name || m.recipient.contact === activeUser.phone;
             const isGroup = m.recipient.name === 'Group: All Tenants' || 
-                           (currentUser.propertyName && m.recipient.name.includes(currentUser.propertyName));
-            const isSentByMe = m.recipient.name === 'Property Management' && m.isIncoming; // Assuming we flag outgoing as isIncoming for admin view, or store sender. 
-            // Simplified: If we send, we create a message where recipient is 'Property Management'.
-            // For now, let's filter messages where the user is the recipient OR the user sent it (simulated)
+                           (activeUser.propertyName && m.recipient.name.includes(activeUser.propertyName));
+            const isSentByMe = m.recipient.name === 'Property Management' && m.isIncoming; 
             return isDirect || isGroup;
         }).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [messages, currentUser]);
+    }, [messages, activeUser]);
 
     const balance = useMemo(() => {
-        if (!currentUser) return 0;
-        const rent = currentUser.status === 'Overdue' ? currentUser.rentAmount : 0;
-        const bills = currentUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0;
-        const fines = currentUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0;
+        if (!activeUser) return 0;
+        const rent = activeUser.status === 'Overdue' ? activeUser.rentAmount : 0;
+        const bills = activeUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0;
+        const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0;
         return rent + bills + fines;
-    }, [currentUser]);
+    }, [activeUser]);
 
     const handleSubmitRequest = () => {
         if (!title.trim() || !description.trim()) return alert('Please enter title and description.');
@@ -144,20 +142,21 @@ const TenantPortal: React.FC = () => {
                 dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
                 sla: 48,
                 assignedTo: 'Unassigned',
-                tenant: { name: currentUser.name, unit: currentUser.unit },
-                property: currentUser.propertyName || 'Unknown',
+                tenant: { name: activeUser.name, unit: activeUser.unit },
+                property: activeUser.propertyName || 'Unknown',
                 comments: [],
                 history: [{ id: `h-${Date.now()}`, timestamp: new Date().toLocaleString(), event: 'Reported by Tenant' }],
                 attachments: [],
-                source: 'Internal'
+                source: 'Internal',
+                costs: { labor: 0, materials: 0, travel: 0 }
             };
             addTask(newTask);
             newReq.status = 'Converted to Task';
             newReq.taskId = newTask.id;
         }
 
-        const updatedRequests = [...(currentUser.requests || []), newReq];
-        updateTenant(currentUser.id, { requests: updatedRequests });
+        const updatedRequests = [...(activeUser.requests || []), newReq];
+        updateTenant(activeUser.id, { requests: updatedRequests });
         
         alert("Request submitted successfully!");
         setTitle('');
@@ -170,7 +169,7 @@ const TenantPortal: React.FC = () => {
         const msg: Message = {
             id: `msg-${Date.now()}`,
             recipient: { name: 'Property Management', contact: 'Admin' }, // Sending to Admin
-            content: `From ${currentUser.name} (${currentUser.unit}): ${newMessageContent}`,
+            content: `From ${activeUser.name} (${activeUser.unit}): ${newMessageContent}`,
             channel: 'App',
             status: 'Sent',
             timestamp: new Date().toLocaleString(),
@@ -183,10 +182,10 @@ const TenantPortal: React.FC = () => {
     };
 
     const handleDownloadStatement = () => {
-        printSection('payment-history-table', `Statement_${currentUser.name}`);
+        printSection('payment-history-table', `Statement_${activeUser.name}`);
     };
 
-    if (!currentUser) return <div className="p-8 text-center">Loading Tenant Profile...</div>;
+    if (!activeUser) return <div className="p-8 text-center">Loading Tenant Profile...</div>;
 
     return (
         <div className="space-y-6 pb-20">
@@ -198,11 +197,11 @@ const TenantPortal: React.FC = () => {
                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-4">
                         <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold border-2 border-white/50">
-                            {currentUser.name.charAt(0)}
+                            {activeUser.name.charAt(0)}
                         </div>
                         <div>
-                            <h1 className="text-2xl font-bold">Welcome, {currentUser.name}</h1>
-                            <p className="opacity-90">{currentUser.unit} • {currentUser.propertyName}</p>
+                            <h1 className="text-2xl font-bold">Welcome, {activeUser.name}</h1>
+                            <p className="opacity-90">{activeUser.unit} • {activeUser.propertyName}</p>
                         </div>
                     </div>
                     <button 
@@ -254,15 +253,15 @@ const TenantPortal: React.FC = () => {
                             <div className="space-y-3 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Status</span>
-                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-bold">{currentUser.status}</span>
+                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-bold">{activeUser.status}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Lease Ends</span>
-                                    <span className="font-medium">{currentUser.leaseEnd ? new Date(currentUser.leaseEnd).toLocaleDateString() : 'Month-to-Month'}</span>
+                                    <span className="font-medium">{activeUser.leaseEnd ? new Date(activeUser.leaseEnd).toLocaleDateString() : 'Month-to-Month'}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Rent</span>
-                                    <span className="font-medium">KES {currentUser.rentAmount.toLocaleString()}</span>
+                                    <span className="font-medium">KES {activeUser.rentAmount.toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>
@@ -303,7 +302,7 @@ const TenantPortal: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {(currentUser.paymentHistory || []).map((pay, i) => (
+                                {(activeUser.paymentHistory || []).map((pay, i) => (
                                     <tr key={i} className="hover:bg-gray-50">
                                         <td className="px-3 py-3 text-gray-600">{pay.date}</td>
                                         <td className="px-3 py-3 text-xs font-mono text-gray-500">{pay.reference}</td>
@@ -423,7 +422,7 @@ const TenantPortal: React.FC = () => {
                 </div>
             )}
 
-            {isPayRentModalOpen && <MpesaStkModal onClose={() => setIsPayRentModalOpen(false)} amount={balance > 0 ? balance : currentUser.rentAmount} tenant={currentUser} />}
+            {isPayRentModalOpen && <MpesaStkModal onClose={() => setIsPayRentModalOpen(false)} amount={balance > 0 ? balance : activeUser.rentAmount} tenant={activeUser} />}
         </div>
     );
 };

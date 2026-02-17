@@ -8,7 +8,7 @@ import Icon from '../Icon';
 const RoleEditModal: React.FC<{ role: Role | null; onClose: () => void; onSave: (r: Role) => void }> = ({ role, onClose, onSave }) => {
     // Default structure matching types.ts RolePermissions
     const getDefaultPerms = (): RolePermissions => {
-        const modules = ['Properties', 'Tenants', 'Landlords', 'Financials', 'Maintenance', 'Reports', 'Settings', 'Users'];
+        const modules = ['Properties', 'Tenants', 'Landlords', 'Financials', 'Maintenance', 'Reports', 'Settings', 'Users', 'R-Reits'];
         const p: RolePermissions = {};
         modules.forEach(m => {
              p[m] = {
