@@ -2,293 +2,715 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
+import { MarketplaceListing, Unit, Property } from '../../types';
 
-// --- Constants ---
+// --- Types for Form ---
+type ListingType = 'Rent' | 'Sale' | 'AirBnB';
 
-const RESIDENTIAL_TYPES = [
-    'Single Room', 'Double Room', 'Studio Apartment', 'Bedsitter', 
-    '1 Bedroom', '2 Bedroom', '3 Bedroom', '4 Bedroom', 
-    '3 Bedroom Own Compound', '4 Bedroom Own Compound', '5 Bedroom Own Compound', 
-    'Bungalow', 'Mansionnate', 'Condo', 'Villa'
-];
-
-const COMMERCIAL_TYPES = [
-    'Garages', 'Offices', 'Shops', 'Godowns', 'Retail Space'
-];
-
-const RENT_RANGES = [
-    { label: 'Below KES 5,000', min: 0, max: 5000 },
-    { label: 'KES 5,000 - 10,000', min: 5000, max: 10000 },
-    { label: 'KES 10,000 - 20,000', min: 10000, max: 20000 },
-    { label: 'KES 20,000 - 50,000', min: 20000, max: 50000 },
-    { label: 'KES 50,000 - 100,000', min: 50000, max: 100000 },
-    { label: 'KES 100,000+', min: 100000, max: Infinity },
-];
-
-const SALE_RANGES = [
-    { label: 'Below KES 1M', min: 0, max: 1000000 },
-    { label: 'KES 1M - 5M', min: 1000000, max: 5000000 },
-    { label: 'KES 5M - 10M', min: 5000000, max: 10000000 },
-    { label: 'KES 10M - 20M', min: 10000000, max: 20000000 },
-    { label: 'KES 20M - 50M', min: 20000000, max: 50000000 },
-    { label: 'KES 50M+', min: 50000000, max: Infinity },
-];
-
-// --- Mock Data Generation for Demo ---
-// We generate a diverse list to ensure all filters work
-const GENERATED_LISTINGS = [
-    // Residential Rentals
-    { id: 'l1', title: 'Cozy Bedsitter', type: 'Residential', houseType: 'Bedsitter', purpose: 'Rent', price: 4500, location: 'Juja', image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=400&q=80', beds: 0, baths: 1 },
-    { id: 'l2', title: 'Modern Studio', type: 'Residential', houseType: 'Studio Apartment', purpose: 'Rent', price: 12000, location: 'Roysambu', image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=400&q=80', beds: 0, baths: 1 },
-    { id: 'l3', title: 'Spacious 1 Bedroom', type: 'Residential', houseType: '1 Bedroom', purpose: 'Rent', price: 18000, location: 'Kasarani', image: 'https://images.unsplash.com/photo-1484154218962-a1c002085d2f?auto=format&fit=crop&w=400&q=80', beds: 1, baths: 1 },
-    { id: 'l4', title: 'Luxury 2 Bedroom', type: 'Residential', houseType: '2 Bedroom', purpose: 'Rent', price: 45000, location: 'Kilimani', image: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=400&q=80', beds: 2, baths: 2 },
-    { id: 'l5', title: 'Family Bungalow', type: 'Residential', houseType: 'Bungalow', purpose: 'Rent', price: 85000, location: 'Karen', image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=400&q=80', beds: 4, baths: 3 },
-    { id: 'l6', title: '3 Bedroom Own Compound', type: 'Residential', houseType: '3 Bedroom Own Compound', purpose: 'Rent', price: 60000, location: 'Syokimau', image: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=400&q=80', beds: 3, baths: 2 },
+// --- MODAL: Add/Edit Listing ---
+const ListingModal: React.FC<{ 
+    listing?: MarketplaceListing | null; 
+    onClose: () => void; 
+    onSave: (l: MarketplaceListing) => void;
+    properties: Property[];
+    landlords: any[];
+}> = ({ listing, onClose, onSave, properties, landlords }) => {
+    // Determine initial entry mode
+    const isSystemProp = listing ? properties.some(p => p.id === listing.propertyId) : true;
     
-    // Commercial Rentals
-    { id: 'c1', title: 'CBD Office Suite', type: 'Commercial', houseType: 'Offices', purpose: 'Rent', price: 35000, location: 'Nairobi CBD', image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=400&q=80', size: '500 sqft' },
-    { id: 'c2', title: 'Prime Retail Space', type: 'Commercial', houseType: 'Retail Space', purpose: 'Rent', price: 80000, location: 'Westlands', image: 'https://images.unsplash.com/photo-1519567241046-7f570eee3c9e?auto=format&fit=crop&w=400&q=80', size: '1000 sqft' },
-    { id: 'c3', title: 'Industrial Godown', type: 'Commercial', houseType: 'Godowns', purpose: 'Rent', price: 150000, location: 'Mlolongo', image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=400&q=80', size: '5000 sqft' },
+    // Stage 1: Select Type
+    const [type, setType] = useState<ListingType>(listing?.type || 'Rent');
+    const [entryMode, setEntryMode] = useState<'System' | 'Manual'>(isSystemProp ? 'System' : 'Manual');
+    
+    // Stage 2: Select Unit (if new)
+    const [selectedPropId, setSelectedPropId] = useState(listing?.propertyId || '');
+    const [selectedUnitId, setSelectedUnitId] = useState(listing?.unitId || '');
 
-    // Properties For Sale
-    { id: 's1', title: 'Modern Villa', type: 'Residential', houseType: 'Villa', purpose: 'Sale', price: 45000000, location: 'Runda', image: 'https://images.unsplash.com/photo-1613490493576-2f5037657918?auto=format&fit=crop&w=400&q=80', beds: 5, baths: 5 },
-    { id: 's2', title: 'Starter Condo', type: 'Residential', houseType: 'Condo', purpose: 'Sale', price: 8500000, location: 'Kileleshwa', image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=400&q=80', beds: 2, baths: 2 },
-    { id: 's3', title: 'Highway Shop', type: 'Commercial', houseType: 'Shops', purpose: 'Sale', price: 3500000, location: 'Thika Road', image: 'https://images.unsplash.com/photo-1556740738-b6a63e27c4df?auto=format&fit=crop&w=400&q=80', size: '300 sqft' },
-    { id: 's4', title: 'Mansionnate in Gated Community', type: 'Residential', houseType: 'Mansionnate', purpose: 'Sale', price: 22000000, location: 'Kitengela', image: 'https://images.unsplash.com/photo-1600596542815-2a4d9fdb252b?auto=format&fit=crop&w=400&q=80', beds: 4, baths: 3 },
-    { id: 's5', title: '4 Bedroom Own Compound', type: 'Residential', houseType: '4 Bedroom Own Compound', purpose: 'Sale', price: 18000000, location: 'Ruiru', image: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=400&q=80', beds: 4, baths: 3 },
-];
+    // Stage 3: Details
+    const [formData, setFormData] = useState<Partial<MarketplaceListing>>(listing || {
+        title: '', description: '', price: 0, currency: 'KES', features: [], images: [], status: 'Draft',
+        propertyId: '', propertyName: '', unitId: '', unitNumber: '', location: '',
+        airbnbConfig: { cleaningFee: 0, checkInTime: '14:00', checkOutTime: '11:00', maxGuests: 2, houseRules: '', amenities: [] },
+        saleConfig: { titleDeedType: 'Freehold', landSize: '', financingAvailable: false, propertyCategory: 'House', usageType: 'Residential' },
+        ownerDetails: { name: '', contact: '', email: '', rating: 5, reviews: 0 }
+    });
+
+    // Valid Units (Vacant) - Though now we primarily edit existing auto-listings
+    const availableProperties = properties.filter(p => p.units.some(u => u.status === 'Vacant'));
+    const selectedProperty = properties.find(p => p.id === selectedPropId);
+    const availableUnits = selectedProperty?.units.filter(u => u.status === 'Vacant' || u.id === listing?.unitId) || [];
+
+    // Auto-fill Owner Details & Title when Unit Selected (Only for System mode)
+    useEffect(() => {
+        if (entryMode === 'System' && selectedPropId && selectedUnitId && !listing) {
+            const prop = properties.find(p => p.id === selectedPropId);
+            const unit = prop?.units.find(u => u.id === selectedUnitId);
+            const landlord = landlords.find(l => l.id === prop?.landlordId);
+
+            if (prop && unit) {
+                setFormData(prev => ({
+                    ...prev,
+                    title: `${prop.name} - ${unit.unitNumber}`,
+                    description: `${unit.bedrooms} Bedroom unit in ${prop.location || prop.branch}.`,
+                    price: type === 'Rent' ? (unit.rent || prop.defaultMonthlyRent || 0) : 0, // Default rent price
+                    propertyName: prop.name,
+                    unitNumber: unit.unitNumber,
+                    location: prop.location || prop.branch || '',
+                    ownerDetails: {
+                        name: landlord?.name || 'Management',
+                        contact: landlord?.phone || '',
+                        email: landlord?.email || '',
+                        rating: 5,
+                        reviews: 0
+                    }
+                }));
+            }
+        }
+    }, [selectedPropId, selectedUnitId, properties, landlords, listing, type, entryMode]);
+
+    const handleFeatures = (e: React.ChangeEvent<HTMLInputElement>) => {
+        // Simple comma split
+        const val = e.target.value;
+        setFormData(prev => ({ ...prev, features: val.split(',') }));
+    };
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const files = Array.from(e.target.files);
+            const promises = files.map(file => {
+                return new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            });
+
+            Promise.all(promises).then(base64Images => {
+                setFormData(prev => ({ ...prev, images: [...(prev.images || []), ...base64Images] }));
+            });
+        }
+    };
+
+    const removeImage = (index: number) => {
+        setFormData(prev => ({
+            ...prev,
+            images: prev.images?.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleSubmit = () => {
+        // Validation
+        if (entryMode === 'System' && (!selectedPropId || !selectedUnitId)) {
+            alert("Please select a property and unit.");
+            return;
+        }
+        if (entryMode === 'Manual' && (!formData.propertyName || !formData.location)) {
+            alert("Please enter Property Name and Location.");
+            return;
+        }
+        if (!formData.title || !formData.price) {
+            alert("Please complete Title and Price.");
+            return;
+        }
+
+        const finalListing: MarketplaceListing = {
+            id: listing?.id || `lst-${Date.now()}`,
+            propertyId: entryMode === 'System' ? selectedPropId : (listing?.propertyId || `manual-prop-${Date.now()}`),
+            propertyName: formData.propertyName || '',
+            unitId: entryMode === 'System' ? selectedUnitId : (listing?.unitId || `manual-unit-${Date.now()}`),
+            unitNumber: formData.unitNumber || (entryMode === 'Manual' ? 'Main' : ''),
+            type,
+            status: formData.status || 'Draft',
+            price: Number(formData.price),
+            currency: formData.currency || 'KES',
+            description: formData.description || '',
+            title: formData.title || '',
+            location: formData.location || '',
+            images: formData.images || [],
+            features: formData.features?.map(s => s.trim()) || [],
+            airbnbConfig: type === 'AirBnB' ? formData.airbnbConfig : undefined,
+            saleConfig: type === 'Sale' ? formData.saleConfig : undefined,
+            ownerDetails: formData.ownerDetails || { name: 'Owner', contact: '', email: '' },
+            dateCreated: listing?.dateCreated || new Date().toISOString()
+        };
+
+        onSave(finalListing);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[1500] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                    <h3 className="text-xl font-bold text-gray-800">{listing ? 'Edit Listing' : 'Create New Listing'}</h3>
+                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-500" /></button>
+                </div>
+
+                <div className="flex-grow overflow-y-auto p-8 space-y-6">
+                    {/* Listing Type */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Listing Type</label>
+                        <div className="flex gap-4">
+                            {['Rent', 'Sale', 'AirBnB'].map(t => (
+                                <button 
+                                    key={t}
+                                    onClick={() => !listing && setType(t as any)} // Disable change if editing existing
+                                    disabled={!!listing}
+                                    className={`flex-1 py-3 border rounded-xl text-sm font-bold transition-all ${
+                                        type === t ? 'bg-primary text-white border-primary shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {t}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Entry Mode Toggle (Only for new or when applicable) */}
+                    {(type === 'Sale' || type === 'AirBnB') && (
+                        <div className="flex items-center gap-4 bg-gray-100 p-2 rounded-lg">
+                            <button 
+                                onClick={() => setEntryMode('System')}
+                                className={`flex-1 py-2 text-xs font-bold rounded-md ${entryMode === 'System' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}
+                            >
+                                Link to Managed Unit
+                            </button>
+                            <button 
+                                onClick={() => setEntryMode('Manual')}
+                                className={`flex-1 py-2 text-xs font-bold rounded-md ${entryMode === 'Manual' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}
+                            >
+                                Manual Entry
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Unit Selection / Manual Entry */}
+                    {entryMode === 'System' ? (
+                        <div className="grid grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Property</label>
+                                <select 
+                                    value={selectedPropId} 
+                                    onChange={e => setSelectedPropId(e.target.value)} 
+                                    disabled={!!listing}
+                                    className="w-full p-2.5 border rounded-lg bg-white"
+                                >
+                                    <option value="">Select Property</option>
+                                    {availableProperties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Unit</label>
+                                <select 
+                                    value={selectedUnitId} 
+                                    onChange={e => setSelectedUnitId(e.target.value)} 
+                                    disabled={!selectedPropId || !!listing}
+                                    className="w-full p-2.5 border rounded-lg bg-white"
+                                >
+                                    <option value="">Select Unit</option>
+                                    {availableUnits.map(u => <option key={u.id} value={u.id}>{u.unitNumber} ({u.bedrooms}BR)</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                             <div className="col-span-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Manual Property Details</div>
+                             <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Property Name</label>
+                                <input 
+                                    value={formData.propertyName}
+                                    onChange={e => setFormData({...formData, propertyName: e.target.value})}
+                                    className="w-full p-2.5 border rounded-lg"
+                                    placeholder="e.g. Sunset Villa"
+                                />
+                             </div>
+                             <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Unit Number/Name</label>
+                                <input 
+                                    value={formData.unitNumber}
+                                    onChange={e => setFormData({...formData, unitNumber: e.target.value})}
+                                    className="w-full p-2.5 border rounded-lg"
+                                    placeholder="e.g. House No. 5"
+                                />
+                             </div>
+                             <div className="col-span-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Location</label>
+                                <input 
+                                    value={formData.location}
+                                    onChange={e => setFormData({...formData, location: e.target.value})}
+                                    className="w-full p-2.5 border rounded-lg"
+                                    placeholder="e.g. Karen, Nairobi"
+                                />
+                             </div>
+                        </div>
+                    )}
+
+                    {/* Image Upload */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Images <span className="text-gray-400 font-normal">(Min 3 recommended)</span></label>
+                        <div className="grid grid-cols-4 gap-3 mb-2">
+                            {formData.images?.map((img, idx) => (
+                                <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 group">
+                                    <img src={img} className="w-full h-full object-cover" />
+                                    <button 
+                                        onClick={() => removeImage(idx)} 
+                                        className="absolute top-1 right-1 bg-black/50 hover:bg-red-600 text-white rounded-full p-1 transition-colors"
+                                    >
+                                        <Icon name="close" className="w-3 h-3"/>
+                                    </button>
+                                </div>
+                            ))}
+                            <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 aspect-square transition-colors hover:border-primary">
+                                <Icon name="plus" className="w-8 h-8 text-gray-400" />
+                                <span className="text-xs text-gray-500 mt-2 font-bold">Add Photos</span>
+                                <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} />
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Core Details */}
+                    <div className="space-y-4 border-t pt-4">
+                        <input 
+                            value={formData.title} 
+                            onChange={e => setFormData({...formData, title: e.target.value})}
+                            className="w-full p-3 text-lg font-bold border-b focus:border-primary outline-none"
+                            placeholder="Listing Title (e.g. Luxury 2BR in Kilimani)"
+                        />
+                        <div className="grid grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                    {type === 'Rent' ? 'Monthly Rent' : type === 'Sale' ? 'Sale Price' : 'Nightly Rate'} (KES)
+                                </label>
+                                <input 
+                                    type="number"
+                                    value={formData.price || ''} 
+                                    onChange={e => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+                                    className="w-full p-2 border rounded-lg font-mono text-gray-800 font-bold"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Publish Status</label>
+                                <select 
+                                    value={formData.status} 
+                                    onChange={e => setFormData({...formData, status: e.target.value as any})}
+                                    className="w-full p-2 border rounded-lg bg-white"
+                                >
+                                    <option value="Draft">Draft (Hidden)</option>
+                                    <option value="Published">Published (Live)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <textarea 
+                            value={formData.description} 
+                            onChange={e => setFormData({...formData, description: e.target.value})}
+                            className="w-full p-3 border rounded-lg text-sm"
+                            rows={3}
+                            placeholder="Detailed description..."
+                        />
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Features (comma separated)</label>
+                            <input 
+                                value={formData.features?.join(',')} 
+                                onChange={handleFeatures}
+                                className="w-full p-2 border rounded-lg text-sm"
+                                placeholder="WiFi, Gym, Parking, Balcony..."
+                            />
+                        </div>
+                    </div>
+
+                    {/* AirBnB Specifics */}
+                    {type === 'AirBnB' && (
+                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-4">
+                            <h4 className="font-bold text-purple-800 text-sm">AirBnB Settings</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                     <input 
+                                        type="number" 
+                                        placeholder="Cleaning Fee" 
+                                        value={formData.airbnbConfig?.cleaningFee || ''}
+                                        onChange={e => setFormData({
+                                            ...formData, 
+                                            airbnbConfig: { ...formData.airbnbConfig!, cleaningFee: Number(e.target.value) }
+                                        })}
+                                        className="w-full p-2 border rounded text-sm"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">One-time fee per booking.</p>
+                                </div>
+                                <div>
+                                    <input 
+                                        type="number" 
+                                        placeholder="Max Guests" 
+                                        value={formData.airbnbConfig?.maxGuests || ''}
+                                        onChange={e => setFormData({
+                                            ...formData, 
+                                            airbnbConfig: { ...formData.airbnbConfig!, maxGuests: Number(e.target.value) }
+                                        })}
+                                        className="w-full p-2 border rounded text-sm"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Maximum occupancy.</p>
+                                </div>
+                                <div>
+                                    <input 
+                                        placeholder="Check-in (e.g. 14:00)" 
+                                        value={formData.airbnbConfig?.checkInTime}
+                                        onChange={e => setFormData({
+                                            ...formData, 
+                                            airbnbConfig: { ...formData.airbnbConfig!, checkInTime: e.target.value }
+                                        })}
+                                        className="w-full p-2 border rounded text-sm"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Earliest arrival time.</p>
+                                </div>
+                                <div>
+                                    <input 
+                                        placeholder="Check-out (e.g. 11:00)" 
+                                        value={formData.airbnbConfig?.checkOutTime}
+                                        onChange={e => setFormData({
+                                            ...formData, 
+                                            airbnbConfig: { ...formData.airbnbConfig!, checkOutTime: e.target.value }
+                                        })}
+                                        className="w-full p-2 border rounded text-sm"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Latest departure time.</p>
+                                </div>
+                            </div>
+                            <textarea 
+                                placeholder="House Rules..." 
+                                value={formData.airbnbConfig?.houseRules}
+                                onChange={e => setFormData({
+                                    ...formData, 
+                                    airbnbConfig: { ...formData.airbnbConfig!, houseRules: e.target.value }
+                                })}
+                                className="w-full p-2 border rounded text-sm h-20"
+                            />
+                        </div>
+                    )}
+
+                    {/* Sale Specifics */}
+                    {type === 'Sale' && (
+                         <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4">
+                            <h4 className="font-bold text-blue-800 text-sm">Sale Settings</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-blue-800/70 uppercase mb-1">Property Category</label>
+                                    <select 
+                                        value={formData.saleConfig?.propertyCategory || 'House'}
+                                        onChange={e => setFormData({ ...formData, saleConfig: { ...formData.saleConfig!, propertyCategory: e.target.value as any } })}
+                                        className="w-full p-2 border rounded text-sm bg-white"
+                                    >
+                                        <option value="House">House</option>
+                                        <option value="Apartment">Apartment</option>
+                                        <option value="Land">Land</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-blue-800/70 uppercase mb-1">Usage Type</label>
+                                    <select 
+                                        value={formData.saleConfig?.usageType || 'Residential'}
+                                        onChange={e => setFormData({ ...formData, saleConfig: { ...formData.saleConfig!, usageType: e.target.value as any } })}
+                                        className="w-full p-2 border rounded text-sm bg-white"
+                                    >
+                                        <option value="Residential">Residential</option>
+                                        <option value="Commercial">Commercial</option>
+                                        <option value="Mixed">Mixed</option>
+                                    </select>
+                                </div>
+                                <div>
+                                     <label className="block text-xs font-bold text-blue-800/70 uppercase mb-1">Title Type</label>
+                                     <select 
+                                        value={formData.saleConfig?.titleDeedType}
+                                        onChange={e => setFormData({
+                                            ...formData, 
+                                            saleConfig: { ...formData.saleConfig!, titleDeedType: e.target.value }
+                                        })}
+                                        className="w-full p-2 border rounded text-sm bg-white"
+                                    >
+                                        <option>Freehold</option>
+                                        <option>Leasehold</option>
+                                        <option>Sectional Title</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-blue-800/70 uppercase mb-1">Land/Floor Size</label>
+                                    <input 
+                                        placeholder="e.g. 0.5 Acre / 150sqm" 
+                                        value={formData.saleConfig?.landSize}
+                                        onChange={e => setFormData({
+                                            ...formData, 
+                                            saleConfig: { ...formData.saleConfig!, landSize: e.target.value }
+                                        })}
+                                        className="w-full p-2 border rounded text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <label className="flex items-center text-sm text-blue-900 font-medium">
+                                <input 
+                                    type="checkbox" 
+                                    checked={formData.saleConfig?.financingAvailable}
+                                    onChange={e => setFormData({
+                                        ...formData, 
+                                        saleConfig: { ...formData.saleConfig!, financingAvailable: e.target.checked }
+                                    })}
+                                    className="mr-2 h-4 w-4 text-blue-600 rounded"
+                                />
+                                Financing / Mortgage Available
+                            </label>
+                        </div>
+                    )}
+
+                    {/* Owner Details (Read Only Review or Manual Input if not system) */}
+                    <div className="p-4 bg-gray-50 rounded border border-gray-200 text-sm text-gray-500">
+                        {entryMode === 'System' ? (
+                            <><strong>Owner Contact (For Inquiries):</strong> {formData.ownerDetails?.name} | {formData.ownerDetails?.contact}</>
+                        ) : (
+                            <div className="space-y-4">
+                                <p className="text-xs font-bold text-gray-500 uppercase">Owner Details (Manual)</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block font-bold mb-1 text-xs">Owner Name</label>
+                                        <input 
+                                            value={formData.ownerDetails?.name}
+                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, name: e.target.value}})}
+                                            className="w-full p-2 border rounded bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block font-bold mb-1 text-xs">Contact Phone</label>
+                                        <input 
+                                            value={formData.ownerDetails?.contact}
+                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, contact: e.target.value}})}
+                                            className="w-full p-2 border rounded bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block font-bold mb-1 text-xs">Email Address</label>
+                                        <input 
+                                            type="email"
+                                            value={formData.ownerDetails?.email}
+                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, email: e.target.value}})}
+                                            className="w-full p-2 border rounded bg-white"
+                                        />
+                                    </div>
+                                     <div>
+                                        <label className="block font-bold mb-1 text-xs">Rating (0-5)</label>
+                                        <input 
+                                            type="number"
+                                            max={5}
+                                            min={0}
+                                            step={0.1}
+                                            value={formData.ownerDetails?.rating}
+                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, rating: parseFloat(e.target.value) || 0}})}
+                                            className="w-full p-2 border rounded bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block font-bold mb-1 text-xs">Review Count</label>
+                                        <input 
+                                            type="number"
+                                            value={formData.ownerDetails?.reviews}
+                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, reviews: parseInt(e.target.value) || 0}})}
+                                            className="w-full p-2 border rounded bg-white"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-6 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+                    <button onClick={onClose} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-100">Cancel</button>
+                    <button onClick={handleSubmit} className="px-6 py-2.5 bg-primary text-white font-bold rounded-lg hover:bg-primary-dark shadow-md">
+                        {formData.status === 'Published' ? 'Publish Now' : 'Save Draft'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ListingCard: React.FC<{ listing: MarketplaceListing; onEdit: () => void; onDelete: () => void; onMarkOccupied: () => void }> = ({ listing, onEdit, onDelete, onMarkOccupied }) => (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 group flex flex-col h-full relative">
+        <div className="h-40 bg-gray-200 relative overflow-hidden">
+            {listing.images[0] ? (
+                <img src={listing.images[0]} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={listing.title} />
+            ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-100">
+                    <Icon name="vacant-house" className="w-12 h-12 opacity-20" />
+                </div>
+            )}
+            <div className={`absolute top-3 right-3 text-[10px] font-bold px-2 py-1 rounded shadow-sm uppercase ${
+                listing.status === 'Published' ? 'bg-green-500 text-white' : 'bg-gray-500 text-white'
+            }`}>
+                {listing.status}
+            </div>
+             <div className={`absolute top-3 left-3 text-[10px] font-bold px-2 py-1 rounded shadow-sm uppercase ${
+                listing.type === 'AirBnB' ? 'bg-pink-500 text-white' : 
+                listing.type === 'Sale' ? 'bg-blue-600 text-white' : 
+                'bg-orange-500 text-white'
+            }`}>
+                {listing.type}
+            </div>
+            {listing.images.length > 1 && (
+                 <div className="absolute bottom-3 right-3 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full flex items-center">
+                     <Icon name="stack" className="w-3 h-3 mr-1" /> {listing.images.length}
+                 </div>
+            )}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
+                <p className="text-white font-bold text-lg">KES {listing.price.toLocaleString()}</p>
+            </div>
+        </div>
+        
+        <div className="p-5 flex-grow flex flex-col">
+            <h3 className="font-bold text-gray-800 text-sm mb-1 line-clamp-1">{listing.title}</h3>
+            <p className="text-xs text-gray-500 mb-3 flex items-center">
+                <Icon name="branch" className="w-3 h-3 mr-1 text-gray-400"/> {listing.location}
+            </p>
+            
+            {listing.type === 'AirBnB' && (
+                <div className="text-xs text-gray-600 mb-3 bg-pink-50 p-2 rounded">
+                    Guests: {listing.airbnbConfig?.maxGuests} • Rules: {listing.airbnbConfig?.houseRules ? 'Yes' : 'No'}
+                </div>
+            )}
+            {listing.type === 'Sale' && (
+                <div className="text-xs text-gray-600 mb-3 bg-blue-50 p-2 rounded flex flex-wrap gap-2">
+                    <span>{listing.saleConfig?.propertyCategory}</span>
+                    <span>•</span>
+                    <span>{listing.saleConfig?.usageType}</span>
+                    <span>•</span>
+                    <span>{listing.saleConfig?.titleDeedType}</span>
+                </div>
+            )}
+
+            <div className="mt-auto flex gap-2 pt-3 border-t border-gray-50">
+                <button onClick={onEdit} className="flex-1 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded hover:bg-gray-200 transition-colors">
+                    Edit Details
+                </button>
+                <button onClick={onDelete} className="px-2 py-1.5 bg-white border border-red-200 text-red-500 text-xs font-bold rounded hover:bg-red-50">
+                    <Icon name="trash" className="w-3 h-3" />
+                </button>
+            </div>
+            
+            {listing.status === 'Published' && (
+                <button onClick={onMarkOccupied} className="w-full mt-2 py-2 bg-green-600 text-white text-xs font-bold rounded hover:bg-green-700 shadow-sm">
+                    Mark Occupied / Sold
+                </button>
+            )}
+        </div>
+    </div>
+);
+
+// --- MAIN COMPONENT ---
 
 const Listings: React.FC = () => {
-    const { properties } = useData();
+    const { properties, landlords, marketplaceListings, addMarketplaceListing, updateMarketplaceListing, deleteMarketplaceListing, markUnitOccupied } = useData();
     
-    // --- Filters State ---
-    const [listingPurpose, setListingPurpose] = useState<'Rent' | 'Sale'>('Rent');
-    const [propertyType, setPropertyType] = useState<'Residential' | 'Commercial' | 'All'>('All');
-    const [houseType, setHouseType] = useState('All');
-    const [location, setLocation] = useState('All Locations');
-    const [priceRange, setPriceRange] = useState('All');
-    const [searchQuery, setSearchQuery] = useState('');
+    // UI State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingListing, setEditingListing] = useState<MarketplaceListing | null>(null);
+    const [filterType, setFilterType] = useState('All');
 
-    // --- Combine Context Data with Mock Data ---
-    const allListings = useMemo(() => {
-        // Convert context properties to listing format if they have vacant units
-        const contextListings = properties.flatMap(p => 
-            p.units.filter(u => u.status === 'Vacant').map(u => ({
-                id: u.id,
-                title: `${p.name} - ${u.unitNumber}`,
-                type: p.type === 'Mixed-Use' ? 'Residential' : p.type, // Simplify for filter
-                houseType: u.unitType || 'Apartment', // Default fallback
-                purpose: 'Rent', // Context props are mostly rental
-                price: u.rent || p.defaultMonthlyRent || 0,
-                location: p.location || p.branch,
-                image: p.profilePictureUrl || 'https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=400&q=80',
-                beds: u.bedrooms,
-                baths: u.bathrooms,
-                size: undefined
-            }))
-        );
+    // --- Derived Data ---
+    
+    // Auto-populated listing logic is handled in DataContext now.
+    // marketplaceListings contains automatically created listings from vacant units.
+    
+    const displayedListings = useMemo(() => {
+        return marketplaceListings.filter(l => filterType === 'All' || l.type === filterType);
+    }, [marketplaceListings, filterType]);
 
-        // Merge with generated robust data
-        return [...contextListings, ...GENERATED_LISTINGS];
-    }, [properties]);
+    // --- Actions ---
 
-    // --- Derived Options ---
-    const availableLocations = useMemo(() => 
-        ['All Locations', ...new Set(allListings.map(l => l.location).sort())]
-    , [allListings]);
+    const handleSave = (listing: MarketplaceListing) => {
+        if (editingListing) {
+            updateMarketplaceListing(listing.id, listing);
+        } else {
+            addMarketplaceListing(listing);
+        }
+        setIsModalOpen(false);
+        setEditingListing(null);
+    };
 
-    const activeHouseTypes = useMemo(() => {
-        if (propertyType === 'Residential') return RESIDENTIAL_TYPES;
-        if (propertyType === 'Commercial') return COMMERCIAL_TYPES;
-        return [...RESIDENTIAL_TYPES, ...COMMERCIAL_TYPES].sort();
-    }, [propertyType]);
+    const handleDelete = (id: string) => {
+        if (confirm("Delete this listing? If the unit is still vacant, it may auto-repopulate.")) {
+            deleteMarketplaceListing(id);
+        }
+    };
 
-    const activePriceRanges = listingPurpose === 'Rent' ? RENT_RANGES : SALE_RANGES;
-
-    // --- Filtering Logic ---
-    const filteredListings = useMemo(() => {
-        return allListings.filter(l => {
-            // 1. Purpose (Rent/Sale)
-            if (l.purpose !== listingPurpose) return false;
-
-            // 2. Property Type
-            if (propertyType !== 'All' && l.type !== propertyType) return false;
-
-            // 3. House Type
-            if (houseType !== 'All' && l.houseType !== houseType) return false;
-
-            // 4. Location
-            if (location !== 'All Locations' && l.location !== location) return false;
-
-            // 5. Price Range
-            if (priceRange !== 'All') {
-                const range = activePriceRanges.find(r => r.label === priceRange);
-                if (range) {
-                    if (l.price < range.min || l.price >= range.max) return false;
-                }
-            }
-
-            // 6. Search Query
-            if (searchQuery) {
-                const q = searchQuery.toLowerCase();
-                const match = l.title.toLowerCase().includes(q) || 
-                              l.location.toLowerCase().includes(q) ||
-                              l.houseType.toLowerCase().includes(q);
-                if (!match) return false;
-            }
-
-            return true;
-        });
-    }, [allListings, listingPurpose, propertyType, houseType, location, priceRange, searchQuery, activePriceRanges]);
-
-    const handleShare = (title: string) => {
-        alert(`Sharing listing "${title}" to social media...`);
+    const handleMarkOccupied = (listing: MarketplaceListing) => {
+        const action = listing.type === 'Sale' ? 'Sold' : 'Occupied';
+        if (confirm(`Mark this unit as ${action}? This will remove the listing and update property records.`)) {
+            markUnitOccupied(listing.propertyId, listing.unitId);
+        }
     };
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-end gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Property Marketplace</h1>
-                    <p className="text-lg text-gray-500 mt-1">Browse available units for rent or purchase.</p>
+                    <h1 className="text-3xl font-bold text-gray-800">Listings Manager</h1>
+                    <p className="text-lg text-gray-500 mt-1">
+                        Control public inventory. Vacant units are 
+                        <span className="text-green-600 font-bold ml-1">automatically added</span> here.
+                    </p>
                 </div>
-                <div className="bg-gray-100 p-1 rounded-xl flex">
-                    <button 
-                        onClick={() => { setListingPurpose('Rent'); setPriceRange('All'); }}
-                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${listingPurpose === 'Rent' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Properties for Rent
-                    </button>
-                    <button 
-                        onClick={() => { setListingPurpose('Sale'); setPriceRange('All'); }}
-                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${listingPurpose === 'Sale' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:text-gray-800'}`}
-                    >
-                        Properties for Sale
-                    </button>
+                <div className="flex bg-green-50 p-2 rounded-xl border border-green-200 text-green-800 text-sm font-bold items-center">
+                    <Icon name="check" className="w-4 h-4 mr-2" />
+                    Auto-Sync Active: Vacancies are pushed to Website API.
                 </div>
             </div>
 
             {/* Filters Bar */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                    {/* Search */}
-                    <div className="relative col-span-1 md:col-span-2 lg:col-span-1">
-                        <input 
-                            type="text" 
-                            placeholder="Keyword search..." 
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary/20 outline-none text-sm"
-                        />
-                        <div className="absolute left-3 top-3 text-gray-400"><Icon name="search" className="w-5 h-5" /></div>
-                    </div>
-
-                    {/* Property Type */}
-                    <select 
-                        value={propertyType} 
-                        onChange={e => { setPropertyType(e.target.value as any); setHouseType('All'); }}
-                        className="p-2.5 border border-gray-300 rounded-xl bg-white text-sm focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer"
-                    >
-                        <option value="All">All Property Types</option>
-                        <option value="Residential">Residential</option>
-                        <option value="Commercial">Commercial</option>
-                    </select>
-
-                    {/* House Type */}
-                    <select 
-                        value={houseType} 
-                        onChange={e => setHouseType(e.target.value)}
-                        className="p-2.5 border border-gray-300 rounded-xl bg-white text-sm focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer"
-                    >
-                        <option value="All">All House Types</option>
-                        {activeHouseTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-
-                    {/* Location */}
-                    <select 
-                        value={location} 
-                        onChange={e => setLocation(e.target.value)}
-                        className="p-2.5 border border-gray-300 rounded-xl bg-white text-sm focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer"
-                    >
-                        {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
-                    </select>
-
-                    {/* Price Range */}
-                    <select 
-                        value={priceRange} 
-                        onChange={e => setPriceRange(e.target.value)}
-                        className="p-2.5 border border-gray-300 rounded-xl bg-white text-sm focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer"
-                    >
-                        <option value="All">Any Price</option>
-                        {activePriceRanges.map(r => <option key={r.label} value={r.label}>{r.label}</option>)}
-                    </select>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
+                <div className="flex gap-2">
+                    {['All', 'Rent', 'Sale', 'AirBnB'].map(type => (
+                        <button 
+                            key={type}
+                            onClick={() => setFilterType(type)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                                filterType === type ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                            }`}
+                        >
+                            {type}
+                        </button>
+                    ))}
                 </div>
+                <button 
+                    onClick={() => { setEditingListing(null); setIsModalOpen(true); }}
+                    className="bg-primary text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-primary-dark shadow-sm flex items-center"
+                >
+                    <Icon name="plus" className="w-4 h-4 mr-2" /> New Listing
+                </button>
             </div>
 
-            {/* Results Grid */}
+            {/* Listings Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredListings.map(l => (
-                    <div key={l.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 group flex flex-col h-full">
-                        <div className="h-52 bg-gray-200 relative overflow-hidden">
-                            {l.image ? (
-                                <img src={l.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={l.title} />
-                            ) : (
-                                <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-100">
-                                    <Icon name="vacant-house" className="w-12 h-12 opacity-20" />
-                                </div>
-                            )}
-                            <div className={`absolute top-3 right-3 text-[10px] font-bold px-2 py-1 rounded shadow-sm ${l.purpose === 'Sale' ? 'bg-blue-600 text-white' : 'bg-green-500 text-white'}`}>
-                                FOR {l.purpose.toUpperCase()}
-                            </div>
-                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-12">
-                                <p className="text-white font-bold text-xl">KES {l.price.toLocaleString()}</p>
-                                <p className="text-white/80 text-xs font-medium">{l.houseType}</p>
-                            </div>
-                        </div>
-                        
-                        <div className="p-5 flex-grow flex flex-col">
-                            <h3 className="font-bold text-gray-800 text-base mb-1 line-clamp-1 group-hover:text-primary transition-colors">{l.title}</h3>
-                            <p className="text-xs text-gray-500 mb-3 flex items-center">
-                                <Icon name="branch" className="w-3 h-3 mr-1 text-gray-400"/> {l.location}
-                            </p>
-                            
-                            <div className="flex flex-wrap gap-2 mb-4 text-xs text-gray-600">
-                                {l.beds !== undefined && (
-                                    <span className="bg-gray-100 px-2 py-1 rounded flex items-center">
-                                        <span className="font-bold mr-1">{l.beds}</span> Beds
-                                    </span>
-                                )}
-                                {l.baths !== undefined && (
-                                    <span className="bg-gray-100 px-2 py-1 rounded flex items-center">
-                                        <span className="font-bold mr-1">{l.baths}</span> Baths
-                                    </span>
-                                )}
-                                {l.size && (
-                                    <span className="bg-gray-100 px-2 py-1 rounded flex items-center">
-                                        {l.size}
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="mt-auto flex gap-2 pt-3 border-t border-gray-50">
-                                <button className="flex-1 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-black transition-colors shadow-sm">
-                                    View Details
-                                </button>
-                                <button onClick={() => handleShare(l.title)} className="px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
-                                    <Icon name="communication" className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                {displayedListings.map(l => (
+                    <ListingCard 
+                        key={l.id} 
+                        listing={l} 
+                        onEdit={() => { setEditingListing(l); setIsModalOpen(true); }}
+                        onDelete={() => handleDelete(l.id)}
+                        onMarkOccupied={() => handleMarkOccupied(l)}
+                    />
                 ))}
-                {filteredListings.length === 0 && (
-                    <div className="col-span-full text-center py-20 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                        <Icon name="search" className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-gray-600">No listings found</h3>
-                        <p className="text-gray-400 mt-1">Try adjusting your filters or search criteria.</p>
+                {displayedListings.length === 0 && (
+                    <div className="col-span-full py-20 text-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                        <Icon name="search" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>No listings found. Vacant units will appear here automatically.</p>
                     </div>
                 )}
             </div>
+
+            {isModalOpen && (
+                <ListingModal 
+                    listing={editingListing} 
+                    onClose={() => setIsModalOpen(false)} 
+                    onSave={handleSave} 
+                    properties={properties}
+                    landlords={landlords}
+                />
+            )}
         </div>
     );
 };

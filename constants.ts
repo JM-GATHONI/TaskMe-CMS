@@ -20,12 +20,12 @@ export const NAVIGATION_ITEMS: NavItem[] = [
   { name: 'Tenants', icon: 'tenants', subModules: ['Overview', 'Applications', 'Active Tenants', 'Fines & Penalties', 'Tenant Insights', 'Offboarding'] },
   { name: 'Operations', icon: 'operations', subModules: ['Field Agents', 'Affiliates', 'Caretakers', 'Properties', 'Maintenance', 'Task Management', 'Communications', 'Leases'] },
   { name: 'Payments', icon: 'payments', subModules: ['Overview', 'Inbound', 'Outbound', 'Invoices', 'Reconciliation', 'Landlord Payouts', 'Overpayments', 'Payment Processing'] },
-  { name: 'Marketplace', icon: 'marketplace', subModules: ['Listings', 'Leads', 'Affiliates', 'Developer Portal', 'Referral Program', 'Reporting'] },
+  { name: 'Marketplace', icon: 'marketplace', subModules: ['Listings', 'Leads', 'Affiliates', 'MyFundiHub', 'Referral Program', 'Marketing Banners', 'Reporting'] },
   { name: 'R-Reits', icon: 'reits', subModules: ['Overview', 'Investment Plans', 'Project Accounting', 'Investor Dashboard', 'RF Payments', 'Portfolio Performance', 'Referrals', 'Compliance & KYC'] },
   { name: 'HR & Payroll', icon: 'hr', subModules: ['Staff Management', 'Payroll Processing', 'Commissions', 'Leave & Attendance', 'Performance', 'Reporting'] },
   { name: 'Accounting', icon: 'accounting', subModules: ['Overview', 'Income', 'Expenses', 'Financial Statements', 'Tax Compliance', 'Reconciliation', 'Reporting'] },
   { name: 'Reports & Analytics', icon: 'analytics', subModules: ['Reports', 'Analytics'] },
-  { name: 'User App Portal', icon: 'user-app', subModules: ['Tenant Portal', 'Agent Portal', 'Landlords Portal', 'Affiliate Portal', 'Investors Portal', 'Caretaker Portal', 'Contractor Portal', 'Refer And Grow'] },
+  { name: 'User App Portal', icon: 'user-app', subModules: ['Tenant Portal', 'Agent Portal', 'Landlords Portal', 'Affiliate Portal', 'Investors Portal', 'Caretaker Portal', 'Contractor Portal', 'Referral Landing', 'Invest & Earn', 'My Profile'] },
   { name: 'Settings', icon: 'settings', subModules: ['Profile', 'Roles', 'Permissions', 'Widgets', 'Rates & Rules', 'Constants', 'Audit Trail'] },
 ];
 
@@ -449,12 +449,12 @@ const ALL_SUBMODULES = [
     'Tenants', 'Tenants/Overview', 'Tenants/Applications', 'Tenants/Active Tenants', 'Tenants/Fines & Penalties', 'Tenants/Tenant Insights', 'Tenants/Offboarding',
     'Operations', 'Operations/Field Agents', 'Operations/Affiliates', 'Operations/Caretakers', 'Operations/Properties', 'Operations/Maintenance', 'Operations/Task Management', 'Operations/Communications', 'Operations/Leases',
     'Payments', 'Payments/Overview', 'Payments/Inbound', 'Payments/Outbound', 'Payments/Invoices', 'Payments/Reconciliation', 'Payments/Landlord Payouts', 'Payments/Overpayments', 'Payments/Payment Processing',
-    'Marketplace', 'Marketplace/Listings', 'Marketplace/Leads', 'Marketplace/Affiliates', 'Marketplace/Developer Portal', 'Marketplace/Referral Program', 'Marketplace/Reporting',
+    'Marketplace', 'Marketplace/Listings', 'Marketplace/Leads', 'Marketplace/Affiliates', 'Marketplace/MyFundiHub', 'Marketplace/Referral Program', 'Marketplace/Marketing Banners', 'Marketplace/Reporting',
     'R-Reits', 'R-Reits/Overview', 'R-Reits/Investment Plans', 'R-Reits/Project Accounting', 'R-Reits/Investor Dashboard', 'R-Reits/RF Payments', 'R-Reits/Portfolio Performance', 'R-Reits/Referrals', 'R-Reits/Compliance & KYC',
     'HR & Payroll', 'HR & Payroll/Staff Management', 'HR & Payroll/Payroll Processing', 'HR & Payroll/Commissions', 'HR & Payroll/Leave & Attendance', 'HR & Payroll/Performance', 'HR & Payroll/Reporting',
     'Accounting', 'Accounting/Overview', 'Accounting/Income', 'Accounting/Expenses', 'Accounting/Financial Statements', 'Accounting/Tax Compliance', 'Accounting/Reconciliation', 'Accounting/Reporting',
     'Reports & Analytics', 'Reports & Analytics/Reports', 'Reports & Analytics/Analytics',
-    'User App Portal', 'User App Portal/Tenant Portal', 'User App Portal/Agent Portal', 'User App Portal/Landlords Portal', 'User App Portal/Affiliate Portal', 'User App Portal/Investors Portal', 'User App Portal/Caretaker Portal', 'User App Portal/Contractor Portal', 'User App Portal/Refer And Grow', 'User App Portal/Referral Landing',
+    'User App Portal', 'User App Portal/Tenant Portal', 'User App Portal/Agent Portal', 'User App Portal/Landlords Portal', 'User App Portal/Affiliate Portal', 'User App Portal/Investors Portal', 'User App Portal/Caretaker Portal', 'User App Portal/Contractor Portal', 'User App Portal/Referral Landing', 'User App Portal/Refer And Grow', 'User App Portal/My Profile',
     'Settings', 'Settings/Profile', 'Settings/Roles', 'Settings/Permissions', 'Settings/Widgets', 'Settings/Rates & Rules', 'Settings/Constants', 'Settings/Audit Trail'
 ];
 
@@ -537,7 +537,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Tenant Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Tenant Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     },
     { 
@@ -546,7 +546,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Landlords Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Landlords Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     },
     { 
@@ -555,7 +555,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Agent Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Agent Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     },
     { 
@@ -564,7 +564,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Caretaker Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Caretaker Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     },
     { 
@@ -573,7 +573,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Investors Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Investors Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     },
     { 
@@ -582,7 +582,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Affiliate Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Affiliate Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     },
     { 
@@ -591,7 +591,7 @@ export const MOCK_ROLES: Role[] = [
         description: 'User App Portal Access', 
         isSystem: false, 
         permissions: createMockPermissions(false),
-        accessibleSubmodules: ['User App Portal/Contractor Portal', 'User App Portal/Refer And Grow'],
+        accessibleSubmodules: ['User App Portal/Contractor Portal', 'User App Portal/Refer And Grow', 'User App Portal/My Profile'],
         widgetAccess: []
     }
 ];

@@ -116,6 +116,7 @@ export interface TenantProfile {
   arrears?: number;
   role?: string; // Optional for unification
   passwordHash?: string;
+  referrerId?: string; // ID of who referred this tenant
 }
 
 export interface Property {
@@ -179,7 +180,7 @@ export interface User {
   passwordHash?: string;
 }
 
-export type UserRole = 'Super Admin' | 'Branch Manager' | 'Field Agent' | 'Accountant' | 'Caretaker' | 'Landlord' | 'Tenant' | 'Contractor' | 'Affiliate';
+export type UserRole = 'Super Admin' | 'Branch Manager' | 'Field Agent' | 'Accountant' | 'Caretaker' | 'Landlord' | 'Tenant' | 'Contractor' | 'Affiliate' | 'Investor';
 
 export interface Quotation {
   id: string;
@@ -220,6 +221,7 @@ export interface TenantApplication {
   recurringBills?: RecurringBillSettings;
   avatar?: string;
   profilePicture?: string;
+  referrerId?: string;
 }
 
 export interface LandlordApplication {
@@ -402,6 +404,31 @@ export interface Vendor {
   email?: string;
   phone?: string;
   passwordHash?: string;
+  // Fundi Hub specific fields
+  location?: string;
+  dailyRate?: number;
+  verified?: boolean;
+  completedJobs?: number;
+  avatarUrl?: string;
+  summary?: string;
+  certifications?: string[];
+  eta?: string;
+  available?: boolean;
+  portfolioImages?: string[]; // Added portfolio images
+}
+
+export interface FundiJob {
+    id: string;
+    fundiId: string;
+    fundiName: string;
+    clientName: string;
+    clientPhone: string;
+    location: string;
+    description: string;
+    status: 'Pending' | 'Accepted' | 'Completed' | 'Declined';
+    date: string;
+    amount?: number;
+    source: 'Website' | 'App';
 }
 
 export interface Message {
@@ -757,6 +784,51 @@ export interface ScheduledReport {
   frequency: 'Daily' | 'Weekly' | 'Monthly';
 }
 
+// --- MARKETPLACE & LISTING TYPES ---
+export interface MarketplaceListing {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  unitId: string;
+  unitNumber: string;
+  type: 'Rent' | 'Sale' | 'AirBnB';
+  status: 'Published' | 'Draft' | 'Sold' | 'Rented';
+  price: number; // Rent per month, Sale price, or Nightly rate
+  currency: string;
+  description: string;
+  title: string;
+  location: string;
+  images: string[];
+  features: string[]; // "WiFi", "Pool", "Title Deed Ready"
+  
+  // Specific Configs
+  airbnbConfig?: {
+      cleaningFee: number;
+      checkInTime: string;
+      checkOutTime: string;
+      maxGuests: number;
+      houseRules: string;
+      amenities: string[];
+  };
+  saleConfig?: {
+      titleDeedType: string; // Freehold, Leasehold
+      landSize: string;
+      financingAvailable: boolean;
+      propertyCategory?: 'House' | 'Apartment' | 'Land'; // New
+      usageType?: 'Residential' | 'Commercial' | 'Mixed'; // New
+  };
+  
+  ownerDetails: {
+      name: string;
+      contact: string;
+      email: string;
+      rating?: number; // 0-5
+      reviews?: number; // Count of reviews
+  };
+  
+  dateCreated: string;
+}
+
 export interface Listing {
   id: string;
   title: string;
@@ -776,13 +848,16 @@ export interface Listing {
 export interface Lead {
   id: string;
   tenantName: string;
-  status: 'New' | 'Contacted' | 'Viewing' | 'Negotiation' | 'Closed';
+  status: 'New' | 'Contacted' | 'Viewing' | 'Negotiation' | 'Closed' | 'Lost';
   assignedAgent: string;
   listingTitle: string;
   contact?: string;
+  email?: string;
   interest?: string;
   date?: string;
-  source?: string;
+  source?: 'Website' | 'Walk-in' | 'Referral' | 'Social Media';
+  notes?: string;
+  referrerId?: string; // ID of the affiliate/user who referred this lead
 }
 
 export interface Affiliate {
@@ -988,6 +1063,9 @@ export interface DataContextType {
     currentUser: User | StaffProfile | TenantProfile | null;
     scheduledReports: ScheduledReport[];
     taxRecords: TaxRecord[];
+    marketplaceListings: MarketplaceListing[];
+    leads: Lead[];
+    fundiJobs: FundiJob[]; // Added fundiJobs
 
     setCurrentUser: (user: User | StaffProfile | TenantProfile | null) => void;
     addTenant: (tenant: TenantProfile) => void;
@@ -1070,13 +1148,31 @@ export interface DataContextType {
     addRole: (r: Role) => void;
     updateRole: (id: string, d: Partial<Role>) => void;
     deleteRole: (id: string) => void;
-    getOccupancyRate: () => number;
-    getTotalRevenue: () => number;
     addScheduledReport: (r: ScheduledReport) => void;
     deleteScheduledReport: (id: string) => void;
     addTaxRecord: (record: TaxRecord) => void;
     updateTaxRecord: (id: string, d: Partial<TaxRecord>) => void;
     
+    // Marketplace CRUD
+    addMarketplaceListing: (listing: MarketplaceListing) => void;
+    updateMarketplaceListing: (id: string, d: Partial<MarketplaceListing>) => void;
+    deleteMarketplaceListing: (id: string) => void;
+    markUnitOccupied: (propertyId: string, unitId: string) => void;
+
+    // Leads CRUD
+    addLead: (lead: Lead) => void;
+    updateLead: (id: string, d: Partial<Lead>) => void;
+    deleteLead: (id: string) => void;
+    syncWebsiteLeads: () => Promise<void>;
+
+    // Fundi Jobs CRUD
+    addFundiJob: (job: FundiJob) => void;
+    updateFundiJob: (id: string, d: Partial<FundiJob>) => void;
+    syncFundiJobs: () => Promise<void>;
+
     // New Helper to check permissions
     checkPermission: (module: string, action: string) => boolean;
+
+    getOccupancyRate: () => number;
+    getTotalRevenue: () => number;
 }

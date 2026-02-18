@@ -127,14 +127,16 @@ import CaretakerPortal from './components/userAppPortal/CaretakerPortal';
 import ContractorPortal from './components/userAppPortal/ContractorPortal';
 import ReferralLanding from './components/userAppPortal/ReferralLanding';
 import ReferAndGrow from './components/userAppPortal/ReferAndGrow';
+import UserProfile from './components/userAppPortal/UserProfile'; // Import the new profile component
 
 // Marketplace
 import Listings from './components/marketplace/Listings';
 import Leads from './components/marketplace/Leads';
 import MarketplaceAffiliates from './components/marketplace/Affiliates'; 
-import DeveloperPortal from './components/marketplace/DeveloperPortal';
+import MyFundiHub from './components/marketplace/DeveloperPortal';
 import ReferralProgram from './components/marketplace/ReferralProgram';
 import MarketplaceReporting from './components/marketplace/Reporting';
+import MarketingBanners from './components/marketplace/MarketingBanners'; // Import new marketing module
 
 // R-Reits
 import RReitsOverview from './components/r-reits/Overview';
@@ -174,6 +176,7 @@ const AccessDenied: React.FC = () => (
 );
 
 const AppContent: React.FC = () => {
+  // Initialize Sidebar state based on window width
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [currentPath, setCurrentPath] = useState(window.location.hash || '#/dashboard');
   
@@ -210,7 +213,14 @@ const AppContent: React.FC = () => {
   // Check if current path is public
   const isPublicRoute = currentPath.startsWith('#/user-app-portal/referral-landing');
 
-  if (!currentUser && !isPublicRoute) {
+  if (!currentUser) {
+      if (isPublicRoute) {
+          return (
+              <div className="app-layout bg-white font-sans text-gray-900">
+                 <ReferralLanding />
+              </div>
+          );
+      }
       return <Auth onLogin={(u) => {
           setCurrentUser(u as User | StaffProfile | TenantProfile);
           
@@ -229,15 +239,6 @@ const AppContent: React.FC = () => {
           window.location.hash = redirectPath;
           setCurrentPath(redirectPath);
       }} />;
-  }
-
-  // If public route, render standalone view (no sidebar/header/auth required)
-  if (isPublicRoute) {
-      return (
-          <div className="app-layout bg-white font-sans text-gray-900">
-             <ReferralLanding />
-          </div>
-      );
   }
 
   if (currentUser && currentUser.status !== 'Active') {
@@ -262,8 +263,8 @@ const AppContent: React.FC = () => {
   const checkAccess = (requiredModulePath: string): boolean => {
       if (isSuperAdmin) return true;
       if (!currentRoleDef) return false; 
-      // Allow access to Refer And Grow for all roles that have access to User App Portal features
-      if (requiredModulePath === 'User App Portal/Refer And Grow') {
+      // Allow access to Refer And Grow, Profile, and Invest & Earn for all roles that have access to User App Portal features
+      if (requiredModulePath === 'User App Portal/Refer And Grow' || requiredModulePath === 'User App Portal/My Profile' || requiredModulePath === 'User App Portal/Referral Landing' || requiredModulePath === 'User App Portal/Invest & Earn') {
           return currentRoleDef.accessibleSubmodules.some(p => p.startsWith('User App Portal'));
       }
       return currentRoleDef.accessibleSubmodules.includes(requiredModulePath);
@@ -271,9 +272,6 @@ const AppContent: React.FC = () => {
 
   const renderContent = () => {
     const path = currentPath;
-
-    // Public Routes (Bypass checks if accessed while logged in too)
-    if (path === '#/user-app-portal/referral-landing') return <ReferralLanding />;
 
     // Dashboard
     if (path === '#/' || path === '#/dashboard') {
@@ -520,6 +518,9 @@ const AppContent: React.FC = () => {
         if (path === '#/user-app-portal/tenant-portal' && !checkAccess('User App Portal/Tenant Portal')) return <AccessDenied />;
         if (path === '#/user-app-portal/agent-portal' && !checkAccess('User App Portal/Agent Portal')) return <AccessDenied />;
         if (path === '#/user-app-portal/refer-and-grow' && !checkAccess('User App Portal/Refer And Grow')) return <AccessDenied />;
+        if (path === '#/user-app-portal/invest-and-earn' && !checkAccess('User App Portal/Invest & Earn')) return <AccessDenied />;
+        if (path === '#/user-app-portal/my-profile' && !checkAccess('User App Portal/My Profile')) return <AccessDenied />;
+        if (path === '#/user-app-portal/referral-landing' && !checkAccess('User App Portal/Referral Landing')) return <AccessDenied />;
 
         // Handle Landlords Portal with sub-routes
         if (path.startsWith('#/user-app-portal/landlords-portal')) {
@@ -542,6 +543,8 @@ const AppContent: React.FC = () => {
             case '#/user-app-portal/contractor-portal': return <ContractorPortal />;
             case '#/user-app-portal/referral-landing': return <ReferralLanding />; // Should be caught by public check, but as fallback
             case '#/user-app-portal/refer-and-grow': return <ReferAndGrow />;
+            case '#/user-app-portal/invest-and-earn': return <ReferAndGrow />; // Map Invest & Earn to ReferAndGrow component
+            case '#/user-app-portal/my-profile': return <UserProfile />;
             default: return <TenantPortal />;
         }
     }
@@ -551,16 +554,18 @@ const AppContent: React.FC = () => {
         if (path === '#/marketplace/listings' && !checkAccess('Marketplace/Listings')) return <AccessDenied />;
         if (path === '#/marketplace/leads' && !checkAccess('Marketplace/Leads')) return <AccessDenied />;
         if (path === '#/marketplace/affiliates' && !checkAccess('Marketplace/Affiliates')) return <AccessDenied />;
-        if (path === '#/marketplace/developer-portal' && !checkAccess('Marketplace/Developer Portal')) return <AccessDenied />;
+        if (path === '#/marketplace/myfundihub' && !checkAccess('Marketplace/MyFundiHub')) return <AccessDenied />;
         if (path === '#/marketplace/referral-program' && !checkAccess('Marketplace/Referral Program')) return <AccessDenied />;
+        if (path === '#/marketplace/marketing-banners' && !checkAccess('Marketplace/Marketing Banners')) return <AccessDenied />;
         if (path === '#/marketplace/reporting' && !checkAccess('Marketplace/Reporting')) return <AccessDenied />;
         
         switch (path) {
             case '#/marketplace/listings': return <Listings />;
             case '#/marketplace/leads': return <Leads />;
             case '#/marketplace/affiliates': return <MarketplaceAffiliates />;
-            case '#/marketplace/developer-portal': return <DeveloperPortal />;
+            case '#/marketplace/myfundihub': return <MyFundiHub />;
             case '#/marketplace/referral-program': return <ReferralProgram />;
+            case '#/marketplace/marketing-banners': return <MarketingBanners />;
             case '#/marketplace/reporting': return <MarketplaceReporting />;
             default: return checkAccess('Marketplace/Listings') ? <Listings /> : <AccessDenied />;
         }

@@ -4,6 +4,7 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { TenantRequest, RequestMessage, TaskPriority, TaskStatus, Task, TenantProfile, Message } from '../../types';
 import { printSection } from '../../utils/exportHelper';
+import AdBanners from './AdBanners';
 
 // --- STK PUSH UI ---
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile }> = ({ onClose, amount, tenant }) => {
@@ -204,12 +205,6 @@ const TenantPortal: React.FC = () => {
                             <p className="opacity-90">{activeUser.unit} • {activeUser.propertyName}</p>
                         </div>
                     </div>
-                    <button 
-                        onClick={() => window.location.hash = '#/user-app-portal/refer-and-grow'}
-                        className="bg-green-500 text-white px-5 py-2 rounded-xl font-bold hover:bg-green-600 shadow-md flex items-center transition-transform active:scale-95"
-                    >
-                        <Icon name="communication" className="w-5 h-5 mr-2" /> Refer & Grow
-                    </button>
                 </div>
             </div>
 
@@ -423,6 +418,9 @@ const TenantPortal: React.FC = () => {
             )}
 
             {isPayRentModalOpen && <MpesaStkModal onClose={() => setIsPayRentModalOpen(false)} amount={balance > 0 ? balance : activeUser.rentAmount} tenant={activeUser} />}
+            
+            {/* Advertising Banners */}
+            <AdBanners />
         </div>
     );
 };

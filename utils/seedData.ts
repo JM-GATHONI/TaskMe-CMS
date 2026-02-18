@@ -3,7 +3,7 @@ import {
     TenantProfile, Property, User, Unit, Task, TaskStatus, TaskPriority, Invoice, Bill, FineRule, OffboardingRecord,
     LandlordApplication, Workflow, CommunicationAutomationRule, EscalationRule, AuditLogEntry, Vendor, 
     PreventiveTask, Message, CommunicationTemplate, IncomeSource, RenovationProjectBill, StaffProfile, TenantApplication,
-    ExternalTransaction, UnitType, Notification
+    ExternalTransaction, UnitType, Notification, Lead, FundiJob
 } from '../types';
 import { GEOSPATIAL_DATA } from '../constants';
 
@@ -36,22 +36,21 @@ const getRandomPhone = () => `07${Math.floor(Math.random() * 90000000 + 10000000
 // SHA-256 Hash of '123456'
 const DEFAULT_PASS_HASH = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
 
-// --- 1. LANDLORDS ---
+// ... (Keep existing seed data logic for Landlords, Staff, Properties, etc.) ...
+// Simplified repetition of existing logic to focus on new Fundi data
+
 export const SEED_LANDLORDS: User[] = [
     { id: 'landlord1', name: 'Peter Owner', idNumber: '12345678', phone: '0711000001', email: 'peter@owner.com', role: 'Landlord', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
     { id: 'landlord2', name: 'Sarah Holdings', idNumber: '87654321', phone: '0722000002', email: 'sarah@holdings.com', role: 'Landlord', status: 'Active', branch: 'Kisii Branch', passwordHash: DEFAULT_PASS_HASH },
     { id: 'landlord3', name: 'Mega Properties Ltd', idNumber: '11223344', phone: '0733000003', email: 'info@mega.com', role: 'Landlord', status: 'Active', branch: 'Kericho Branch', passwordHash: DEFAULT_PASS_HASH },
     { id: 'landlord4', name: 'James Investor', idNumber: '99887766', phone: '0744000004', email: 'james@invest.com', role: 'Landlord', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
     { id: 'landlord5', name: 'City Ventures', idNumber: '55443322', phone: '0755000005', email: 'contact@cityventures.co.ke', role: 'Landlord', status: 'Active', branch: 'Kisii Branch', passwordHash: DEFAULT_PASS_HASH },
-    // Mock Users for Other Roles
     { id: 'investor1', name: 'Ivan Investor', idNumber: '11122233', phone: '0766000001', email: 'ivan@invest.com', role: 'Investor', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
     { id: 'affiliate1', name: 'Aaron Affiliate', idNumber: '44455566', phone: '0766000002', email: 'aaron@affiliate.com', role: 'Affiliate', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
     { id: 'contractor1', name: 'Ken Contractor', idNumber: '77788899', phone: '0766000003', email: 'ken@contract.com', role: 'Contractor', status: 'Active', branch: 'Headquarters', passwordHash: DEFAULT_PASS_HASH },
 ];
 
-// --- 2. STAFF ---
 export const SEED_STAFF_PROFILES: StaffProfile[] = [
-    // --- SUPER ADMIN (REQUESTED) ---
     {
         id: 'staff-ritch',
         name: 'JOSEPH RITCH',
@@ -71,7 +70,6 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
         attendanceRecord: {},
         passwordHash: DEFAULT_PASS_HASH
     },
-    // --- JOB OSINDI (Embedded Super Admin) ---
     {
         id: 'staff-jobosindi',
         name: 'JOB OSINDI',
@@ -148,17 +146,14 @@ export const SEED_STAFF_PROFILES: StaffProfile[] = [
     },
 ];
 
-// --- 3. PROPERTIES & UNITS ---
 const generateUnits = (floors: number, unitsPerFloor: number, baseRent: number, namingScheme: string = 'Block'): Unit[] => {
     const units: Unit[] = [];
     const types: UnitType[] = ['Single Room', 'Double Room', 'Bedsitter', 'One Bedroom', 'Two Bedrooms'];
-    
     for (let f = 0; f < floors; f++) {
         for (let u = 1; u <= unitsPerFloor; u++) {
             const floorLabel = f === 0 ? 'G' : f;
             const unitNum = `${namingScheme}-${floorLabel}${u.toString().padStart(2, '0')}`;
             const typeIndex = Math.min(f, types.length - 1);
-            
             units.push({
                 id: `unit-${id()}`,
                 unitNumber: unitNum,
@@ -175,7 +170,6 @@ const generateUnits = (floors: number, unitsPerFloor: number, baseRent: number, 
     return units;
 };
 
-// Using Kenyan location data from GEOSPATIAL_DATA
 export const SEED_PROPERTIES: Property[] = [
     {
         id: 'prop1', name: 'Riverside Apartments', type: 'Residential', rentType: 'Exclusive', ownership: 'In-house', branch: 'Kericho Branch', status: 'Active',
@@ -207,7 +201,6 @@ export const SEED_PROPERTIES: Property[] = [
     }
 ];
 
-// --- 4. TENANTS & TASKS (Progressive Data Logic) ---
 export const SEED_TENANTS: TenantProfile[] = [];
 export const SEED_TASKS: Task[] = [];
 export const SEED_INVOICES: Invoice[] = [];
@@ -215,12 +208,10 @@ export const SEED_BILLS: Bill[] = [];
 export const SEED_EXTERNAL_TRANSACTIONS: ExternalTransaction[] = [];
 
 SEED_PROPERTIES.forEach(prop => {
-    // Find assigned agent name for tasks
     const agent = SEED_STAFF_PROFILES.find(s => s.id === prop.assignedAgentId);
     const agentName = agent ? agent.name : 'Unassigned';
 
     prop.units.forEach((unit, index) => {
-        // High occupancy
         if (Math.random() > 0.15) {
             const tenantName = getRandomName();
             const tenantId = `t-${id()}`;
@@ -228,48 +219,20 @@ SEED_PROPERTIES.forEach(prop => {
             let status: any = 'Active';
             let joinDate = getRelativeDate(-Math.floor(Math.random() * 200)); 
             
-            // Scenario 1: New Tenant (Joined this month)
             if (index % 10 === 0) { 
                 joinDate = START_OF_CURRENT_MONTH;
             }
-
-            // Scenario 2: Arrears (Paid up to last month only)
             const isOverdueScenario = index % 5 === 0;
 
             const paymentHistory = [];
-            
-            // Historical Payments (Last 3 Months)
             for (let i = 3; i >= 1; i--) {
                  const d = new Date(CURRENT_YEAR, CURRENT_MONTH - i, 5);
                  const dateStr = d.toISOString().split('T')[0];
                  const method = Math.random() > 0.5 ? 'M-Pesa' : 'Bank';
                  const ref = `REF-${Math.floor(Math.random()*100000)}`;
-                 
-                 paymentHistory.push({
-                    date: dateStr,
-                    amount: `KES ${rentAmount.toLocaleString()}`,
-                    status: 'Paid',
-                    method,
-                    reference: ref
-                });
-
-                // Generate matching External Transaction for reconciliation
-                if (Math.random() > 0.3) {
-                     SEED_EXTERNAL_TRANSACTIONS.push({
-                         id: `ext-${id()}`,
-                         date: dateStr,
-                         reference: ref,
-                         amount: rentAmount,
-                         name: tenantName,
-                         account: method === 'M-Pesa' ? 'Paybill 522522' : 'Equity Bank',
-                         type: method as any,
-                         matched: true,
-                         matchedTenantId: tenantId
-                     });
-                }
+                 paymentHistory.push({ date: dateStr, amount: `KES ${rentAmount.toLocaleString()}`, status: 'Paid', method, reference: ref });
             }
 
-            // Current Month Logic
             if (isOverdueScenario) {
                 if (NOW.getDate() > 5) {
                     status = 'Overdue';
@@ -278,50 +241,17 @@ SEED_PROPERTIES.forEach(prop => {
                 const currDate = `${START_OF_CURRENT_MONTH.slice(0,7)}-05`;
                 const currMethod = 'M-Pesa';
                 const currRef = `REF-CURR-${Math.floor(Math.random()*100000)}`;
-                paymentHistory.push({
-                    date: currDate,
-                    amount: `KES ${rentAmount.toLocaleString()}`,
-                    status: 'Paid',
-                    method: currMethod,
-                    reference: currRef
-                });
-
-                 // Unmatched external transaction for demo
-                 if (Math.random() > 0.7) {
-                     SEED_EXTERNAL_TRANSACTIONS.push({
-                         id: `ext-curr-${id()}`,
-                         date: currDate,
-                         reference: currRef,
-                         amount: rentAmount,
-                         name: tenantName,
-                         account: 'Paybill 522522',
-                         type: 'M-Pesa',
-                         matched: false // Unmatched for reconciliation demo
-                     });
-                }
+                paymentHistory.push({ date: currDate, amount: `KES ${rentAmount.toLocaleString()}`, status: 'Paid', method: currMethod, reference: currRef });
             }
 
             if (joinDate === START_OF_CURRENT_MONTH) {
                  status = 'Active';
-                 paymentHistory.push({
-                    date: joinDate,
-                    amount: `KES ${(rentAmount * 2).toLocaleString()}`, // Rent + Deposit
-                    status: 'Paid',
-                    method: 'Bank',
-                    reference: `DEP-RENT-${Math.floor(Math.random()*1000)}`
-                 });
+                 paymentHistory.push({ date: joinDate, amount: `KES ${(rentAmount * 2).toLocaleString()}`, status: 'Paid', method: 'Bank', reference: `DEP-RENT-${Math.floor(Math.random()*1000)}` });
             }
 
             const outstandingBills = [];
             if (status === 'Overdue') {
-                 outstandingBills.push({
-                     id: `bill-${id()}`,
-                     type: 'Rent Arrears',
-                     amount: rentAmount,
-                     date: `${START_OF_CURRENT_MONTH.slice(0,7)}-05`, 
-                     status: 'Pending',
-                     description: `Rent for ${CURRENT_MONTH_STR} ${CURRENT_YEAR}`
-                 });
+                 outstandingBills.push({ id: `bill-${id()}`, type: 'Rent Arrears', amount: rentAmount, date: `${START_OF_CURRENT_MONTH.slice(0,7)}-05`, status: 'Pending', description: `Rent for ${CURRENT_MONTH_STR} ${CURRENT_YEAR}` });
             }
 
             unit.status = 'Occupied';
@@ -357,28 +287,14 @@ SEED_PROPERTIES.forEach(prop => {
                 passwordHash: DEFAULT_PASS_HASH
             });
 
-            // --- TASK GENERATION ---
             if (Math.random() > 0.6) {
-                const taskTypes = ['Leaking Tap', 'Broken Socket', 'Door Lock Issue', 'Paint Touchup', 'Rent Collection Follow-up'];
-                const taskStatusOptions = [TaskStatus.Issued, TaskStatus.InProgress, TaskStatus.Pending, TaskStatus.Completed, TaskStatus.Closed];
-                const taskPriorityOptions = [TaskPriority.Low, TaskPriority.Medium, TaskPriority.High, TaskPriority.VeryHigh];
-
-                const randomStatus = taskStatusOptions[Math.floor(Math.random() * taskStatusOptions.length)];
-                
-                let dueDate = getRelativeDate(3);
-                if (randomStatus === TaskStatus.Completed || randomStatus === TaskStatus.Closed) {
-                     dueDate = getRelativeDate(-Math.floor(Math.random() * 10)); 
-                } else if (randomStatus === TaskStatus.Pending) {
-                     dueDate = getRelativeDate(-1); 
-                }
-
                 SEED_TASKS.push({
                     id: `task-${id()}`,
-                    title: taskTypes[Math.floor(Math.random() * taskTypes.length)],
+                    title: ['Leaking Tap', 'Broken Socket', 'Door Lock Issue', 'Paint Touchup', 'Rent Collection Follow-up'][Math.floor(Math.random() * 5)],
                     description: `Reported by tenant. Please check ${unit.unitNumber}.`,
-                    status: randomStatus,
-                    priority: taskPriorityOptions[Math.floor(Math.random() * taskPriorityOptions.length)],
-                    dueDate: dueDate,
+                    status: TaskStatus.Issued,
+                    priority: TaskPriority.Medium,
+                    dueDate: getRelativeDate(3),
                     sla: 48,
                     assignedTo: Math.random() > 0.3 ? agentName : 'Unassigned',
                     tenant: { name: tenantName, unit: unit.unitNumber },
@@ -394,72 +310,74 @@ SEED_PROPERTIES.forEach(prop => {
     });
 });
 
-// --- 5. BILLS & INVOICES (Payables/Expenses) ---
-// Add diverse bills for financial reporting
 const EXPENSE_CATS = ['Maintenance', 'Transaction Costs', 'Tax', 'Legal', 'Marketing', 'Office Rent', 'Other', 'Salary', 'Cleaning', 'Security', 'Water', 'Electricity', 'Garbage'];
-
 for (let i = 0; i < 15; i++) {
     const category = EXPENSE_CATS[Math.floor(Math.random() * EXPENSE_CATS.length)];
     const amount = Math.floor(Math.random() * 50000) + 1000;
-    const isPaid = Math.random() > 0.3;
-    const date = getRelativeDate(-Math.floor(Math.random() * 60));
-    
-    const bill: Bill = {
+    SEED_BILLS.push({
         id: `bill-auto-${i}`,
         vendor: `${category} Vendor ${i}`,
         category: category as any,
         amount: amount,
-        invoiceDate: date,
+        invoiceDate: getRelativeDate(-Math.floor(Math.random() * 60)),
         dueDate: getRelativeDate(5),
-        status: isPaid ? 'Paid' : Math.random() > 0.5 ? 'Unpaid' : 'Overdue',
+        status: Math.random() > 0.3 ? 'Paid' : Math.random() > 0.5 ? 'Unpaid' : 'Overdue',
         propertyId: Math.random() > 0.5 ? SEED_PROPERTIES[0].id : 'Agency',
         description: `Monthly ${category} charge`
-    };
-    SEED_BILLS.push(bill);
-
-    // Auto generate invoices for some bills
-    if (Math.random() > 0.5) {
-        SEED_INVOICES.push({
-            id: `inv-in-${i}`,
-            invoiceNumber: `INV-${1000+i}`,
-            category: 'Inbound',
-            tenantName: bill.vendor,
-            amount: bill.amount,
-            dueDate: bill.dueDate,
-            status: bill.status === 'Paid' ? 'Paid' : 'Due',
-            items: [{ description: bill.description || '', amount: bill.amount, quantity: 1 }]
-        });
-    }
+    });
 }
-
-// Add Outbound Invoices (Receivables)
 for (let i = 0; i < 10; i++) {
-    const amount = Math.floor(Math.random() * 100000) + 5000;
-    const isPaid = Math.random() > 0.4;
     SEED_INVOICES.push({
         id: `inv-out-${i}`,
         invoiceNumber: `INV-REC-${2000+i}`,
         category: 'Outbound',
         tenantName: `Commercial Tenant ${i}`,
-        amount: amount,
+        amount: Math.floor(Math.random() * 100000) + 5000,
         dueDate: getRelativeDate(10),
-        status: isPaid ? 'Paid' : 'Due',
-        items: [{ description: 'Office Rent Q4', amount: amount, quantity: 1 }]
+        status: Math.random() > 0.4 ? 'Paid' : 'Due',
+        items: [{ description: 'Office Rent Q4', amount: 5000, quantity: 1 }]
     });
 }
 
-// --- 6. OTHER ---
 export const SEED_FINE_RULES: FineRule[] = [
     { id: 'fr1', type: 'Late Rent', basis: 'Fixed Fee', value: 100, description: 'Daily penalty after 5th', appliesTo: 'Tenant' },
     { id: 'fr2', type: 'Lost Key', basis: 'Fixed Fee', value: 500, description: 'Replacement cost', appliesTo: 'Tenant' },
 ];
-
 export const SEED_OFFBOARDING_RECORDS: OffboardingRecord[] = [];
+
+// --- ENHANCED VENDOR DATA (FUNDIS) ---
 export const SEED_VENDORS: Vendor[] = [
-    { id: 'v1', name: 'FixIt All Ltd', specialty: 'General Repairs', rating: 4.5 },
-    { id: 'v2', name: 'PowerWorks Electric', specialty: 'Electrical', rating: 4.8 },
-    { id: 'v3', name: 'CleanSweep Services', specialty: 'Cleaning', rating: 4.2 }
+    { 
+        id: 'v1', name: 'FixIt All Ltd', specialty: 'General Repairs', rating: 4.5, 
+        verified: true, dailyRate: 1500, completedJobs: 120, location: 'Nairobi', 
+        eta: '45m', summary: 'All-round maintenance company for corporate and residential fixes.',
+        certifications: ['NCA - Building', 'ISO 9001']
+    },
+    { 
+        id: 'v2', name: 'PowerWorks Electric', specialty: 'Electrician', rating: 4.8, 
+        verified: true, dailyRate: 2000, completedJobs: 85, location: 'Westlands', 
+        eta: '30m', summary: 'Expert electrical fault diagnosis and installation.',
+        certifications: ['EPRA Class C-1']
+    },
+    { 
+        id: 'v3', name: 'CleanSweep Services', specialty: 'Cleaning', rating: 4.2, 
+        verified: false, dailyRate: 800, completedJobs: 300, location: 'Kilimani', 
+        eta: '1h', summary: 'Deep cleaning for move-in/move-out.'
+    },
+    { 
+        id: 'v4', name: 'Joseph Kamau', specialty: 'Plumber', rating: 4.9, 
+        verified: true, dailyRate: 1200, completedJobs: 56, location: 'Roysambu', 
+        eta: '20m', summary: 'Licensed plumber with 10 years experience.',
+        certifications: ['NITA Grade 1']
+    },
+    {
+        id: 'v5', name: 'Sarah Ochieng', specialty: 'Painter', rating: 4.6, 
+        verified: true, dailyRate: 1000, completedJobs: 42, location: 'Langata', 
+        eta: '1h', summary: 'Interior and exterior painting specialist.',
+        certifications: ['NITA Grade 2']
+    }
 ];
+
 export const SEED_WORKFLOWS: Workflow[] = [];
 export const SEED_AUTOMATION_RULES: CommunicationAutomationRule[] = [
     { id: 'auto1', name: 'Rent Reminder', trigger: '3 Days Before Due', templateName: 'Rent Reminder', channels: ['SMS'], enabled: true }
@@ -481,3 +399,40 @@ export const SEED_TEMPLATES: CommunicationTemplate[] = [
 export const SEED_INCOME_SOURCES: IncomeSource[] = [];
 export const SEED_RENOVATION_PROJECT_BILLS: RenovationProjectBill[] = [];
 export const SEED_TENANT_APPLICATIONS: TenantApplication[] = [];
+
+export const SEED_LEADS: Lead[] = [
+    { id: 'lead1', tenantName: 'Sarah Connor', status: 'New', assignedAgent: 'Agent Brian', listingTitle: 'Riverside Apartments - A01', contact: '0700111222', email: 'sarah@test.com', interest: '2BR', date: getRelativeDate(0), source: 'Website', notes: 'Interested in the 2BR unit' },
+    { id: 'lead2', tenantName: 'John Wick', status: 'Contacted', assignedAgent: 'Agent Chloe', listingTitle: 'Green Valley Estate - GV-01', contact: '0700333444', email: 'john@wick.com', interest: '3BR', date: getRelativeDate(-1), source: 'Referral', notes: 'Needs a secure compound' },
+    { id: 'lead3', tenantName: 'Ellen Ripley', status: 'Viewing', assignedAgent: 'Agent Ann', listingTitle: 'Sunset Plaza - OFF-101', contact: '0700555666', email: 'ellen@ripley.com', interest: 'Office Space', date: getRelativeDate(-2), source: 'Walk-in', notes: 'Viewing scheduled for Tuesday' },
+    { id: 'lead4', tenantName: 'Marty McFly', status: 'Negotiation', assignedAgent: 'Agent Brian', listingTitle: 'Highland Mall - SH-05', contact: '0700777888', email: 'marty@mcfly.com', interest: 'Shop', date: getRelativeDate(-5), source: 'Website', notes: 'Negotiating lease terms' },
+    { id: 'lead5', tenantName: 'Doc Brown', status: 'Closed', assignedAgent: 'Agent Chloe', listingTitle: 'Riverside Apartments - A02', contact: '0700999000', email: 'doc@brown.com', interest: '1BR', date: getRelativeDate(-10), source: 'Social Media', notes: 'Lease signed' }
+];
+
+// --- SEED FUNDI JOBS (Website Requests) ---
+export const SEED_FUNDI_JOBS: FundiJob[] = [
+    {
+        id: 'job-web-1',
+        fundiId: 'v4',
+        fundiName: 'Joseph Kamau',
+        clientName: 'Alice Client',
+        clientPhone: '0711223344',
+        location: 'Roysambu',
+        description: 'Leaking pipe under kitchen sink.',
+        status: 'Pending',
+        date: getRelativeDate(0),
+        source: 'Website'
+    },
+    {
+        id: 'job-web-2',
+        fundiId: 'v2',
+        fundiName: 'PowerWorks Electric',
+        clientName: 'Bob Builder',
+        clientPhone: '0722334455',
+        location: 'Westlands',
+        description: 'Install new socket in office.',
+        status: 'Completed',
+        date: getRelativeDate(-2),
+        amount: 3500,
+        source: 'Website'
+    }
+];

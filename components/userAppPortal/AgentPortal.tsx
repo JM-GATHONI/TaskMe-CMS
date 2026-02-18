@@ -7,6 +7,7 @@ import { Property, TenantApplication, User, TenantProfile, Task, TaskStatus, Tas
 import { CollectionManagerModal } from '../operations/TaskManagement';
 import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
+import AdBanners from './AdBanners';
 
 const KpiCard: React.FC<{ title: string; value: string; subtext?: string; icon: string; color: string }> = ({ title, value, subtext, icon, color }) => (
     <div className={`bg-white p-5 rounded-xl shadow-sm border-l-4`} style={{ borderLeftColor: color }}>
@@ -250,9 +251,6 @@ const AgentPortal: React.FC = () => {
                     </button>
                      <button onClick={() => setModalOpen('addProperty')} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 shadow-sm flex items-center text-sm">
                         <Icon name="plus" className="w-4 h-4 mr-2"/> Property
-                    </button>
-                    <button onClick={() => window.location.hash = '#/user-app-portal/refer-and-grow'} className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 shadow-sm flex items-center text-sm">
-                        <Icon name="communication" className="w-4 h-4 mr-2"/> Refer & Grow
                     </button>
                 </div>
             </div>
@@ -558,6 +556,9 @@ const AgentPortal: React.FC = () => {
                     onSendMessage={addMessage} 
                 />
             )}
+
+            {/* Advert Banners */}
+            <AdBanners />
         </div>
     );
 };

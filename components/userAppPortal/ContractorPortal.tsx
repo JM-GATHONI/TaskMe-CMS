@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { Task, TaskStatus, QuotationItem, Quotation, Bill, TaskPriority } from '../../types';
+import AdBanners from './AdBanners';
 
 const SubmitQuoteModal: React.FC<{ 
     task: Task; 
@@ -254,7 +255,7 @@ const ContractorPortal: React.FC = () => {
     if (!vendor) return <div className="p-8 text-center">Loading Contractor Profile...</div>;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-20">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
                     <div className="h-14 w-14 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
@@ -266,9 +267,6 @@ const ContractorPortal: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <button onClick={() => window.location.hash = '#/user-app-portal/refer-and-grow'} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 shadow-sm flex items-center text-xs">
-                        <Icon name="communication" className="w-4 h-4 mr-2"/> Refer & Grow
-                    </button>
                     <div className="text-right hidden sm:block">
                         <p className="text-xs font-bold text-gray-400 uppercase">Jobs Done</p>
                         <p className="text-xl font-bold text-gray-800">{completedJobs.length}</p>
@@ -465,6 +463,9 @@ const ContractorPortal: React.FC = () => {
                     onRaise={handleRaiseInvoice} 
                 />
             )}
+
+            {/* Advert Banners */}
+            <AdBanners />
         </div>
     );
 };

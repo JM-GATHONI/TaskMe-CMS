@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { Task, TaskPriority, TaskStatus } from '../../types';
+import AdBanners from './AdBanners';
 
 const CaretakerPortal: React.FC = () => {
     const { tasks, staff, addTask, updateTask } = useData();
@@ -39,7 +40,8 @@ const CaretakerPortal: React.FC = () => {
             comments: [],
             history: [{ id: `h-${Date.now()}`, timestamp: new Date().toLocaleString(), event: 'Reported by Caretaker' }],
             attachments: [],
-            source: 'Internal'
+            source: 'Internal',
+            costs: { labor: 0, materials: 0, travel: 0 }
         };
         addTask(newTask);
         alert('Issue reported successfully.');
@@ -54,16 +56,13 @@ const CaretakerPortal: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-20">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Caretaker Portal</h1>
                     <p className="text-gray-500">Welcome, {caretaker.name}.</p>
                 </div>
                 <div className="flex items-center gap-4">
-                     <button onClick={() => window.location.hash = '#/user-app-portal/refer-and-grow'} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 shadow-sm flex items-center text-xs">
-                        <Icon name="communication" className="w-4 h-4 mr-2"/> Refer & Grow
-                    </button>
                     <div className="text-right">
                         <p className="text-xs font-bold text-gray-400 uppercase">Tasks Done Today</p>
                         <p className="text-3xl font-bold text-green-600">{completedToday}</p>
@@ -142,6 +141,9 @@ const CaretakerPortal: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Advert Banners */}
+            <AdBanners />
         </div>
     );
 };

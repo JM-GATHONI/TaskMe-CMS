@@ -252,7 +252,7 @@ const UserForm: React.FC<{
                     <div className="grid grid-cols-2 gap-4">
                          <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Role</label>
-                            <select name="role" value={formData.role} onChange={handleChange} className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-primary outline-none" disabled={!!existingUser}>
+                            <select name="role" value={formData.role} onChange={handleChange} className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-primary outline-none">
                                 {availableRoles.map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
                          </div>
@@ -456,8 +456,12 @@ const Users: React.FC = () => {
 
     // Get available roles for the current active category to populate dropdown
     const availableRolesForForm = useMemo(() => {
-        return activeCategory ? activeCategory.roles : []; 
-    }, [activeCategory]);
+        if (activeCategory?.id === 'system') {
+            return systemRoleNames;
+        }
+        // Return combined list for non-system categories to allow role switching
+        return ['Landlord', 'Tenant', 'Field Agent', 'Affiliate', 'Caretaker', 'Contractor', 'Investor'];
+    }, [activeCategory, systemRoleNames]);
 
     return (
         <div className="space-y-6">

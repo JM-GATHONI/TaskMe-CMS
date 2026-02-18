@@ -1,9 +1,10 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord } from '../types';
-import { SEED_PROPERTIES, SEED_TENANTS, SEED_LANDLORDS, SEED_TASKS, SEED_INVOICES, SEED_BILLS, SEED_FINE_RULES, SEED_OFFBOARDING_RECORDS, SEED_LANDLORD_APPLICATIONS, SEED_WORKFLOWS, SEED_AUTOMATION_RULES, SEED_ESCALATION_RULES, SEED_AUDIT_LOGS, SEED_VENDORS, SEED_PREVENTIVE_TASKS, SEED_MESSAGES, SEED_TEMPLATES, SEED_INCOME_SOURCES, SEED_RENOVATION_PROJECT_BILLS, SEED_STAFF_PROFILES, SEED_TENANT_APPLICATIONS, SEED_EXTERNAL_TRANSACTIONS, SEED_NOTIFICATIONS } from '../utils/seedData';
+import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob } from '../types';
+import { SEED_PROPERTIES, SEED_TENANTS, SEED_LANDLORDS, SEED_TASKS, SEED_INVOICES, SEED_BILLS, SEED_FINE_RULES, SEED_OFFBOARDING_RECORDS, SEED_LANDLORD_APPLICATIONS, SEED_WORKFLOWS, SEED_AUTOMATION_RULES, SEED_ESCALATION_RULES, SEED_AUDIT_LOGS, SEED_VENDORS, SEED_PREVENTIVE_TASKS, SEED_MESSAGES, SEED_TEMPLATES, SEED_INCOME_SOURCES, SEED_RENOVATION_PROJECT_BILLS, SEED_STAFF_PROFILES, SEED_TENANT_APPLICATIONS, SEED_EXTERNAL_TRANSACTIONS, SEED_NOTIFICATIONS, SEED_LEADS, SEED_FUNDI_JOBS } from '../utils/seedData';
 import { MOCK_APPLICATIONS, GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA, MOCK_COMMISSION_RULES, MOCK_DEDUCTION_RULES, MOCK_EXTERNAL_TRANSACTIONS, MOCK_OVERPAYMENTS, INITIAL_FUNDS, MOCK_INVESTMENTS, MOCK_WITHDRAWALS, MOCK_RENOVATION_INVESTORS, MOCK_RF_TRANSACTIONS, MOCK_ROLES, MOCK_SCHEDULED_REPORTS, MOCK_TAX_RECORDS } from '../constants';
 import { encryptData, decryptData } from '../utils/security';
+import { websiteApi } from '../utils/websiteApi';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -86,8 +87,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 'tm_system_settings_v11');
     const [scheduledReports, setScheduledReports] = useStickyState<ScheduledReport[]>(MOCK_SCHEDULED_REPORTS, 'tm_scheduled_reports_v11');
     const [taxRecords, setTaxRecords] = useStickyState<TaxRecord[]>(MOCK_TAX_RECORDS, 'tm_tax_records_v11');
+    const [marketplaceListings, setMarketplaceListings] = useStickyState<MarketplaceListing[]>([], 'tm_listings_v11');
+    const [leads, setLeads] = useStickyState<Lead[]>(SEED_LEADS, 'tm_leads_v11');
+    const [fundiJobs, setFundiJobs] = useStickyState<FundiJob[]>(SEED_FUNDI_JOBS, 'tm_fundi_jobs_v11');
 
-    // ... (Keep existing update functions same as before) ...
+    // --- AUTOMATION: Sync Vacancies to Marketplace ---
+    useEffect(() => {
+        setMarketplaceListings(currentListings => {
+            const newListings = [...currentListings];
+            let hasChanges = false;
+            const allVacantUnits = properties.flatMap(p => 
+                p.units.filter(u => u.status === 'Vacant').map(u => ({ unit: u, property: p }))
+            );
+            allVacantUnits.forEach(({ unit, property }) => {
+                const existingListing = newListings.find(l => l.unitId === unit.id);
+                if (!existingListing) {
+                    const landlord = landlords.find(l => l.id === property.landlordId);
+                    const newListing: MarketplaceListing = {
+                        id: `auto-lst-${unit.id}-${Date.now()}`,
+                        propertyId: property.id,
+                        propertyName: property.name,
+                        unitId: unit.id,
+                        unitNumber: unit.unitNumber,
+                        type: 'Rent',
+                        status: 'Published',
+                        price: unit.rent || property.defaultMonthlyRent || 0,
+                        currency: 'KES',
+                        description: `Vacant ${unit.unitType || unit.bedrooms + 'BR'} unit available in ${property.location || property.branch}.`,
+                        title: `${property.name} - ${unit.unitNumber}`,
+                        location: property.location || property.branch,
+                        images: property.profilePictureUrl ? [property.profilePictureUrl] : [],
+                        features: unit.amenities || [],
+                        ownerDetails: {
+                            name: landlord?.name || 'Property Manager',
+                            contact: landlord?.phone || '',
+                            email: landlord?.email || ''
+                        },
+                        dateCreated: new Date().toISOString()
+                    };
+                    newListings.push(newListing);
+                    hasChanges = true;
+                }
+            });
+            newListings.forEach((listing, index) => {
+                if (listing.type === 'Rent') {
+                    const prop = properties.find(p => p.id === listing.propertyId);
+                    const unit = prop?.units.find(u => u.id === listing.unitId);
+                    if (unit && unit.status !== 'Vacant' && listing.status === 'Published') {
+                        newListings[index] = { ...listing, status: 'Rented' };
+                        hasChanges = true;
+                    }
+                }
+            });
+            return hasChanges ? newListings : currentListings;
+        });
+    }, [properties, landlords]);
+
+    // ... (Keep existing update functions) ...
     const addTenant = (t: TenantProfile) => setTenants(prev => [t, ...prev]);
     const updateTenant = (id: string, d: Partial<TenantProfile>) => setTenants(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
     const deleteTenant = (id: string) => setTenants(prev => prev.filter(t => t.id !== id));
@@ -219,7 +275,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return tenants.reduce((acc, t) => acc + (t.rentAmount || 0), 0);
     };
 
-    // Permission Helper - now checking submodule access
     const checkPermission = (module: string, action: string): boolean => {
         if (!currentUser) return false;
         if (currentUser.role === 'Super Admin') return true; 
@@ -227,15 +282,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const roleDef = roles.find(r => r.name === currentUser.role);
         if (!roleDef) return false;
 
-        // Check for submodule access string match (e.g. 'Tenants/Overview')
-        // Or broad module access (e.g. 'Tenants')
         const hasAccess = roleDef.accessibleSubmodules.some(path => 
             path === module || path.startsWith(`${module}/`)
         );
         
         if (!hasAccess) return false;
 
-        // Check specific action boolean if module matrix exists
         const baseModule = module.split('/')[0];
         const modulePerms = roleDef.permissions[baseModule];
         
@@ -243,8 +295,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
              return (modulePerms as any)[action] === true;
         }
 
-        // Default to allow if access exists but no specific action constraint found
         return true;
+    };
+
+    // Marketplace CRUD
+    const addMarketplaceListing = (listing: MarketplaceListing) => setMarketplaceListings(prev => [listing, ...prev]);
+    const updateMarketplaceListing = (id: string, d: Partial<MarketplaceListing>) => setMarketplaceListings(prev => prev.map(l => l.id === id ? { ...l, ...d } : l));
+    const deleteMarketplaceListing = (id: string) => setMarketplaceListings(prev => prev.filter(l => l.id !== id));
+    
+    const markUnitOccupied = (propertyId: string, unitId: string) => {
+        setProperties(prev => prev.map(p => {
+            if (p.id === propertyId) {
+                return {
+                    ...p,
+                    units: p.units.map(u => u.id === unitId ? { ...u, status: 'Occupied' as const } : u)
+                };
+            }
+            return p;
+        }));
+        setMarketplaceListings(prev => {
+            const listing = prev.find(l => l.propertyId === propertyId && l.unitId === unitId);
+            if (listing) {
+                const endStatus = listing.type === 'Sale' ? 'Sold' : 'Rented';
+                return prev.map(l => l.id === listing.id ? { ...l, status: endStatus } : l);
+            }
+            return prev;
+        });
+    };
+
+    // --- LEADS CRUD & Sync ---
+    const addLead = (lead: Lead) => setLeads(prev => [lead, ...prev]);
+    const updateLead = (id: string, d: Partial<Lead>) => setLeads(prev => prev.map(l => l.id === id ? { ...l, ...d } : l));
+    const deleteLead = (id: string) => setLeads(prev => prev.filter(l => l.id !== id));
+
+    const syncWebsiteLeads = async () => {
+        try {
+            const newLeads = await websiteApi.fetchLeads();
+            setLeads(prev => {
+                // simple dedup based on ID if we had real IDs, here we just append but in prod check dups
+                const existingIds = new Set(prev.map(l => l.id));
+                const filteredNew = newLeads.filter(l => !existingIds.has(l.id));
+                return [...filteredNew, ...prev];
+            });
+        } catch (e) {
+            console.error("Failed to sync leads", e);
+        }
+    };
+
+    // --- Fundi Jobs ---
+    const addFundiJob = (job: FundiJob) => setFundiJobs(prev => [job, ...prev]);
+    const updateFundiJob = (id: string, d: Partial<FundiJob>) => setFundiJobs(prev => prev.map(j => j.id === id ? { ...j, ...d } : j));
+    
+    const syncFundiJobs = async () => {
+        try {
+             const newJobs = await websiteApi.fetchFundiJobs();
+             setFundiJobs(prev => {
+                 const existingIds = new Set(prev.map(j => j.id));
+                 const filteredNew = newJobs.filter(j => !existingIds.has(j.id));
+                 return [...filteredNew, ...prev];
+             });
+        } catch (e) {
+            console.error("Failed to sync fundi jobs", e);
+        }
     };
 
     return (
@@ -254,7 +366,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bills, invoices, vendors, messages, notifications, templates, workflows, automationRules, auditLogs, escalationRules,
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
-            roles, scheduledReports, taxRecords,
+            roles, scheduledReports, taxRecords, marketplaceListings, leads, fundiJobs,
             currentUser,
             setCurrentUser,
             addTenant, updateTenant, deleteTenant, addProperty, updateProperty, deleteProperty,
@@ -275,7 +387,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addTaxRecord, updateTaxRecord,
             getOccupancyRate, getTotalRevenue,
             deleteFund,
-            checkPermission 
+            checkPermission,
+            addMarketplaceListing, updateMarketplaceListing, deleteMarketplaceListing, markUnitOccupied,
+            addLead, updateLead, deleteLead, syncWebsiteLeads,
+            addFundiJob, updateFundiJob, syncFundiJobs
         }}>
             {children}
         </DataContext.Provider>

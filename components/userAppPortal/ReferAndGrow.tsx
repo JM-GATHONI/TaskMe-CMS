@@ -4,11 +4,65 @@ import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 
 const ReferAndGrow: React.FC = () => {
-    const { properties, funds } = useData();
+    const { properties, funds, currentUser, tenants, renovationInvestors, leads, applications, rfTransactions } = useData();
     const [activeTab, setActiveTab] = useState<'Campaigns' | 'Calculator' | 'History'>('Campaigns');
+    const [copied, setCopied] = useState(false);
 
-    // --- MOCK USER DATA (Simulating currently logged in user) ---
-    const user = { name: "Ritch", referralCode: "RITCH2025", tier: "Silver", points: 1250 };
+    // --- CURRENT USER DATA ---
+    const user = useMemo(() => ({
+        name: currentUser?.name || "User",
+        referralCode: `${currentUser?.name?.split(' ')[0].toUpperCase() || 'USER'}2025`,
+        tier: "Silver", // Logic can be added for tiers
+        points: 1250 // Logic can be added for points
+    }), [currentUser]);
+
+    // --- LIVE REFERRAL TRACKING ---
+    const referralHistory = useMemo(() => {
+        if (!currentUser) return [];
+        const myId = currentUser.id;
+
+        const tenantRefs = tenants.filter(t => t.referrerId === myId).map(t => ({
+            date: t.onboardingDate,
+            type: 'Tenant',
+            detail: `${t.name} (Unit ${t.unit})`,
+            status: 'Successful',
+            earned: 200 // Mock commission for tenant
+        }));
+
+        const investorRefs = renovationInvestors.filter(i => i.referrerId === myId).map(i => ({
+            date: i.joinDate,
+            type: 'Investor',
+            detail: i.name,
+            status: i.status === 'Active' ? 'Successful' : 'Pending',
+            earned: i.status === 'Active' ? 2500 : 0 // Mock commission
+        }));
+
+        const leadRefs = leads.filter(l => l.referrerId === myId).map(l => ({
+            date: l.date || new Date().toISOString().split('T')[0],
+            type: 'Lead',
+            detail: l.tenantName,
+            status: l.status === 'New' ? 'Pending' : l.status,
+            earned: 0
+        }));
+
+        const appRefs = applications.filter(a => a.referrerId === myId).map(a => ({
+            date: a.submittedDate,
+            type: 'Application',
+            detail: `${a.name} (${a.property})`,
+            status: a.status === 'Approved' ? 'Successful' : 'Pending',
+            earned: 0
+        }));
+
+        return [...tenantRefs, ...investorRefs, ...leadRefs, ...appRefs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [currentUser, tenants, renovationInvestors, leads, applications]);
+
+    // Calculate Total Earned from real transactions
+    const totalEarned = useMemo(() => {
+        if (!currentUser) return 0;
+        return rfTransactions
+            .filter(tx => tx.partyName === currentUser.name && tx.type === 'Referral Commission')
+            .reduce((sum, tx) => sum + tx.amount, 0);
+    }, [currentUser, rfTransactions]);
 
     // --- CALCULATOR STATE ---
     const [calcState, setCalcState] = useState({
@@ -59,15 +113,6 @@ const ReferAndGrow: React.FC = () => {
         };
     }, [calcState]);
 
-    // 4. Mock History
-    const referralHistory = [
-        { date: '2025-11-01', type: 'Tenant', detail: 'John Doe (Unit A1)', status: 'Successful', earned: 200 },
-        { date: '2025-11-05', type: 'Investor', detail: 'Alice Smith (Fund I)', status: 'Pending', earned: 0 },
-        { date: '2025-10-20', type: 'Landlord', detail: 'Green Heights Apts', status: 'Successful', earned: 4500 },
-    ];
-
-    const totalEarned = referralHistory.filter(r => r.status === 'Successful').reduce((a,b) => a + b.earned, 0);
-
     const handleShareUnit = (unit: any) => {
         const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${unit.rent.toLocaleString()}. Interested? Use my code ${user.referralCode} to book!`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
@@ -105,8 +150,8 @@ const ReferAndGrow: React.FC = () => {
                                 <p className="text-2xl font-bold text-green-400">KES {totalEarned.toLocaleString()}</p>
                             </div>
                             <div className="bg-white/10 backdrop-blur-md px-5 py-3 rounded-xl border border-white/10">
-                                <p className="text-xs text-gray-400 uppercase font-bold">Next Payout</p>
-                                <p className="text-2xl font-bold text-white">KES 4,500</p>
+                                <p className="text-xs text-gray-400 uppercase font-bold">Active Referrals</p>
+                                <p className="text-2xl font-bold text-white">{referralHistory.filter(r => r.status === 'Successful' || r.status === 'Active').length}</p>
                             </div>
                         </div>
                     </div>
@@ -345,13 +390,16 @@ const ReferAndGrow: React.FC = () => {
                                         </td>
                                         <td className="px-4 py-3 font-medium text-gray-800">{item.detail}</td>
                                         <td className="px-4 py-3 text-center">
-                                            <span className={`text-xs font-bold ${item.status === 'Successful' ? 'text-green-600' : 'text-yellow-600'}`}>
+                                            <span className={`text-xs font-bold ${item.status === 'Successful' || item.status === 'Active' ? 'text-green-600' : 'text-yellow-600'}`}>
                                                 {item.status}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-right font-bold text-gray-900">KES {item.earned.toLocaleString()}</td>
                                     </tr>
                                 ))}
+                                {referralHistory.length === 0 && (
+                                    <tr><td colSpan={5} className="p-8 text-center text-gray-400">No referrals yet. Share your link to start earning!</td></tr>
+                                )}
                             </tbody>
                         </table>
                     </div>

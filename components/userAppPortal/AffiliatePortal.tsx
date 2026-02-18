@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { MOCK_AFFILIATE_PROFILE } from '../../constants';
 import { Affiliate } from '../../types';
 import Icon from '../Icon';
+import AdBanners from './AdBanners';
 
 const StatCard: React.FC<{ title: string; value: string | number; color: string; icon: string }> = ({ title, value, color, icon }) => (
     <div className={`bg-white p-5 rounded-xl shadow-sm border-l-4`} style={{ borderLeftColor: color }}>
@@ -35,7 +36,7 @@ const AffiliatePortal: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-20">
             <div className="bg-gradient-to-r from-purple-800 to-indigo-900 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
                  <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-10 translate-y-10">
                     <Icon name="revenue" className="w-64 h-64 text-white" />
@@ -55,10 +56,6 @@ const AffiliatePortal: React.FC = () => {
                             </button>
                         </div>
                     </div>
-                    
-                    <button onClick={() => window.location.hash = '#/user-app-portal/refer-and-grow'} className="bg-green-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-600 shadow-md flex items-center transition-transform active:scale-95">
-                        <Icon name="communication" className="w-5 h-5 mr-2" /> Advanced Referrals
-                    </button>
                 </div>
             </div>
 
@@ -126,6 +123,9 @@ const AffiliatePortal: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Advert Banners */}
+            <AdBanners />
         </div>
     );
 };
