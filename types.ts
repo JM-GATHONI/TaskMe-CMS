@@ -163,6 +163,7 @@ export interface Unit {
   rent?: number;
   unitType?: string;
   amenities?: string[];
+  isLocked?: boolean; // New: For tracking 'Vacant Locked' KPI
 }
 
 export interface User {
@@ -178,6 +179,10 @@ export interface User {
   branch?: string;
   avatarUrl?: string;
   passwordHash?: string;
+  referralConfig?: {
+      rateType: '%' | 'KES';
+      rateValue: number;
+  };
 }
 
 export type UserRole = 'Super Admin' | 'Branch Manager' | 'Field Agent' | 'Accountant' | 'Caretaker' | 'Landlord' | 'Tenant' | 'Contractor' | 'Affiliate' | 'Investor';
@@ -260,6 +265,7 @@ export interface StaffProfile {
       type: SalaryType;
       amount: number;
       commissionRate?: number;
+      activeTargets?: string[]; // New: List of enabled KPIs for Target Based salary
   };
   bankDetails?: {
       bankName?: string;
@@ -519,6 +525,7 @@ export interface SystemSettings {
   profilePic: string | null;
   address?: string;
   phone?: string;
+  shortcode?: string;
 }
 
 export interface PreventiveTask {

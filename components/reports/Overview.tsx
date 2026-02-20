@@ -163,7 +163,7 @@ const ReportsOverview: React.FC = () => {
         { title: "Task & Operations", icon: "operations", description: "Operational efficiency and task tracking.", link: "#/reports-analytics/reports/task-operations-reports", color: "#ef4444" },
         { title: "R-REITs Fund", icon: "reits", description: "Fund performance and investor growth.", link: "#/reports-analytics/reports/r-reits-fund", color: "#6366f1" },
         { title: "Compliance & Tax", icon: "accounting", description: "Regulatory tracking and tax obligations.", link: "#/reports-analytics/reports/compliance-tax-reports", color: "#14b8a6" },
-        { title: "Custom Reports", icon: "analytics", description: "Build and save custom data views.", link: "#/reports-analytics/reports/custom-reports", color: "#6b7280" },
+        { title: "Vacancy Reports", icon: "vacant-house", description: "Detailed analytics on vacant units.", link: "#/reports-analytics/reports/vacancy-reports", color: "#ef4444" },
     ];
 
     const reportCards: ReportCardData[] = useMemo(() => {
@@ -214,7 +214,7 @@ const ReportsOverview: React.FC = () => {
             { title: "Revenue", value: `KES ${(periodRevenue/1000000).toFixed(2)}M`, icon: 'revenue', link: '#/reports-analytics/reports/financial-reports?view=revenue', color: 'green', subtext: `Collected in period` },
             { title: "Expenses", value: `KES ${(periodExpenses/1000).toFixed(1)}k`, icon: 'expenses', link: '#/reports-analytics/reports/financial-reports?view=expenses', color: 'red', subtext: `Incurred in period` },
             { title: "New Tenants", value: newTenantsCount.toString(), icon: 'tenants', link: '#/reports-analytics/reports/tenancy-reports', color: 'primary', subtext: "Signed in period" },
-            { title: "Active Landlords", value: totalLandlords.toString(), icon: 'landlords', link: '#/reports-analytics/reports/property-reports?tab=landlords', color: 'primary', subtext: "Current Total" },
+            { title: "Vacant Units", value: vacantUnits.toString(), icon: 'vacant-house', link: '#/reports-analytics/reports/vacancy-reports', color: 'red', subtext: "Total Unoccupied" },
             
             // Row 2: Snapshots & Operations
             { title: "Occupancy Rate", value: `${occupancy}%`, icon: 'vacant-house', link: '#/reports-analytics/reports/property-reports?tab=vacancies', color: 'blue', subtext: `${vacantUnits} Vacant Units` },

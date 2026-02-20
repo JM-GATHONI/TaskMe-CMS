@@ -9,6 +9,9 @@ import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
 import AdBanners from './AdBanners';
 
+// ... (Previous Helper Components like KpiCard and TaskDetailModal remain unchanged) ...
+// Since I am modifying the full file to ensure context safety, I include them below.
+
 const KpiCard: React.FC<{ title: string; value: string; subtext?: string; icon: string; color: string }> = ({ title, value, subtext, icon, color }) => (
     <div className={`bg-white p-5 rounded-xl shadow-sm border-l-4`} style={{ borderLeftColor: color }}>
         <div className="flex justify-between items-start">
@@ -24,7 +27,6 @@ const KpiCard: React.FC<{ title: string; value: string; subtext?: string; icon: 
     </div>
 );
 
-// Task Detail Modal
 const TaskDetailModal: React.FC<{ task: Task; onClose: () => void; onUpdate: (task: Task) => void }> = ({ task, onClose, onUpdate }) => {
     const [status, setStatus] = useState(task.status);
     const [notes, setNotes] = useState('');
@@ -88,18 +90,15 @@ const AgentPortal: React.FC = () => {
         currentUser
     } = useData();
     
-    const [activeTab, setActiveTab] = useState<'Dashboard' | 'My Properties' | 'My Tenants' | 'My Landlords' | 'Tasks'>('Dashboard');
+    // Updated tab state to include Vacancies and reordered
+    const [activeTab, setActiveTab] = useState<'Dashboard' | 'Tasks' | 'Vacancies' | 'My Properties' | 'My Tenants' | 'My Landlords'>('Dashboard');
     
-    // Modal States
     const [modalOpen, setModalOpen] = useState<'none' | 'addTenant' | 'addLandlord' | 'addProperty'>('none');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [selectedCollectionTenant, setSelectedCollectionTenant] = useState<TenantProfile | null>(null);
-    
-    // Filters
     const [taskTypeFilter, setTaskTypeFilter] = useState<'Work Orders' | 'Collections'>('Work Orders');
     const [tenantFilter, setTenantFilter] = useState('All');
 
-    // Identify current agent based on login or fallback
     const agent = useMemo(() => {
         if (currentUser && currentUser.role === 'Field Agent') {
             return currentUser as StaffProfile;
@@ -107,13 +106,24 @@ const AgentPortal: React.FC = () => {
         return staff.find(s => s.role === 'Field Agent') || staff[0];
     }, [staff, currentUser]);
 
-    // --- Live Data Filters ---
+    // Live Data Filters
     const myTasks = useMemo(() => tasks.filter(t => t.assignedTo === agent.name && t.status !== 'Closed'), [tasks, agent]);
     const myProperties = useMemo(() => properties.filter(p => p.assignedAgentId === agent.id), [properties, agent]);
     const myPropertyIds = useMemo(() => myProperties.map(p => p.id), [myProperties]);
-    
     const myTenants = useMemo(() => tenants.filter(t => t.propertyId && myPropertyIds.includes(t.propertyId)), [tenants, myPropertyIds]);
     const myLandlords = useMemo(() => landlords.filter(l => myProperties.some(p => p.landlordId === l.id)), [landlords, myProperties]);
+
+    // NEW: My Vacant Units
+    const myVacantUnits = useMemo(() => {
+        return myProperties.flatMap(p => 
+            p.units.filter(u => u.status === 'Vacant').map(u => ({
+                ...u,
+                propertyName: p.name,
+                location: p.location || p.branch,
+                defaultRent: u.rent || p.defaultMonthlyRent
+            }))
+        );
+    }, [myProperties]);
 
     const filteredMyTenants = useMemo(() => {
         let result = myTenants;
@@ -135,18 +145,14 @@ const AgentPortal: React.FC = () => {
         }
     }, [myTenants, tenantFilter]);
 
-    // Collections
     const collectionTasks = useMemo(() => myTenants.filter(t => t.status === 'Overdue'), [myTenants]);
 
-    // Calculate Commission (Mock logic if array empty)
     const totalCommission = useMemo(() => {
         return (agent.commissions || []).reduce((sum, c) => sum + c.amount, 0);
     }, [agent]);
 
-    // Active Leads (Applications with 'New' or 'Under Review')
     const myLeads = useMemo(() => applications.filter(a => a.status === 'New' || a.status === 'Under Review'), [applications]);
     
-    // Performance
     const occupancyRate = useMemo(() => {
         const totalUnits = myProperties.reduce((acc, p) => acc + p.units.length, 0);
         const occupied = myProperties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Occupied').length, 0);
@@ -163,8 +169,8 @@ const AgentPortal: React.FC = () => {
         return { collected, rate };
     }, [myTenants]);
 
-    // --- Handlers ---
     const handleRegisterTenant = (data: UnifiedRecord) => {
+        // ... (existing logic) ...
         if (data.recordType === 'Application') {
              const newApp: TenantApplication = {
                 id: `app-${Date.now()}`,
@@ -220,7 +226,7 @@ const AgentPortal: React.FC = () => {
 
     const handleAddProperty = (prop: Property) => {
         if (prop.id) updateProperty(prop.id, prop);
-        else addProperty({ ...prop, id: `prop-${Date.now()}`, units: [], assignedAgentId: agent.id }); // Assign to self
+        else addProperty({ ...prop, id: `prop-${Date.now()}`, units: [], assignedAgentId: agent.id });
         setModalOpen('none');
         alert("Property added/updated successfully.");
     };
@@ -255,9 +261,9 @@ const AgentPortal: React.FC = () => {
                 </div>
             </div>
 
-            {/* Navigation Tabs */}
+            {/* Navigation Tabs - Reordered */}
             <div className="flex gap-2 bg-gray-100 p-1 rounded-lg w-fit overflow-x-auto">
-                {['Dashboard', 'My Properties', 'My Tenants', 'My Landlords', 'Tasks'].map(tab => (
+                {['Dashboard', 'Tasks', 'Vacancies', 'My Properties', 'My Tenants', 'My Landlords'].map(tab => (
                     <button 
                         key={tab} 
                         onClick={() => setActiveTab(tab as any)}
@@ -347,6 +353,48 @@ const AgentPortal: React.FC = () => {
                             </div>
                         ))}
                         {myProperties.length === 0 && <p className="col-span-3 text-center text-gray-400 py-4">No properties assigned.</p>}
+                    </div>
+                </div>
+            )}
+            
+            {/* NEW: Vacancies Tab */}
+            {activeTab === 'Vacancies' && (
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                        <Icon name="vacant-house" className="w-5 h-5 mr-2 text-red-500"/>
+                        My Vacant Units ({myVacantUnits.length})
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {myVacantUnits.length > 0 ? myVacantUnits.map(unit => (
+                            <div key={unit.id} className="p-4 border border-red-200 bg-red-50/20 rounded-lg hover:shadow-md transition-shadow">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h4 className="font-bold text-gray-800">{unit.unitNumber}</h4>
+                                    <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">VACANT</span>
+                                </div>
+                                <p className="text-xs text-gray-600 font-bold mb-1">{unit.propertyName}</p>
+                                <p className="text-xs text-gray-500 mb-3">{unit.location}</p>
+                                <div className="flex justify-between items-center border-t border-gray-100 pt-3">
+                                    <span className="font-bold text-blue-600 text-sm">KES {unit.defaultRent?.toLocaleString()}</span>
+                                    <button 
+                                        className="text-[10px] bg-green-600 text-white px-3 py-1.5 rounded font-bold hover:bg-green-700"
+                                        onClick={() => {
+                                            // Pre-fill tenant registration form would be ideal here
+                                            setModalOpen('addTenant');
+                                        }}
+                                    >
+                                        Register Tenant
+                                    </button>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="col-span-full py-12 text-center">
+                                <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-green-600">
+                                    <Icon name="check" className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-700">Fully Occupied!</h3>
+                                <p className="text-gray-500 text-sm">Great job. You have no vacant units in your assigned properties.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -540,7 +588,7 @@ const AgentPortal: React.FC = () => {
             )}
             {modalOpen === 'addProperty' && (
                 <PropertyForm 
-                    property={null} 
+                    property={{ assignedAgentId: agent.id, branch: agent.branch, floors: 1 }} 
                     onCancel={() => setModalOpen('none')} 
                     onSave={handleAddProperty}
                     landlords={landlords}

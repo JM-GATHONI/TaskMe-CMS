@@ -4,7 +4,9 @@ import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { INITIAL_FUNDS } from '../../constants';
 
-type UserPersona = 'Tenant' | 'Landlord' | 'Investor';
+import RegistrationModal from './RegistrationModal';
+
+type UserPersona = 'Tenant' | 'Landlord' | 'Investor' | 'Partner';
 type PageType = 'Home' | 'Properties' | 'Funds' | 'About';
 
 // --- HELPER: Investment Rates Logic ---
@@ -17,6 +19,7 @@ const getTierRates = (months: number) => {
 
 // --- MODAL: REQUEST CALL BACK (For Landlords/General) ---
 const CallbackModal: React.FC<{ onClose: () => void; type?: string }> = ({ onClose, type = 'General' }) => {
+    const { registerLandlord } = useRegistration();
     const [formData, setFormData] = useState({ name: '', phone: '', topic: type === 'Landlord' ? 'Property Management' : 'General Inquiry' });
     const [submitted, setSubmitted] = useState(false);
 
@@ -24,10 +27,17 @@ const CallbackModal: React.FC<{ onClose: () => void; type?: string }> = ({ onClo
         e.preventDefault();
         if (!formData.name || !formData.phone) return alert("Name and Phone are required.");
         
-        // Simulate API call
-        setTimeout(() => {
-            setSubmitted(true);
-        }, 1000);
+        if (type === 'Landlord') {
+            registerLandlord({
+                name: formData.name,
+                phone: formData.phone,
+                notes: `Topic: ${formData.topic}`
+            });
+        }
+        // For General Inquiry, we might just log it or use a generic 'addLead' if available, 
+        // but for now we'll assume the hook handles the persistence or we just simulate for non-landlords
+        
+        setSubmitted(true);
     };
 
     return (
@@ -102,6 +112,7 @@ const InvestmentModal: React.FC<{
     fund: any; 
     onClose: () => void;
 }> = ({ fund, onClose }) => {
+    const { registerInvestor } = useRegistration();
     const [step, setStep] = useState<'auth' | 'config' | 'payment' | 'processing' | 'success'>('auth');
     const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
     const [userForm, setUserForm] = useState({ name: '', email: '', phone: '', password: '' });
@@ -122,7 +133,15 @@ const InvestmentModal: React.FC<{
 
     const handleAuthSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (authMode === 'register' && (!userForm.name || !userForm.phone)) return alert("Please fill all fields");
+        if (authMode === 'register') {
+            if (!userForm.name || !userForm.phone) return alert("Please fill all fields");
+            registerInvestor({
+                name: userForm.name,
+                email: userForm.email,
+                phone: userForm.phone,
+                // In real app, handle password
+            });
+        }
         if (!userForm.email || !userForm.password) return alert("Please fill all fields");
         setStep('config');
     };
@@ -321,6 +340,34 @@ const ReferralLanding: React.FC = () => {
     const [isCallbackOpen, setIsCallbackOpen] = useState(false);
     const [callbackType, setCallbackType] = useState('General');
     const [currentPage, setCurrentPage] = useState<PageType>('Home'); // Home acts as the main landing, Properties/Funds act as filtered views if needed, About is separate.
+    const [referrerCode, setReferrerCode] = useState<string | null>(null);
+
+    // Registration Modal State
+    const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+    const [registrationType, setRegistrationType] = useState<'Landlord' | 'Investor' | 'Affiliate' | 'Contractor'>('Landlord');
+
+    useEffect(() => {
+        // Parse referral code from URL (supports both ?ref=CODE and #...?ref=CODE)
+        const params = new URLSearchParams(window.location.search);
+        let ref = params.get('ref');
+        
+        if (!ref) {
+            const hashParts = window.location.hash.split('?');
+            if (hashParts.length > 1) {
+                const hashParams = new URLSearchParams(hashParts[1]);
+                ref = hashParams.get('ref');
+            }
+        }
+
+        if (ref) {
+            setReferrerCode(ref);
+            localStorage.setItem('taskme_referrer', ref);
+        } else {
+            // Check local storage if not in URL
+            const stored = localStorage.getItem('taskme_referrer');
+            if (stored) setReferrerCode(stored);
+        }
+    }, []);
 
     // --- DERIVED DATA ---
     const vacantUnits = useMemo(() => {
@@ -368,6 +415,7 @@ const ReferralLanding: React.FC = () => {
                             <button onClick={() => setViewMode('Tenant')} className={`text-sm font-bold transition-colors ${viewMode === 'Tenant' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>Rent</button>
                             <button onClick={() => setViewMode('Investor')} className={`text-sm font-bold transition-colors ${viewMode === 'Investor' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>Invest</button>
                             <button onClick={() => setViewMode('Landlord')} className={`text-sm font-bold transition-colors ${viewMode === 'Landlord' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>List Property</button>
+                            <button onClick={() => setViewMode('Partner')} className={`text-sm font-bold transition-colors ${viewMode === 'Partner' ? 'text-primary' : 'text-gray-500 hover:text-gray-900'}`}>Partner</button>
                             <button onClick={() => setCurrentPage('About')} className="text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors">About</button>
                         </div>
 
@@ -620,6 +668,82 @@ const ReferralLanding: React.FC = () => {
                         </div>
                     </div>
                 )}
+                {viewMode === 'Partner' && (
+                    <div className="animate-fade-in">
+                        <div className="relative bg-gray-900 text-white overflow-hidden h-[400px] flex items-center">
+                             <div className="absolute inset-0">
+                                <img src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1600&q=80" className="w-full h-full object-cover opacity-30" alt="Handshake" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-gray-900 via-gray-900/80 to-transparent"></div>
+                            </div>
+                            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+                                <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6">
+                                    Grow With Us.
+                                </h1>
+                                <p className="text-xl text-gray-300 mb-8 max-w-2xl">
+                                    Join our network of affiliates and service providers. Earn commissions and access a steady stream of jobs.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                                {/* Affiliate Card */}
+                                <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden flex flex-col hover:shadow-2xl transition-all">
+                                    <div className="h-48 bg-purple-600 relative overflow-hidden">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-indigo-700"></div>
+                                        <div className="absolute bottom-0 right-0 p-6 opacity-20">
+                                            <Icon name="branch" className="w-32 h-32 text-white" />
+                                        </div>
+                                        <div className="relative z-10 p-8 h-full flex flex-col justify-center">
+                                            <h3 className="text-3xl font-bold text-white">Affiliate Partner</h3>
+                                            <p className="text-purple-100">Earn for every referral.</p>
+                                        </div>
+                                    </div>
+                                    <div className="p-8 flex-grow">
+                                        <ul className="space-y-4 mb-8 text-gray-600">
+                                            <li className="flex items-start"><Icon name="check" className="w-5 h-5 text-green-500 mr-2 mt-0.5"/> Earn up to KES 5,000 per tenant referral</li>
+                                            <li className="flex items-start"><Icon name="check" className="w-5 h-5 text-green-500 mr-2 mt-0.5"/> Recurring commissions for property management</li>
+                                            <li className="flex items-start"><Icon name="check" className="w-5 h-5 text-green-500 mr-2 mt-0.5"/> Access to marketing materials & dashboard</li>
+                                        </ul>
+                                        <button 
+                                            onClick={() => { setRegistrationType('Affiliate'); setIsRegistrationOpen(true); }}
+                                            className="w-full py-4 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-colors shadow-lg"
+                                        >
+                                            Join as Affiliate
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Contractor Card */}
+                                <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden flex flex-col hover:shadow-2xl transition-all">
+                                    <div className="h-48 bg-orange-600 relative overflow-hidden">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-orange-500 to-red-600"></div>
+                                        <div className="absolute bottom-0 right-0 p-6 opacity-20">
+                                            <Icon name="maintenance" className="w-32 h-32 text-white" />
+                                        </div>
+                                        <div className="relative z-10 p-8 h-full flex flex-col justify-center">
+                                            <h3 className="text-3xl font-bold text-white">Service Provider</h3>
+                                            <p className="text-orange-100">Get verified jobs instantly.</p>
+                                        </div>
+                                    </div>
+                                    <div className="p-8 flex-grow">
+                                        <ul className="space-y-4 mb-8 text-gray-600">
+                                            <li className="flex items-start"><Icon name="check" className="w-5 h-5 text-green-500 mr-2 mt-0.5"/> Access to 1000+ managed units</li>
+                                            <li className="flex items-start"><Icon name="check" className="w-5 h-5 text-green-500 mr-2 mt-0.5"/> Guaranteed payment upon job completion</li>
+                                            <li className="flex items-start"><Icon name="check" className="w-5 h-5 text-green-500 mr-2 mt-0.5"/> Build your reputation with verified ratings</li>
+                                        </ul>
+                                        <button 
+                                            onClick={() => { setRegistrationType('Contractor'); setIsRegistrationOpen(true); }}
+                                            className="w-full py-4 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 transition-colors shadow-lg"
+                                        >
+                                            Join as Pro
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
 
             {/* Footer */}
@@ -654,6 +778,13 @@ const ReferralLanding: React.FC = () => {
                 <CallbackModal 
                     type={callbackType} 
                     onClose={() => setIsCallbackOpen(false)} 
+                />
+            )}
+
+            {isRegistrationOpen && (
+                <RegistrationModal 
+                    type={registrationType} 
+                    onClose={() => setIsRegistrationOpen(false)} 
                 />
             )}
         </div>

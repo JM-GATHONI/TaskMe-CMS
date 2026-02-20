@@ -90,8 +90,8 @@ const TenantPortal: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
     const [newMessageContent, setNewMessageContent] = useState('');
 
-    // Use logged-in user if available, fallback to first tenant only for dev/demo if not logged in correctly
-    const activeUser = (currentUser as TenantProfile) || tenants[0];
+    // Use logged-in user if available and is a tenant, fallback to first tenant only for dev/demo
+    const activeUser = (currentUser?.role === 'Tenant' ? (currentUser as TenantProfile) : undefined) || tenants[0];
 
     const myTasks = useMemo(() => {
         if (!activeUser) return [];
