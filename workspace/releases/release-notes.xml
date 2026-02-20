@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <releaseNotes version="1" date="2026-02-20">
-  <file path="components/userAppPortal/InvestorsPortal.tsx" module="userAppPortal">
-    <description>Updated the "Refer & Earn" button and "Go to Referral Center" button to redirect to the correct accessible route `#/user-app-portal/refer-earn`.</description>
+  <file path="components/settings/RatesAndRules.tsx" module="settings">
+    <description>Fixed the "Global Default Commission" input field to allow clearing the value (deleting zero) and typing decimals by using a local state that syncs with the global state on blur.</description>
   </file>
 </releaseNotes>

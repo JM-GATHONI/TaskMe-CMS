@@ -1,11 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { CommissionRule, User } from '../../types';
 import Icon from '../Icon';
 
 const RatesAndRules: React.FC = () => {
-    const { commissionRules, updateCommissionRule, users, updateUser } = useData();
+    const { commissionRules, updateCommissionRule, addCommissionRule, users, updateUser } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
@@ -19,19 +19,66 @@ const RatesAndRules: React.FC = () => {
         appliesTo: 'Tenant'
     };
 
+    // Local state for the input to allow empty/decimal typing
+    const [localRateValue, setLocalRateValue] = useState<string>(referralRule.rateValue.toString());
+
+    useEffect(() => {
+        setLocalRateValue(referralRule.rateValue.toString());
+    }, [referralRule.rateValue]);
+
     const handleGlobalRuleChange = (field: keyof CommissionRule, value: any) => {
-        updateCommissionRule({ ...referralRule, [field]: value });
+        // Handle NaN for number fields
+        const safeValue = (field === 'rateValue' && typeof value === 'number' && isNaN(value)) ? 0 : value;
+
+        if (referralRule.id === 'new-ref-rule') {
+            const exists = commissionRules.some(r => r.id === referralRule.id);
+            if (!exists) {
+                addCommissionRule({ ...referralRule, [field]: safeValue });
+                return;
+            }
+        }
+        updateCommissionRule(referralRule.id, { [field]: safeValue });
     };
 
-    const handleUserOverride = () => {
+    const handleRateBlur = () => {
+        const val = parseFloat(localRateValue);
+        handleGlobalRuleChange('rateValue', isNaN(val) ? 0 : val);
+    };
+
+    const [overrideConfig, setOverrideConfig] = useState<{ rateType: 'KES' | '%', rateValue: string | number }>({ rateType: 'KES', rateValue: '' });
+
+    const handleUserSelect = (user: User) => {
+        setSelectedUser(user);
+        setSearchTerm('');
+        if (user.referralConfig) {
+            setOverrideConfig(user.referralConfig);
+        } else {
+            setOverrideConfig({ rateType: 'KES', rateValue: '' });
+        }
+    };
+
+    const saveUserOverride = () => {
         if (!selectedUser) return;
-        // Logic to update user with new referral config would go here
-        // For now, we'll just simulate it or assume updateUser handles it
-        // In a real app, we'd have a specific form for this
-        alert(`Configure override for ${selectedUser.name}`);
+        updateUser(selectedUser.id, {
+            referralConfig: {
+                rateType: overrideConfig.rateType,
+                rateValue: Number(overrideConfig.rateValue) || 0
+            }
+        });
+        setSelectedUser(null);
+        alert(`Override saved for ${selectedUser.name}`);
     };
 
-    const filteredUsers = users.filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const clearUserOverride = () => {
+        if (!selectedUser) return;
+        updateUser(selectedUser.id, {
+            referralConfig: undefined
+        });
+        setSelectedUser(null);
+        alert(`Override removed for ${selectedUser.name}`);
+    };
+
+    const filteredUsers = (users || []).filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
     return (
         <div className="space-y-8 pb-20">
@@ -65,8 +112,9 @@ const RatesAndRules: React.FC = () => {
                             </select>
                             <input 
                                 type="number" 
-                                value={referralRule.rateValue}
-                                onChange={(e) => handleGlobalRuleChange('rateValue', parseFloat(e.target.value))}
+                                value={localRateValue}
+                                onChange={(e) => setLocalRateValue(e.target.value)}
+                                onBlur={handleRateBlur}
                                 className="p-3 border rounded-lg flex-1 font-bold focus:ring-2 focus:ring-blue-100 outline-none"
                             />
                         </div>
@@ -77,47 +125,76 @@ const RatesAndRules: React.FC = () => {
 
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">User Overrides</label>
-                        <div className="relative">
-                            <input 
-                                type="text" 
-                                placeholder="Search user to override..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full p-3 pl-10 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none"
-                            />
-                            <Icon name="search" className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
-                        </div>
                         
-                        {searchTerm && (
-                            <div className="mt-2 border rounded-lg max-h-48 overflow-y-auto bg-white shadow-lg absolute w-full z-10">
-                                {filteredUsers.map(user => (
-                                    <div 
-                                        key={user.id} 
-                                        onClick={() => {
-                                            const type = prompt("Enter Rate Type (KES or %)", user.referralConfig?.rateType || 'KES');
-                                            if (!type) return;
-                                            const val = prompt("Enter Rate Value", user.referralConfig?.rateValue?.toString() || '0');
-                                            if (!val) return;
-                                            
-                                            updateUser({
-                                                ...user,
-                                                referralConfig: { rateType: type as any, rateValue: parseFloat(val) }
-                                            });
-                                            setSearchTerm('');
-                                        }}
-                                        className="p-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center border-b last:border-0"
-                                    >
-                                        <div>
-                                            <p className="font-bold text-sm">{user.name}</p>
-                                            <p className="text-xs text-gray-500">{user.role}</p>
-                                        </div>
-                                        {user.referralConfig && (
-                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">
-                                                {user.referralConfig.rateType === 'KES' ? 'KES ' : ''}{user.referralConfig.rateValue}{user.referralConfig.rateType === '%' ? '%' : ''}
-                                            </span>
-                                        )}
+                        {!selectedUser ? (
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search user to override..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full p-3 pl-10 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none"
+                                />
+                                <Icon name="search" className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
+                                
+                                {searchTerm && (
+                                    <div className="mt-2 border rounded-lg max-h-48 overflow-y-auto bg-white shadow-lg absolute w-full z-10">
+                                        {filteredUsers.map(user => (
+                                            <div 
+                                                key={user.id} 
+                                                onClick={() => handleUserSelect(user)}
+                                                className="p-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center border-b last:border-0"
+                                            >
+                                                <div>
+                                                    <p className="font-bold text-sm">{user.name}</p>
+                                                    <p className="text-xs text-gray-500">{user.role}</p>
+                                                </div>
+                                                {user.referralConfig && (
+                                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">
+                                                        {user.referralConfig.rateType === 'KES' ? 'KES ' : ''}{user.referralConfig.rateValue}{user.referralConfig.rateType === '%' ? '%' : ''}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
+                                )}
+                            </div>
+                        ) : (
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <p className="font-bold text-gray-800">{selectedUser.name}</p>
+                                        <p className="text-xs text-gray-500">{selectedUser.role}</p>
+                                    </div>
+                                    <button onClick={() => setSelectedUser(null)} className="text-xs text-gray-400 hover:text-gray-600">Change User</button>
+                                </div>
+                                
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">Override Type</label>
+                                        <select 
+                                            value={overrideConfig.rateType}
+                                            onChange={(e) => setOverrideConfig({ ...overrideConfig, rateType: e.target.value as any })}
+                                            className="w-full p-2 border rounded bg-white text-sm"
+                                        >
+                                            <option value="KES">Fixed Amount (KES)</option>
+                                            <option value="%">Percentage (%)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">Override Value</label>
+                                        <input 
+                                            type="number" 
+                                            value={overrideConfig.rateValue}
+                                            onChange={(e) => setOverrideConfig({ ...overrideConfig, rateValue: e.target.value })}
+                                            className="w-full p-2 border rounded text-sm"
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 pt-2">
+                                        <button onClick={saveUserOverride} className="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-bold hover:bg-blue-700">Save Override</button>
+                                        <button onClick={clearUserOverride} className="px-3 py-2 bg-red-100 text-red-600 rounded text-sm font-bold hover:bg-red-200">Clear</button>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>

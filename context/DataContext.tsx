@@ -359,6 +359,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
+    // --- Unified User Management ---
+    const users = React.useMemo(() => {
+        // Map all to User type for unified access
+        const mappedTenants = tenants.map(t => ({ ...t, role: 'Tenant' } as unknown as User));
+        const mappedStaff = staff.map(s => ({ ...s, role: s.role } as unknown as User));
+        // Landlords are already User[]
+        return [...landlords, ...mappedTenants, ...mappedStaff];
+    }, [tenants, landlords, staff]);
+
+    const updateUser = (id: string, data: Partial<User>) => {
+        // Determine which list the user belongs to
+        const isTenant = tenants.some(t => t.id === id);
+        const isStaff = staff.some(s => s.id === id);
+        const isLandlord = landlords.some(l => l.id === id);
+
+        if (isTenant) {
+            updateTenant(id, data as Partial<TenantProfile>);
+        } else if (isStaff) {
+            updateStaff(id, data as Partial<StaffProfile>);
+        } else if (isLandlord) {
+            updateLandlord(id, data);
+        }
+    };
+
     return (
         <DataContext.Provider value={{
             tenants, properties, landlords, tasks, quotations, applications, landlordApplications,
@@ -367,6 +391,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
             roles, scheduledReports, taxRecords, marketplaceListings, leads, fundiJobs,
+            users, updateUser,
             currentUser,
             setCurrentUser,
             addTenant, updateTenant, deleteTenant, addProperty, updateProperty, deleteProperty,
