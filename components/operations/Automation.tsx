@@ -52,6 +52,7 @@ const CreateRuleModal: React.FC<{ onClose: () => void; onSave: (rule: Partial<Co
                                 <option value="Lease Expiring">Lease Expiring (60d)</option>
                                 <option value="New Tenant">New Tenant Added</option>
                                 <option value="Task Completed">Task Completed</option>
+                                <option value="Rent Overdue > 1 Day">Rent Overdue &gt; 1 Day</option>
                                 <option value="Rent Overdue > 1 Day">Rent Overdue {'>'} 1 Day</option>
                             </select>
                         </div>

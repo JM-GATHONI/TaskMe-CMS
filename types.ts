@@ -117,6 +117,10 @@ export interface TenantProfile {
   role?: string; // Optional for unification
   passwordHash?: string;
   referrerId?: string; // ID of who referred this tenant
+  referralConfig?: {
+      rateType: '%' | 'KES';
+      rateValue: number;
+  };
 }
 
 export interface Property {
@@ -163,6 +167,7 @@ export interface Unit {
   rent?: number;
   unitType?: string;
   amenities?: string[];
+  isLocked?: boolean; // New: For tracking 'Vacant Locked' KPI
 }
 
 export interface User {
@@ -178,6 +183,10 @@ export interface User {
   branch?: string;
   avatarUrl?: string;
   passwordHash?: string;
+  referralConfig?: {
+      rateType: '%' | 'KES';
+      rateValue: number;
+  };
 }
 
 export type UserRole = 'Super Admin' | 'Branch Manager' | 'Field Agent' | 'Accountant' | 'Caretaker' | 'Landlord' | 'Tenant' | 'Contractor' | 'Affiliate' | 'Investor';
@@ -260,6 +269,7 @@ export interface StaffProfile {
       type: SalaryType;
       amount: number;
       commissionRate?: number;
+      activeTargets?: string[]; // New: List of enabled KPIs for Target Based salary
   };
   bankDetails?: {
       bankName?: string;
@@ -281,6 +291,10 @@ export interface StaffProfile {
   businessUnitAssignment?: string;
   passwordHash?: string;
   assignedPropertyId?: string;
+  referralConfig?: {
+      rateType: '%' | 'KES';
+      rateValue: number;
+  };
 }
 
 export interface StaffDeduction {
@@ -519,6 +533,7 @@ export interface SystemSettings {
   profilePic: string | null;
   address?: string;
   phone?: string;
+  shortcode?: string;
 }
 
 export interface PreventiveTask {
@@ -1066,6 +1081,8 @@ export interface DataContextType {
     marketplaceListings: MarketplaceListing[];
     leads: Lead[];
     fundiJobs: FundiJob[]; // Added fundiJobs
+    users: User[]; // Unified list of all users
+    updateUser: (id: string, data: Partial<User>) => void; // Unified update
 
     setCurrentUser: (user: User | StaffProfile | TenantProfile | null) => void;
     addTenant: (tenant: TenantProfile) => void;

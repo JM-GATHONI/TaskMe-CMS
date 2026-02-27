@@ -489,6 +489,10 @@ const Dashboard: React.FC = () => {
     };
 
     const handleQuickFilterClick = (filter: string) => {
+        if (filter === 'Vacant Units') {
+            window.location.hash = '#/reports-analytics/reports/vacancy-reports';
+            return;
+        }
         window.location.hash = `#/dashboard/search?filters=${encodeURIComponent(filter)}`;
     };
 
@@ -501,6 +505,7 @@ const Dashboard: React.FC = () => {
         { label: 'Deposit Refunds', color: 'bg-purple-100 text-purple-800 hover:bg-purple-200' },
         { label: 'Unpaid Deposit', color: 'bg-pink-100 text-pink-800 hover:bg-pink-200' },
         { label: 'Partial Payments', color: 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200' },
+        { label: 'Vacant Units', color: 'bg-purple-100 text-purple-800 hover:bg-purple-200' },
     ];
 
     // Helper for widget permission check

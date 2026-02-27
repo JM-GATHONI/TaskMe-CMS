@@ -81,7 +81,7 @@ export const ApplicationFormModal: React.FC<{
     onSave: (data: UnifiedRecord) => void;
     properties: Property[];
 }> = ({ record, onClose, onSave, properties }) => {
-    const { tenants, landlords, staff } = useData(); // Context for referrer lookups
+    const { tenants, landlords, staff, vendors, renovationInvestors } = useData(); // Context for referrer lookups
     const [activeTab, setActiveTab] = useState<'details' | 'lease' | 'documents'>('details');
     
     // File inputs refs (reused)
@@ -269,9 +269,22 @@ export const ApplicationFormModal: React.FC<{
             options = landlords.map(l => ({ id: l.id, name: l.name }));
             label = "Select Referring Landlord";
         } else if (source === 'Affiliate') {
-            // Using Staff (Agents) as affiliates for this context
-            options = staff.map(s => ({ id: s.id, name: s.name, sub: s.role }));
-            label = "Select Affiliate/Agent";
+            // Using Staff (Agents) as affiliates for this context or Landlords with Affiliate role
+            options = landlords.filter(l => l.role === 'Affiliate').map(l => ({ id: l.id, name: l.name, sub: 'Affiliate' }));
+            // Also include staff agents if needed, but keeping it clean
+            label = "Select Affiliate";
+        } else if (source === 'Agent') {
+             options = staff.filter(s => s.role === 'Field Agent').map(s => ({ id: s.id, name: s.name, sub: 'Agent' }));
+             label = "Select Agent";
+        } else if (source === 'Contractor') {
+             options = vendors.map(v => ({ id: v.id, name: v.name, sub: v.specialty }));
+             label = "Select Contractor";
+        } else if (source === 'Caretaker') {
+             options = staff.filter(s => s.role === 'Caretaker').map(s => ({ id: s.id, name: s.name, sub: s.branch }));
+             label = "Select Caretaker";
+        } else if (source === 'Investor') {
+             options = renovationInvestors.map(i => ({ id: i.id, name: i.name, sub: 'Investor' }));
+             label = "Select Investor";
         } else if (source === 'Posters') {
              // Posters might imply a specific campaign or location, simple input for now or select list of campaigns
              return (
@@ -377,6 +390,9 @@ export const ApplicationFormModal: React.FC<{
                                                 <option value="Website">Website</option>
                                                 <option value="Agent">Agent</option>
                                                 <option value="Affiliate">Affiliate</option>
+                                                <option value="Contractor">Contractor</option>
+                                                <option value="Caretaker">Caretaker</option>
+                                                <option value="Investor">Investor</option>
                                                 <option value="Tenant">Tenant Referral</option>
                                                 <option value="Landlord">Landlord Referral</option>
                                                 <option value="Referral">General Referral</option>

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
@@ -67,26 +66,13 @@ const PayslipModal: React.FC<{ entry: any; onClose: () => void }> = ({ entry, on
                                     <tr>
                                         <td className="py-2 px-2 font-bold text-blue-600" colSpan={3}>Performance Metrics (Avg: {entry.metrics.average}%)</td>
                                     </tr>
-                                    <tr>
-                                        <td className="py-2 px-2 pl-4 text-xs">1. Collection ({entry.metrics.collection}%)</td>
-                                        <td className="py-2 px-2 text-right text-xs">Included</td>
-                                        <td className="py-2 px-2 text-right">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="py-2 px-2 pl-4 text-xs">2. Signed Leases ({entry.metrics.leases}%)</td>
-                                        <td className="py-2 px-2 text-right text-xs">Included</td>
-                                        <td className="py-2 px-2 text-right">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="py-2 px-2 pl-4 text-xs">3. Task Completion ({entry.metrics.tasks}%)</td>
-                                        <td className="py-2 px-2 text-right text-xs">Included</td>
-                                        <td className="py-2 px-2 text-right">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="py-2 px-2 pl-4 text-xs">4. Occupancy ({entry.metrics.occupancy}%)</td>
-                                        <td className="py-2 px-2 text-right text-xs">Included</td>
-                                        <td className="py-2 px-2 text-right">-</td>
-                                    </tr>
+                                    {Object.entries(entry.metrics).filter(([k]) => k !== 'average').map(([key, val]) => (
+                                        <tr key={key}>
+                                            <td className="py-2 px-2 pl-4 text-xs capitalize">{key.replace(/([A-Z])/g, ' $1')} ({val as React.ReactNode}%)</td>
+                                            <td className="py-2 px-2 text-right text-xs">Included</td>
+                                            <td className="py-2 px-2 text-right">-</td>
+                                        </tr>
+                                    ))}
                                     <tr className="bg-blue-50">
                                         <td className="py-2 px-2 font-bold">Target Salary Achievement</td>
                                         <td className="py-2 px-2 text-right font-bold">{entry.gross.toLocaleString()}</td>
@@ -163,7 +149,7 @@ const PayslipModal: React.FC<{ entry: any; onClose: () => void }> = ({ entry, on
 };
 
 const PayrollProcessing: React.FC = () => {
-    const { staff, tenants, properties, tasks, addBill, updateStaff } = useData();
+    const { staff, tenants, properties, tasks, addBill, updateStaff, offboardingRecords } = useData();
     const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [payrollStatus, setPayrollStatus] = useState<'Draft' | 'Processed' | 'Paid'>('Draft');
     const [searchQuery, setSearchQuery] = useState('');
@@ -175,61 +161,125 @@ const PayrollProcessing: React.FC = () => {
             let basic = s.salaryConfig?.amount || 0;
             const commissions = s.commissions?.reduce((sum, c) => sum + c.amount, 0) || 0;
             let gross = basic + commissions;
-            let metrics = null;
+            let metrics: any = null;
 
             // --- TARGET BASED CALCULATION LOGIC FOR FIELD AGENTS ---
             if (s.salaryConfig?.type === 'Target Based' && s.role === 'Field Agent') {
                 const targetSalary = s.salaryConfig.amount;
+                const enabledTargets = s.salaryConfig.activeTargets || [];
                 
-                // 1. Identify Assigned Properties & Units
+                // 1. Identify Assigned Scope
                 const assignedProps = properties.filter(p => p.assignedAgentId === s.id);
                 const assignedPropIds = assignedProps.map(p => p.id);
-                
-                // 2. Identify Assigned Tenants (Active + Overdue + Notice)
                 const assignedTenants = tenants.filter(t => t.propertyId && assignedPropIds.includes(t.propertyId));
-                const totalAssignedTenants = assignedTenants.length;
+                
+                // Metrics Storage
+                const metricScores: Record<string, number> = {};
+                let scoreSum = 0;
+                let targetCount = 0;
 
-                // --- Metric 1: Collection % (Paid by 30th) ---
-                let paidTenantsCount = 0;
-                assignedTenants.forEach(t => {
-                    // Check if there is a payment in history matching the current period YYYY-MM
-                    const hasPaid = t.paymentHistory.some(p => p.date.startsWith(period) && p.status === 'Paid');
-                    if (hasPaid) paidTenantsCount++;
-                });
-                const collectionRate = totalAssignedTenants > 0 ? (paidTenantsCount / totalAssignedTenants) * 100 : 0;
+                // --- 1. Rent Collection Percentage ---
+                if (enabledTargets.includes('Rent Collection')) {
+                    const totalAssignedTenants = assignedTenants.length;
+                    let paidTenantsCount = 0;
+                    assignedTenants.forEach(t => {
+                        const hasPaid = t.paymentHistory.some(p => p.date.startsWith(period) && p.status === 'Paid');
+                        if (hasPaid) paidTenantsCount++;
+                    });
+                    const rate = totalAssignedTenants > 0 ? (paidTenantsCount / totalAssignedTenants) * 100 : 0;
+                    metricScores['collection'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
 
-                // --- Metric 2: Signed Lease Agreements % ---
-                const signedLeaseCount = assignedTenants.filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status)).length;
-                const leaseRate = totalAssignedTenants > 0 ? (signedLeaseCount / totalAssignedTenants) * 100 : 0;
+                // --- 2. Occupancy Percentage ---
+                if (enabledTargets.includes('Occupancy')) {
+                    let totalUnits = 0;
+                    let occupiedUnits = 0;
+                    assignedProps.forEach(p => {
+                        totalUnits += p.units.length;
+                        occupiedUnits += p.units.filter(u => u.status === 'Occupied').length;
+                    });
+                    const rate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+                    metricScores['occupancy'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
 
-                // --- Metric 3: Task % ---
-                const agentTasks = tasks.filter(t => t.assignedTo === s.name); 
-                const monthlyTasks = agentTasks.filter(t => t.dueDate.startsWith(period));
-                const completedTasks = monthlyTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
-                const totalTasks = monthlyTasks.length;
-                const taskRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100;
+                // --- 3. Percentage of Signed Leases ---
+                if (enabledTargets.includes('Signed Leases')) {
+                    // Assuming 'Fixed' lease type or active status implies signed lease vs 'Open'
+                    const activeTenantCount = assignedTenants.length;
+                    const signedLeaseCount = assignedTenants.filter(t => t.leaseType === 'Fixed').length; 
+                    // Or check documents existence if that data was robust
+                    const rate = activeTenantCount > 0 ? (signedLeaseCount / activeTenantCount) * 100 : 0;
+                    metricScores['signedLeases'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
 
-                // --- Metric 4: Occupancy % ---
-                let totalUnits = 0;
-                let occupiedUnits = 0;
-                assignedProps.forEach(p => {
-                    totalUnits += p.units.length;
-                    occupiedUnits += p.units.filter(u => u.status === 'Occupied').length;
-                });
-                const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+                // --- 4. Percentage of Completed Tasks ---
+                if (enabledTargets.includes('Task Completion')) {
+                    const agentTasks = tasks.filter(t => t.assignedTo === s.name); 
+                    const monthlyTasks = agentTasks.filter(t => t.dueDate.startsWith(period));
+                    const completedTasks = monthlyTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
+                    const totalTasks = monthlyTasks.length;
+                    // If no tasks assigned, 100% score (didn't fail any)
+                    const rate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100;
+                    metricScores['taskCompletion'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
 
-                // --- Average Calculation ---
-                const avgPerformance = (collectionRate + leaseRate + taskRate + occupancyRate) / 4;
+                // --- 5. Inventory Checklist Signed ---
+                if (enabledTargets.includes('Inventory Checklists')) {
+                    // Look at offboarding records for this agent's properties in this month
+                    const monthRecords = offboardingRecords.filter(r => 
+                        r.moveOutDate.startsWith(period) && 
+                        assignedPropIds.includes(tenants.find(t => t.id === r.tenantId)?.propertyId || '')
+                    );
+                    const totalNotices = monthRecords.length;
+                    const signedChecklists = monthRecords.filter(r => r.inspectionStatus !== 'Pending').length;
+                    
+                    const rate = totalNotices > 0 ? (signedChecklists / totalNotices) * 100 : 100; // 100 if no notices
+                    metricScores['inventoryChecklists'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
+
+                // --- 6. Vacant Houses Locked ---
+                if (enabledTargets.includes('Vacant House Locking')) {
+                    const vacantUnits = assignedProps.flatMap(p => p.units.filter(u => u.status === 'Vacant'));
+                    const totalVacant = vacantUnits.length;
+                    const lockedVacant = vacantUnits.filter(u => u.isLocked).length;
+                    
+                    const rate = totalVacant > 0 ? (lockedVacant / totalVacant) * 100 : 100; // 100 if no vacancies
+                    metricScores['vacantLocked'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
+
+                // --- 7. Deposits Collected ---
+                if (enabledTargets.includes('Deposit Collection')) {
+                    const totalTenants = assignedTenants.length;
+                    // Check tenants with depositPaid > 0 or matching rentAmount
+                    const depositPaidCount = assignedTenants.filter(t => (t.depositPaid || 0) >= (t.rentAmount || 0)).length;
+                    
+                    const rate = totalTenants > 0 ? (depositPaidCount / totalTenants) * 100 : 0;
+                    metricScores['depositsCollected'] = Math.round(rate);
+                    scoreSum += rate;
+                    targetCount++;
+                }
+
+                // --- Final Average Calculation ---
+                const avgPerformance = targetCount > 0 ? scoreSum / targetCount : 0;
                 
                 // Actual Pay
                 basic = targetSalary * (avgPerformance / 100);
                 gross = basic + commissions;
                 
                 metrics = {
-                    collection: Math.round(collectionRate),
-                    leases: Math.round(leaseRate),
-                    tasks: Math.round(taskRate),
-                    occupancy: Math.round(occupancyRate),
+                    ...metricScores,
                     average: Math.round(avgPerformance)
                 };
             }
@@ -268,7 +318,7 @@ const PayrollProcessing: React.FC = () => {
                 metrics // Attached for Target Based
             };
         });
-    }, [staff, period, payrollStatus, properties, tenants, tasks]);
+    }, [staff, period, payrollStatus, properties, tenants, tasks, offboardingRecords]);
 
     const filteredData = useMemo(() => {
         return payrollData.filter(p => 
@@ -454,7 +504,7 @@ const PayrollProcessing: React.FC = () => {
                                         {row.metrics ? (
                                             <div className="flex flex-col items-end">
                                                 <span>{row.basic.toLocaleString()}</span>
-                                                <span className="text-[9px] text-blue-500">Achieved: {row.metrics.average}%</span>
+                                                <span className="text-[9px] text-blue-500 font-bold">Achieved: {row.metrics.average}%</span>
                                             </div>
                                         ) : (
                                             row.basic.toLocaleString()

@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<releaseNotes version="1" date="unknown">
-  <file path="components/landlords/ActiveLandlords.tsx" module="landlords">
-    <description>Refactored Active Landlords with inline detail view and live deduction calculations.</description>
-  </file>
-  <file path="components/sidebar/Navigation.tsx" module="sidebar">
-    <description>Fixed sidebar collapse state and keyboard focus.</description>
-  </file>
+<releaseNotes version="1" date="2026-02-19">
   <file path="constants.ts">
-    <description>Updated navigation link order and added mock investor data.</description>
+    <description>Fixed syntax error in MOCK_ROLE_KPIS object definition.</description>
+  </file>
+  <file path="components/landlords/Deductions.tsx" module="landlords">
+    <description>Fixed unescaped greater-than symbol in JSX text content.</description>
+  </file>
+  <file path="components/operations/Automation.tsx" module="operations">
+    <description>Fixed unescaped greater-than symbol in JSX text content.</description>
+  </file>
+  <file path="components/operations/communication/Automation.tsx" module="operations">
+    <description>Fixed unescaped greater-than symbol in JSX text content.</description>
   </file>
 </releaseNotes>

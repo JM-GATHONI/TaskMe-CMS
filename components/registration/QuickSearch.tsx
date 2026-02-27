@@ -23,14 +23,14 @@ const getDaysOverdue = (rentDueDate: number) => {
 };
 
 const QuickSearch: React.FC = () => {
-    const { tenants, properties } = useData();
+    const { tenants, properties, staff } = useData(); // Added staff for agent lookup
 
     const [query, setQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
     const [results, setResults] = useState<SearchResult[]>([]);
     
-    // Updated Filters with Unpaid Deposit and Partial Payments
-    const FILTERS = ['Paid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Unpaid Deposit', 'Partial Payments'];
+    // Updated Filters
+    const FILTERS = ['Paid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Partial Payments', 'Vacant Units'];
 
     // Intelligent Keyword Mapping
     const KEYWORD_MAP: Record<string, string> = {
@@ -52,11 +52,11 @@ const QuickSearch: React.FC = () => {
         'refund': 'Deposit Refunds',
         'refunds': 'Deposit Refunds',
         'deposit refunds': 'Deposit Refunds',
-        'unpaid deposit': 'Unpaid Deposit',
-        'deposit unpaid': 'Unpaid Deposit',
         'partial': 'Partial Payments',
-        'partial payment': 'Partial Payments',
-        'balance': 'Partial Payments'
+        'partial payments': 'Partial Payments',
+        'vacant': 'Vacant Units',
+        'vacancy': 'Vacant Units',
+        'empty': 'Vacant Units'
     };
 
     // Handle URL Query Params & Hash Changes
@@ -79,7 +79,6 @@ const QuickSearch: React.FC = () => {
                         if (!f) setActiveFilter('All');
                     }
                 } else if (f) {
-                    // Handle specific filter passed from dashboard
                     const filterName = decodeURIComponent(f.split(',')[0]);
                     if (FILTERS.includes(filterName)) {
                          setActiveFilter(filterName);
@@ -110,7 +109,37 @@ const QuickSearch: React.FC = () => {
     const tableData = useMemo(() => {
         const lowerQ = query.toLowerCase();
         
-        // Filter tenants first based on search query
+        // --- Special Handling for Vacant Units (Derived from Properties, not Tenants) ---
+        if (activeFilter === 'Vacant Units') {
+             const vacantList: any[] = [];
+             properties.forEach(p => {
+                 p.units.forEach(u => {
+                     if (u.status === 'Vacant') {
+                         if (!query || 
+                             p.name.toLowerCase().includes(lowerQ) || 
+                             u.unitNumber.toLowerCase().includes(lowerQ) ||
+                             (p.location && p.location.toLowerCase().includes(lowerQ))
+                            ) {
+                                const agent = staff.find(s => s.id === p.assignedAgentId);
+                                vacantList.push({
+                                    id: u.id,
+                                    property: p.name,
+                                    unit: u.unitNumber,
+                                    location: p.location || p.branch,
+                                    agent: agent ? agent.name : 'Unassigned',
+                                    rent: `KES ${(u.rent || p.defaultMonthlyRent || 0).toLocaleString()}`,
+                                    val: u.rent || 0,
+                                    status: 'Vacant',
+                                    type: u.unitType || p.type
+                                });
+                            }
+                     }
+                 });
+             });
+             return vacantList;
+        }
+
+        // --- Standard Tenant Filtering ---
         const searchedTenants = tenants.filter(t => 
             !query || 
             t.name.toLowerCase().includes(lowerQ) ||
@@ -222,21 +251,6 @@ const QuickSearch: React.FC = () => {
                 }));
         }
         
-        if (activeFilter === 'Unpaid Deposit') {
-             return searchedTenants
-                .filter(t => (t.depositPaid || 0) <= 0 && ['Active', 'Overdue'].includes(t.status))
-                .map(t => ({
-                    id: t.id,
-                    tenant: t.name,
-                    property: `${t.propertyName} - ${t.unit}`,
-                    // Assuming expected deposit is roughly one month rent for demo if not stored
-                    amountDisplay: `KES ${(t.rentAmount || 0).toLocaleString()} (Est.)`,
-                    val: t.rentAmount || 0,
-                    date: t.onboardingDate,
-                    status: 'Unpaid'
-                }));
-        }
-
         if (activeFilter === 'Partial Payments') {
             return searchedTenants
                 .filter(t => t.status === 'Overdue')
@@ -265,7 +279,7 @@ const QuickSearch: React.FC = () => {
         }
 
         return [];
-    }, [tenants, query, activeFilter]);
+    }, [tenants, query, activeFilter, properties, staff]);
 
     // --- Calculate Totals ---
     const summaryStats = useMemo(() => {
@@ -274,6 +288,7 @@ const QuickSearch: React.FC = () => {
         const count = tableData.length;
         const totalAmount = tableData.reduce((sum, row: any) => sum + (row.val || 0), 0);
 
+        // For Vacant Units, totalAmount represents Potential Rent
         return { count, totalAmount };
     }, [tableData, activeFilter]);
 
@@ -326,6 +341,12 @@ const QuickSearch: React.FC = () => {
     };
 
     const toggleFilter = (filter: string) => {
+        // If clicking Vacant Units, redirect to the new report page (Requested in prompt)
+        if (filter === 'Vacant Units') {
+            window.location.hash = '#/reports-analytics/reports/vacancy-reports';
+            return;
+        }
+        
         setActiveFilter(prev => prev === filter ? 'All' : filter);
         setQuery(''); 
     };
@@ -355,7 +376,7 @@ const QuickSearch: React.FC = () => {
                             className={`px-4 py-2 text-sm rounded-full focus:outline-none transition-all duration-200 shadow-sm ${
                             isActive 
                                 ? 'bg-primary text-white font-bold transform scale-105' 
-                                : 'text-gray-600 bg-white border border-gray-200 hover:bg-gray-50'
+                                : filter === 'Vacant Units' ? 'bg-white text-red-600 border border-red-200 hover:bg-red-50' : 'text-gray-600 bg-white border border-gray-200 hover:bg-gray-50'
                             }`}
                         >
                             {filter}
@@ -408,7 +429,7 @@ const QuickSearch: React.FC = () => {
                             'border-green-500'
                         }`}>
                             <p className="text-sm text-gray-500 font-medium uppercase">
-                                Total {activeFilter.includes('Partial') ? 'Balance Due' : activeFilter}
+                                Total {activeFilter.includes('Vacant') ? 'Potential Rent' : activeFilter.includes('Partial') ? 'Balance Due' : activeFilter}
                             </p>
                             <p className={`text-2xl font-bold ${
                                 activeFilter.includes('Arrears') || activeFilter.includes('Unpaid') || activeFilter.includes('Refunds') || activeFilter.includes('Partial') ? 'text-red-600' : 
@@ -451,6 +472,16 @@ const QuickSearch: React.FC = () => {
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200 text-sm">
                                 <thead className="bg-gray-50">
+                                    {activeFilter === 'Vacant Units' && (
+                                        <tr>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Unit</th>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Location</th>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Type</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Rent</th>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Agent</th>
+                                        </tr>
+                                    )}
                                     {activeFilter === 'Paid' && (
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
@@ -498,15 +529,6 @@ const QuickSearch: React.FC = () => {
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
                                         </tr>
                                     )}
-                                    {activeFilter === 'Unpaid Deposit' && (
-                                        <tr>
-                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
-                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
-                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Expected Deposit</th>
-                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Onboarding Date</th>
-                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
-                                        </tr>
-                                    )}
                                     {activeFilter === 'Partial Payments' && (
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
@@ -521,6 +543,16 @@ const QuickSearch: React.FC = () => {
                                 <tbody className="bg-white divide-y divide-gray-100">
                                     {tableData.map((row: any) => (
                                         <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+                                             {activeFilter === 'Vacant Units' && (
+                                                <>
+                                                    <td className="px-6 py-4 font-bold text-gray-800">{row.property}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{row.unit}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{row.location}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{row.type}</td>
+                                                    <td className="px-6 py-4 text-right font-bold text-green-600">{row.rent}</td>
+                                                    <td className="px-6 py-4 text-gray-600">{row.agent}</td>
+                                                </>
+                                            )}
                                             {activeFilter === 'Paid' && (
                                                 <>
                                                     <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
@@ -568,15 +600,6 @@ const QuickSearch: React.FC = () => {
                                                     <td className="px-6 py-4 text-right font-bold text-red-600">{row.amountDisplay}</td>
                                                     <td className="px-6 py-4 text-center text-gray-500">{row.date}</td>
                                                     <td className="px-6 py-4 text-center"><span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs">{row.status}</span></td>
-                                                </>
-                                            )}
-                                            {activeFilter === 'Unpaid Deposit' && (
-                                                <>
-                                                    <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
-                                                    <td className="px-6 py-4 text-gray-500">{row.property}</td>
-                                                    <td className="px-6 py-4 text-right font-bold text-red-600">{row.amountDisplay}</td>
-                                                    <td className="px-6 py-4 text-center text-gray-500">{row.date}</td>
-                                                    <td className="px-6 py-4 text-center"><span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">{row.status}</span></td>
                                                 </>
                                             )}
                                             {activeFilter === 'Partial Payments' && (

@@ -202,7 +202,16 @@ const AddCapitalModal: React.FC<{
     const investedFundIds = new Set(investments.map(i => i.fundId));
     
     const newOpportunities = funds.filter(f => !investedFundIds.has(f.id) && f.status !== 'Project Completed' && f.status !== 'Fully Funded');
-    const existingOpportunities = funds.filter(f => investedFundIds.has(f.id) && f.status !== 'Project Completed');
+    
+    // Enrich existing opportunities with current investment amount for better display
+    const existingOpportunities = funds
+        .filter(f => investedFundIds.has(f.id) && f.status !== 'Project Completed')
+        .map(f => {
+             const investedAmount = investments
+                .filter(i => i.fundId === f.id)
+                .reduce((sum, i) => sum + i.amount, 0);
+             return { ...f, investedAmount };
+        });
 
     useEffect(() => {
         // If initialFundId is provided, set the correct tab
@@ -320,8 +329,8 @@ const AddCapitalModal: React.FC<{
                                 <select value={selectedFundId} onChange={e => setSelectedFundId(e.target.value)} className="w-full p-3 border rounded-lg bg-white">
                                     <option value="">-- Select --</option>
                                     {(tab === 'New' ? newOpportunities : existingOpportunities).map((item: any) => (
-                                        <option key={item.id} value={tab === 'New' ? item.id : item.fundId}>
-                                            {tab === 'New' ? item.name : `${item.fundName} (Current: ${item.amount})`}
+                                        <option key={item.id} value={item.id}>
+                                            {item.name} {tab === 'Refinance' ? `(Current: KES ${item.investedAmount?.toLocaleString() || 0})` : ''}
                                         </option>
                                     ))}
                                 </select>
@@ -527,7 +536,7 @@ const KpiCard: React.FC<{ title: string; value: string | number; subtext?: strin
     </div>
 );
 
-const Chart: React.FC<{ type: 'line' | 'bar' | 'doughnut'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
+const Chart: React.FC<{ type: 'line' | 'doughnut' | 'bar'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<any>(null);
 
@@ -728,7 +737,7 @@ const KpiDetailModal: React.FC<{
                                     <h3 className="text-lg font-bold text-gray-800">Referral Program</h3>
                                     <p className="text-sm text-gray-500">Earn 2.5% commission on every investment made by your referrals.</p>
                                 </div>
-                                <button onClick={() => window.location.hash = '#/r-reits/referrals'} className="px-4 py-2 bg-primary text-white font-bold rounded-lg shadow hover:bg-primary-dark">
+                                <button onClick={() => window.location.hash = '#/user-app-portal/refer-earn'} className="px-4 py-2 bg-primary text-white font-bold rounded-lg shadow hover:bg-primary-dark">
                                     Go to Referral Center
                                 </button>
                             </div>
@@ -907,7 +916,7 @@ const InvestorDashboard: React.FC = () => {
                     <p className="text-lg text-gray-500 mt-1">Manage your renovation fund portfolio.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => window.location.hash = '#/r-reits/referrals'} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 shadow-sm transition-colors flex items-center">
+                    <button onClick={() => window.location.hash = '#/user-app-portal/refer-earn'} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 shadow-sm transition-colors flex items-center">
                         <Icon name="communication" className="w-4 h-4 mr-2"/> Refer & Earn
                     </button>
                     <button onClick={() => setIsWithdrawOpen(true)} className="bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-lg font-bold hover:bg-gray-50 shadow-sm">
@@ -1020,11 +1029,11 @@ const InvestorDashboard: React.FC = () => {
                             <div className="space-y-2 mb-4">
                                 <div className="flex justify-between text-sm">
                                     <span className="text-gray-500">Target APY</span>
-                                    <span className="font-bold text-primary">Up to 30%</span>
+                                    <span className="font-bold text-primary">{fund.targetApy}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span className="text-gray-500">Monthly Return</span>
-                                    <span className="font-bold text-gray-800">Up to 2.5%</span>
+                                    <span className="font-bold text-gray-800">{fund.clientInterestRate}%</span>
                                 </div>
                                 <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2">
                                     <div className="bg-green-500 h-full rounded-full" style={{ width: `${Math.min(100, (fund.capitalRaised/fund.targetCapital)*100)}%` }}></div>
@@ -1055,13 +1064,13 @@ const InvestorDashboard: React.FC = () => {
                     <table className="min-w-full divide-y divide-gray-200 text-sm">
                         <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold">
                             <tr>
-                                <th className="px-6 py-3 text-left">Fund Name</th>
-                                <th className="px-6 py-3 text-left">Duration</th>
-                                <th className="px-6 py-3 text-right">Invested Capital</th>
-                                <th className="px-6 py-3 text-right">Current Value</th>
-                                <th className="px-6 py-3 text-right">APY</th>
-                                <th className="px-6 py-3 text-right">Monthly Return</th>
-                                <th className="px-6 py-3 text-right">Action</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fund Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Invested Capital</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Current Value</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">APY</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Monthly Return</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">

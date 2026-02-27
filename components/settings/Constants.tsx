@@ -23,7 +23,12 @@ const Constants: React.FC = () => {
         securityCredential: 'PYLJVE8UdHRoP/fIPmXHi8TwcMfX/HzEhhGWeQwB6wza8XA3XfDOLo/EW',
         ziraPayApiKey: 'aG1Zb5M24SLtzwKUq9AuDhWF8DJk7Hjr', // Replaces Paytrigger
         cloudRunApiKey: 'f42ada7ef3fd456d8935ba547432f678', // Replaces Nouvopay
-        repossessionPeriod: '7'
+        repossessionPeriod: '7',
+        
+        // --- NEW COMMUNICATION FIELDS ---
+        whatsappBusinessId: '1092837465',
+        whatsappApiKey: 'EAABw...',
+        smsGatewayUrl: 'https://api.africastalking.com/version1/messaging'
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,6 +203,43 @@ const Constants: React.FC = () => {
                                 className="w-full p-2 border border-gray-300 rounded text-sm text-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
+
+                        {/* --- COMMUNICATION PROVIDER CONFIGS --- */}
+                        <div className="lg:col-span-3 border-t pt-4 mt-2">
+                             <h4 className="text-sm font-bold text-blue-600 uppercase mb-4">Communication Providers</h4>
+                        </div>
+
+                        <div className="lg:col-span-3">
+                            <label className="block text-sm font-bold text-gray-800 mb-1">WhatsApp API Key</label>
+                             <input 
+                                name="whatsappApiKey"
+                                value={formData.whatsappApiKey} 
+                                onChange={handleChange} 
+                                className="w-full p-2 border border-gray-300 rounded text-sm text-gray-600 focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                                placeholder="Paste Meta API Key"
+                            />
+                        </div>
+                        <div>
+                             <label className="block text-sm font-bold text-gray-800 mb-1">WhatsApp Business ID</label>
+                             <input 
+                                name="whatsappBusinessId"
+                                value={formData.whatsappBusinessId} 
+                                onChange={handleChange} 
+                                className="w-full p-2 border border-gray-300 rounded text-sm text-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                        <div className="lg:col-span-2">
+                             <label className="block text-sm font-bold text-gray-800 mb-1">SMS Gateway URL</label>
+                             <input 
+                                name="smsGatewayUrl"
+                                value={formData.smsGatewayUrl} 
+                                onChange={handleChange} 
+                                className="w-full p-2 border border-gray-300 rounded text-sm text-gray-600 focus:ring-1 focus:ring-blue-500 outline-none"
+                                placeholder="e.g. https://api.africastalking.com/..."
+                            />
+                        </div>
+
+                        {/* --- END COMMUNICATION PROVIDER CONFIGS --- */}
 
                         <div className="lg:col-span-2">
                             <label className="block text-sm font-bold text-gray-800 mb-1">Initiator</label>

@@ -116,6 +116,7 @@ import TaskAndOperationsReports from './components/reports/TaskAndOperationsRepo
 import ReitReports from './components/reports/ReitReports';
 import ComplianceAndTaxReports from './components/reports/ComplianceAndTaxReports';
 import CustomReports from './components/reports/CustomReports';
+import VacancyReports from './components/reports/VacancyReports'; // New Import
 
 // User App Portal
 import TenantPortal from './components/userAppPortal/TenantPortal';
@@ -127,7 +128,7 @@ import CaretakerPortal from './components/userAppPortal/CaretakerPortal';
 import ContractorPortal from './components/userAppPortal/ContractorPortal';
 import ReferralLanding from './components/userAppPortal/ReferralLanding';
 import ReferAndGrow from './components/userAppPortal/ReferAndGrow';
-import UserProfile from './components/userAppPortal/UserProfile'; // Import the new profile component
+import UserProfile from './components/userAppPortal/UserProfile'; 
 
 // Marketplace
 import Listings from './components/marketplace/Listings';
@@ -136,7 +137,7 @@ import MarketplaceAffiliates from './components/marketplace/Affiliates';
 import MyFundiHub from './components/marketplace/DeveloperPortal';
 import ReferralProgram from './components/marketplace/ReferralProgram';
 import MarketplaceReporting from './components/marketplace/Reporting';
-import MarketingBanners from './components/marketplace/MarketingBanners'; // Import new marketing module
+import MarketingBanners from './components/marketplace/MarketingBanners'; 
 
 // R-Reits
 import RReitsOverview from './components/r-reits/Overview';
@@ -263,8 +264,8 @@ const AppContent: React.FC = () => {
   const checkAccess = (requiredModulePath: string): boolean => {
       if (isSuperAdmin) return true;
       if (!currentRoleDef) return false; 
-      // Allow access to Refer And Grow, Profile, and Invest & Earn for all roles that have access to User App Portal features
-      if (requiredModulePath === 'User App Portal/Refer And Grow' || requiredModulePath === 'User App Portal/My Profile' || requiredModulePath === 'User App Portal/Referral Landing' || requiredModulePath === 'User App Portal/Invest & Earn') {
+      // Allow access to Refer & Earn, Profile for all roles that have access to User App Portal features
+      if (requiredModulePath === 'User App Portal/Refer & Earn' || requiredModulePath === 'User App Portal/My Profile' || requiredModulePath === 'User App Portal/Referral Landing') {
           return currentRoleDef.accessibleSubmodules.some(p => p.startsWith('User App Portal'));
       }
       return currentRoleDef.accessibleSubmodules.includes(requiredModulePath);
@@ -502,6 +503,7 @@ const AppContent: React.FC = () => {
         if (path.startsWith('#/reports-analytics/reports/r-reits-fund')) return <ReitReports />;
         if (path.startsWith('#/reports-analytics/reports/compliance-tax-reports')) return <ComplianceAndTaxReports />;
         if (path.startsWith('#/reports-analytics/reports/custom-reports')) return <CustomReports />;
+        if (path.startsWith('#/reports-analytics/reports/vacancy-reports')) return <VacancyReports />; // New Route
 
         return <ReportsOverview />;
     }
@@ -517,8 +519,7 @@ const AppContent: React.FC = () => {
         // Additional explicit checks here:
         if (path === '#/user-app-portal/tenant-portal' && !checkAccess('User App Portal/Tenant Portal')) return <AccessDenied />;
         if (path === '#/user-app-portal/agent-portal' && !checkAccess('User App Portal/Agent Portal')) return <AccessDenied />;
-        if (path === '#/user-app-portal/refer-and-grow' && !checkAccess('User App Portal/Refer And Grow')) return <AccessDenied />;
-        if (path === '#/user-app-portal/invest-and-earn' && !checkAccess('User App Portal/Invest & Earn')) return <AccessDenied />;
+        if (path === '#/user-app-portal/refer-earn' && !checkAccess('User App Portal/Refer & Earn')) return <AccessDenied />;
         if (path === '#/user-app-portal/my-profile' && !checkAccess('User App Portal/My Profile')) return <AccessDenied />;
         if (path === '#/user-app-portal/referral-landing' && !checkAccess('User App Portal/Referral Landing')) return <AccessDenied />;
 
@@ -542,8 +543,7 @@ const AppContent: React.FC = () => {
             case '#/user-app-portal/caretaker-portal': return <CaretakerPortal />;
             case '#/user-app-portal/contractor-portal': return <ContractorPortal />;
             case '#/user-app-portal/referral-landing': return <ReferralLanding />; // Should be caught by public check, but as fallback
-            case '#/user-app-portal/refer-and-grow': return <ReferAndGrow />;
-            case '#/user-app-portal/invest-and-earn': return <ReferAndGrow />; // Map Invest & Earn to ReferAndGrow component
+            case '#/user-app-portal/refer-earn': return <ReferAndGrow />;
             case '#/user-app-portal/my-profile': return <UserProfile />;
             default: return <TenantPortal />;
         }

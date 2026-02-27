@@ -4,6 +4,7 @@ import { StaffProfile, BusinessUnit, SalaryType, UserRole, StaffDeduction } from
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { printSection } from '../../utils/exportHelper';
+import { AGENT_TARGET_OPTIONS } from '../../constants';
 
 // --- Card Style ---
 const UNIT_CARD_CLASSES = "bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 cursor-pointer group relative overflow-hidden";
@@ -279,6 +280,7 @@ const StaffFormModal: React.FC<{
 }> = ({ unit, existingStaff, onClose, onSave }) => {
     const [step, setStep] = useState(1);
     const [showOtp, setShowOtp] = useState(false);
+    
     const [formData, setFormData] = useState<Partial<StaffProfile>>(() => {
         if (existingStaff) {
             return { ...existingStaff };
@@ -286,7 +288,8 @@ const StaffFormModal: React.FC<{
         return {
             name: '', email: '', phone: '', role: 'Field Agent', status: 'Active', branch: 'Headquarters',
             department: unit,
-            salaryConfig: { type: 'Monthly', amount: 0 },
+            // Default activeTargets to all options for new staff
+            salaryConfig: { type: 'Monthly', amount: 0, activeTargets: [...AGENT_TARGET_OPTIONS] },
             bankDetails: { bankName: '', accountNumber: '', kraPin: '', mpesaNumber: '', defaultMethod: 'Bank' },
             leaveBalance: { annual: 21 },
             commissions: [],
@@ -300,12 +303,40 @@ const StaffFormModal: React.FC<{
         const { name, value, type } = e.target;
         const val = type === 'number' ? parseFloat(value) : value;
 
+        if (name === 'salaryConfig.type' && value === 'Target Based') {
+             // If switching to Target Based, ensure activeTargets are populated
+             setFormData(prev => ({ 
+                 ...prev, 
+                 salaryConfig: { 
+                     ...prev.salaryConfig!, 
+                     type: 'Target Based',
+                     // Preserve existing if any, else default to all
+                     activeTargets: prev.salaryConfig?.activeTargets?.length ? prev.salaryConfig.activeTargets : [...AGENT_TARGET_OPTIONS]
+                 } 
+             }));
+             return;
+        }
+
         if (name.includes('.')) {
             const [parent, child] = name.split('.');
             setFormData(prev => ({ ...prev, [parent]: { ...(prev as any)[parent], [child]: val } }));
         } else {
             setFormData(prev => ({ ...prev, [name]: val }));
         }
+    };
+
+    const handleTargetToggle = (target: string) => {
+        const currentTargets = formData.salaryConfig?.activeTargets || [];
+        let newTargets;
+        if (currentTargets.includes(target)) {
+            newTargets = currentTargets.filter(t => t !== target);
+        } else {
+            newTargets = [...currentTargets, target];
+        }
+        setFormData(prev => ({
+            ...prev,
+            salaryConfig: { ...prev.salaryConfig!, activeTargets: newTargets }
+        }));
     };
 
     const handleProceedSave = () => {
@@ -346,13 +377,13 @@ const StaffFormModal: React.FC<{
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1400] p-4 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
                     <h3 className="text-xl font-bold text-gray-800">{existingStaff ? 'Edit Staff Member' : `Add New Staff (${unit})`}</h3>
                     <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-500" /></button>
                 </div>
                 
-                <div className="p-8 space-y-6">
+                <div className="p-8 space-y-6 overflow-y-auto">
                     {step === 1 && (
                         <div className="space-y-4 animate-fade-in">
                             <h4 className="font-bold text-gray-700 border-b pb-2">Personal Information</h4>
@@ -396,15 +427,39 @@ const StaffFormModal: React.FC<{
                             </div>
 
                             {formData.salaryConfig?.type === 'Target Based' && (
-                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-800">
-                                    <p className="font-bold mb-1"><Icon name="info" className="w-4 h-4 inline mr-1"/> Salary Calculation Logic:</p>
-                                    <p className="text-xs">Payout is calculated as <strong>Target Salary</strong> multiplied by the <strong>Average of 4 Performance Metrics:</strong></p>
-                                    <ul className="list-disc list-inside ml-1 space-y-1 text-xs mt-1">
-                                        <li><strong>Collection %:</strong> Paid Tenants vs Assigned</li>
-                                        <li><strong>Signed Leases %:</strong> Active Tenants vs Assigned</li>
-                                        <li><strong>Task Completion %:</strong> Completed vs Assigned Tasks</li>
-                                        <li><strong>Occupancy %:</strong> Occupied vs Total Units</li>
-                                    </ul>
+                                <div className="bg-white p-5 rounded-xl border border-blue-200 shadow-sm mt-4">
+                                    <div className="flex justify-between items-start mb-4">
+                                         <div>
+                                            <h4 className="font-bold text-gray-800 flex items-center">
+                                                <Icon name="check" className="w-5 h-5 text-blue-600 mr-2" />
+                                                Target Checker
+                                            </h4>
+                                            <p className="text-xs text-gray-500 mt-1">Select KPIs used for salary calculation.</p>
+                                         </div>
+                                         <div className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                             {formData.salaryConfig?.activeTargets?.length || 0} / {AGENT_TARGET_OPTIONS.length} Active
+                                         </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {AGENT_TARGET_OPTIONS.map(target => (
+                                            <label key={target} className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all ${
+                                                formData.salaryConfig?.activeTargets?.includes(target) 
+                                                ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                                                : 'bg-gray-50 border-gray-100 opacity-60'
+                                            }`}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={formData.salaryConfig?.activeTargets?.includes(target)}
+                                                    onChange={() => handleTargetToggle(target)}
+                                                    className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                />
+                                                <span className={`ml-3 text-sm font-medium ${formData.salaryConfig?.activeTargets?.includes(target) ? 'text-blue-900' : 'text-gray-500'}`}>
+                                                    {target}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
@@ -649,7 +704,12 @@ const StaffManagement: React.FC = () => {
                                             <div className="flex flex-col text-xs">
                                                 <span className="font-bold">{s.salaryConfig?.type}</span>
                                                 <span>KES {s.salaryConfig?.amount.toLocaleString()}</span>
-                                                {s.salaryConfig?.type === 'Target Based' && <span className="text-[9px] text-blue-600 italic">(4 Metric Split)</span>}
+                                                {s.salaryConfig?.type === 'Target Based' && (
+                                                    <span className="text-[10px] text-blue-600 italic flex items-center gap-1 mt-0.5">
+                                                        <Icon name="analytics" className="w-3 h-3"/>
+                                                        {s.salaryConfig.activeTargets?.length || 0} Targets Active
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">
