@@ -651,7 +651,7 @@ export const MOCK_ROLE_KPIS: Record<string, RoleAwareKpis> = {
             { text: 'Pending Tasks', value: '8', icon: '📋' }
         ]
     }
-];
+};
 
 export const MOCK_STAFF_LEADERBOARD: StaffLeaderboardEntry[] = [
     { rank: 1, name: 'Jane Doe', metricName: 'Leases Signed', metricValue: '12' },

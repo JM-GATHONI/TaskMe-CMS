@@ -5,8 +5,8 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import QuickStats from './components/QuickStats';
 import QuickSearch from './components/registration/QuickSearch';
-import { DataProvider, useData } from './context/DataContext';
-import Auth from './components/Auth';
+import { SupabaseDataProvider, useData } from './context/SupabaseDataContext';
+import Auth from './components/AuthSupabase';
 import Icon from './components/Icon'; 
 import { User, StaffProfile, TenantProfile } from './types'; 
 
@@ -654,9 +654,9 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
     return (
-        <DataProvider>
+        <SupabaseDataProvider>
             <AppContent />
-        </DataProvider>
+        </SupabaseDataProvider>
     );
 }
 
