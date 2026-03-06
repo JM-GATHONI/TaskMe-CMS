@@ -158,12 +158,12 @@ const EditFundiModal: React.FC<{
 
     const handlePortfolioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            const files: File[] = Array.from(e.target.files);
+            const files = Array.from(e.target.files);
             const promises = files.map(file => {
                 return new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result as string);
-                    reader.onerror = () => reject(new Error('Failed to read file'));
+                    reader.onerror = reject;
                     reader.readAsDataURL(file);
                 });
             });

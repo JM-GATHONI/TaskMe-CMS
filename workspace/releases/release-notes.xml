@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<releaseNotes version="1" date="2026-02-20">
-  <file path="components/settings/RatesAndRules.tsx" module="settings">
-    <description>Fixed the "Global Default Commission" input field to allow clearing the value (deleting zero) and typing decimals by using a local state that syncs with the global state on blur.</description>
+<releaseNotes version="1" date="2026-03-06">
+  <file path="components/Auth.tsx" module="auth">
+    <description>Removed all local authentication logic, mock credentials, and password hashing, leaving only the UI interface.</description>
   </file>
 </releaseNotes>

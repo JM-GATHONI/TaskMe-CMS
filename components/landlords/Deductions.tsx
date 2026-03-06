@@ -252,7 +252,6 @@ const RecordBillModal: React.FC<{
                                 <span>Generate Inbound Invoice (Payable)</span>
                             </label>
                             <p className="text-xs text-gray-500 ml-6 mt-1">Automatically add to Payments &gt; Invoices</p>
-                            <p className="text-xs text-gray-500 ml-6 mt-1">Automatically add to Payments {'>'} Invoices</p>
                         </div>
                     )}
                 </div>

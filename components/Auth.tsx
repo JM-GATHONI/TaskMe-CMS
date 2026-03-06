@@ -1,9 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import Icon from './Icon';
 import { User, StaffProfile, TenantProfile } from '../types';
-import { hashPassword } from '../utils/security';
 
 interface AuthProps {
     onLogin: (user: Partial<User> | StaffProfile | TenantProfile) => void;
@@ -12,23 +11,13 @@ interface AuthProps {
 type AuthView = 'login' | 'forgot' | 'verify-reset' | 'new-password';
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-    const { systemSettings, staff, landlords, tenants, renovationInvestors, vendors } = useData();
+    const { systemSettings } = useData();
     const [view, setView] = useState<AuthView>('login');
     const [isLoading, setIsLoading] = useState(false);
 
     // Form States
     const [loginData, setLoginData] = useState({ identifier: '', password: '' });
     const [resetData, setResetData] = useState({ identifier: '', code: '', newPassword: '' });
-
-    // Constants
-    const SUPER_ADMIN_USERNAME = 'RITCH JR';
-    const SUPER_ADMIN_PHONE = '0724620403';
-    const SUPER_ADMIN_ID = '26450310';
-    // SHA-256 Hash of '123456'
-    const SUPER_ADMIN_HASH = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
-
-    // Aggregate all users for unified lookup, including investors and vendors
-    const allUsers = useMemo(() => [...staff, ...landlords, ...tenants, ...renovationInvestors, ...vendors], [staff, landlords, tenants, renovationInvestors, vendors]);
 
     const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => setLoginData({ ...loginData, [e.target.name]: e.target.value });
     
@@ -42,117 +31,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
-        simulateProcessing(async () => {
-            const id = loginData.identifier.trim();
-            const pass = loginData.password;
-            
-            // Normalize inputs for robust matching (Mobile keyboards often add spaces or capitalization)
-            const idLower = id.toLowerCase();
-            const idClean = id.replace(/[\s-]/g, ''); // Remove spaces and dashes for phone matching
-
-            // --- 0. Special Override for Requested Users ---
-            if (pass === 'Ritch@2026') {
-                if (idLower === 'ritch jr' || idLower === 'jobosindi' || idLower === 'job osindi') {
-                    // Find the user profile to return
-                    const targetUser = staff.find(s => 
-                        s.name.toUpperCase() === 'JOSEPH RITCH' || 
-                        s.username === 'JOBOSINDI' ||
-                        s.name.toUpperCase() === 'JOB OSINDI'
-                    );
-                    
-                    if (targetUser) {
-                        onLogin(targetUser);
-                        return;
-                    }
-                    
-                    // Fallback if seed data missing
-                    if (idLower === 'ritch jr') {
-                        onLogin({
-                            id: 'staff-ritch',
-                            name: 'JOSEPH RITCH',
-                            role: 'Super Admin',
-                            email: 'ritch.jr@taskme.re',
-                            phone: SUPER_ADMIN_PHONE,
-                            idNumber: SUPER_ADMIN_ID,
-                            status: 'Active',
-                            branch: 'Headquarters',
-                            payrollInfo: { baseSalary: 150000, nextPaymentDate: new Date().toISOString().split('T')[0] },
-                            leaveBalance: { annual: 30 },
-                            commissions: [],
-                            deductions: [],
-                            attendanceRecord: {}
-                        } as StaffProfile);
-                        return;
-                    }
-                }
-            }
-
-            // Hash entered password for comparison
-            const passHash = await hashPassword(pass);
-
-            // 1. Super Admin Hardcoded Check (Failsafe for RITCH JR legacy path)
-            const isSuperAdminUser = (idLower === SUPER_ADMIN_USERNAME.toLowerCase());
-            const isSuperAdminPhone = (idClean === SUPER_ADMIN_PHONE.replace(/[\s-]/g, ''));
-            const isSuperAdminId = (id === SUPER_ADMIN_ID);
-
-            if ((isSuperAdminUser || isSuperAdminPhone || isSuperAdminId) && passHash === SUPER_ADMIN_HASH) {
-                const adminProfile = staff.find(s => 
-                    s.name.toUpperCase() === 'JOSEPH RITCH' || 
-                    s.phone.replace(/[\s-]/g, '') === SUPER_ADMIN_PHONE.replace(/[\s-]/g, '')
-                );
-                
-                if (adminProfile) {
-                    onLogin(adminProfile);
-                    return;
-                }
-            }
-
-            // 2. Regular User Checks
-            // Find user by Username, Email, or Phone with robust matching across all types
-            const foundUser = (allUsers as any[]).find(u => {
-                if (u.username && u.username.toLowerCase() === idLower) return true;
-                if (u.email && u.email.toLowerCase() === idLower) return true;
-                if (u.phone && u.phone.replace(/[\s-]/g, '') === idClean) return true;
-                if ('idNumber' in u && u.idNumber === id) return true;
-                return false;
-            });
-
-            if (foundUser) {
-                // Check passwordHash if present (Contractors might have it attached dynamically)
-                // For Vendors/Investors not explicitly typed with passwordHash in TS, we access via 'any' cast above or JS flexibility.
-                const userHash = (foundUser as any).passwordHash;
-
-                if (userHash) {
-                    if (userHash === passHash) {
-                        // Cast foundUser to one of the expected types for onLogin. 
-                        // In reality, onLogin likely just needs basic User properties which all have.
-                        // We map role "Contractor" to correct handling in App.tsx if needed.
-                        
-                        // Ensure role exists for vendor/investor if not set
-                        if (!foundUser.role) {
-                             if ('specialty' in foundUser) foundUser.role = 'Contractor';
-                             else if ('investorType' in foundUser) foundUser.role = 'Investor';
-                        }
-                        
-                        onLogin(foundUser);
-                        return;
-                    }
-                } else {
-                    // Legacy/Seed User without hash: Allow if password field is not empty (Demo Mode)
-                    // Or if they specifically set a password via Users module which saves hash
-                    if (pass) {
-                        // Ensure role exists
-                        if (!foundUser.role) {
-                             if ('specialty' in foundUser) foundUser.role = 'Contractor';
-                             else if ('investorType' in foundUser) foundUser.role = 'Investor';
-                        }
-                        onLogin(foundUser);
-                        return;
-                    }
-                }
-            }
-
-            alert("Invalid Credentials. Please check your username/password.");
+        simulateProcessing(() => {
+            // Local authentication has been removed.
+            // For UI demonstration purposes, we log in as a generic Super Admin.
+            onLogin({
+                id: 'demo-admin',
+                name: 'Demo Admin',
+                role: 'Super Admin',
+                email: 'admin@demo.com',
+                phone: '0000000000',
+                status: 'Active',
+            } as StaffProfile);
         });
     };
 
