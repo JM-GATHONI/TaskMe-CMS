@@ -605,7 +605,7 @@ export const CollectionManagerModal: React.FC<{
 };
 
 const TaskManagement: React.FC = () => {
-    const { tasks, addTask, updateTask, tenants, updateTenant, addMessage, properties, staff } = useData();
+    const { tasks, addTask, updateTask, tenants, updateTenant, addMessage, properties, staff, isDataLoading } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'Maintenance' | 'Collections'>('Maintenance');
     const [statusFilter, setStatusFilter] = useState<TaskStatus | 'All'>('All');
@@ -679,6 +679,14 @@ const TaskManagement: React.FC = () => {
     const handleFollowUpToggle = (tenantId: string) => {
         setDailyFollowUp(prev => ({ ...prev, [tenantId]: !prev[tenantId] }));
     };
+
+    if (isDataLoading) {
+        return <div className="text-center py-8">Loading data...</div>;
+    }
+
+    if (!isDataLoading && tasks.length === 0 && tenants.length === 0) {
+        return <div className="text-center py-8 text-gray-500">No tasks yet. Add your first one.</div>;
+    }
 
     return (
         <div className="space-y-8">

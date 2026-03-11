@@ -1084,6 +1084,9 @@ export interface DataContextType {
     users: User[]; // Unified list of all users
     updateUser: (id: string, data: Partial<User>) => void; // Unified update
 
+    isSupabaseEnabled: boolean;
+    isDataLoading: boolean;
+
     setCurrentUser: (user: User | StaffProfile | TenantProfile | null) => void;
     addTenant: (tenant: TenantProfile) => void;
     updateTenant: (id: string, data: Partial<TenantProfile>) => void;

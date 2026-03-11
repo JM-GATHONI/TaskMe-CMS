@@ -302,7 +302,7 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie'; data: any; options?: any; 
 
 
 const Dashboard: React.FC = () => {
-    const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles } = useData();
+    const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
     const [searchQuery, setSearchQuery] = useState('');
 
     // --- Helper: Date Logic for "Today", "Week", "Month" Stats ---

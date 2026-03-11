@@ -916,7 +916,7 @@ const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: 
 };
 
 const Properties: React.FC = () => {
-    const { properties, addProperty, updateProperty, addUnitToProperty, landlords, staff } = useData();
+    const { properties, addProperty, updateProperty, addUnitToProperty, landlords, staff, isDataLoading } = useData();
     const [view, setView] = useState<'list' | 'form'>('list');
     const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
     const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
@@ -946,6 +946,14 @@ const Properties: React.FC = () => {
         else addProperty({ ...p, id: `prop-${Date.now()}`, units: [] });
         setView('list');
     };
+
+    if (isDataLoading) {
+        return <div className="text-center py-8">Loading data...</div>;
+    }
+
+    if (!isDataLoading && properties.length === 0) {
+        return <div className="text-center py-8 text-gray-500">No properties yet. Add your first one.</div>;
+    }
 
     return (
         <div className="space-y-8">

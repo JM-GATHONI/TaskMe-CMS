@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import Icon from './Icon';
 import { User, StaffProfile, TenantProfile } from '../types';
+import { supabase } from '../utils/supabaseClient';
 
 interface AuthProps {
     onLogin: (user: Partial<User> | StaffProfile | TenantProfile) => void;
@@ -29,20 +30,78 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }, 1500);
     };
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        simulateProcessing(() => {
-            // Local authentication has been removed.
-            // For UI demonstration purposes, we log in as a generic Super Admin.
-            onLogin({
-                id: 'demo-admin',
-                name: 'Demo Admin',
-                role: 'Super Admin',
-                email: 'admin@demo.com',
-                phone: '0000000000',
-                status: 'Active',
-            } as StaffProfile);
-        });
+
+        // If Supabase client is not configured, keep the demo behavior
+        if (!supabase) {
+            simulateProcessing(() => {
+                onLogin({
+                    id: 'demo-admin',
+                    name: 'Demo Admin',
+                    role: 'Super Admin',
+                    email: 'admin@demo.com',
+                    phone: '0000000000',
+                    status: 'Active',
+                } as StaffProfile);
+            });
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const { identifier, password } = loginData;
+
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: identifier,
+                password,
+            });
+
+            if (error || !data.user) {
+                alert(error?.message ?? 'Login failed');
+                return;
+            }
+
+            const user = data.user;
+
+            const { data: staffRows, error: staffError } = await supabase
+                .from('staff_profiles')
+                .select('*')
+                .eq('id', user.id)
+                .limit(1);
+
+            if (staffError) {
+                console.warn('Error loading staff profile', staffError);
+            }
+
+            const staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
+
+            const loggedIn: StaffProfile = {
+                id: user.id,
+                name: (staffRow?.name ?? user.email ?? 'User') as string,
+                role: (staffRow?.role ?? (user.user_metadata as any)?.role ?? 'Super Admin') as StaffProfile['role'],
+                email: (user.email ?? staffRow?.email ?? 'unknown@example.com') as string,
+                phone: (staffRow?.phone ?? '') as string,
+                branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
+                status: (staffRow?.status ?? 'Active') as any,
+                avatar: ((staffRow?.name ?? user.email ?? 'U') as string)
+                    .split(' ')
+                    .map((n: string) => n[0])
+                    .join(''),
+                salaryConfig: staffRow?.salaryConfig ?? { type: 'Monthly', amount: 0 },
+                bankDetails: staffRow?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
+                payrollInfo: staffRow?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
+                leaveBalance: staffRow?.leaveBalance ?? { annual: 0 },
+                commissions: staffRow?.commissions ?? [],
+                deductions: staffRow?.deductions ?? [],
+                attendanceRecord: staffRow?.attendanceRecord ?? {},
+                passwordHash: '',
+            };
+
+            onLogin(loggedIn);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleForgotPassword = (e: React.FormEvent) => {

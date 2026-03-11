@@ -1862,7 +1862,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 // --- LIST VIEW ---
 
 const ActiveTenants: React.FC = () => {
-    const { tenants } = useData();
+    const { tenants, isDataLoading } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('All');
    
@@ -1902,6 +1902,14 @@ const ActiveTenants: React.FC = () => {
         // Clear the query param to return to the list view of this component
         window.location.hash = '#/tenants/active-tenants';
     };
+
+    if (isDataLoading) {
+        return <div className="text-center py-8">Loading data...</div>;
+    }
+
+    if (!isDataLoading && tenants.length === 0) {
+        return <div className="text-center py-8 text-gray-500">No tenants yet. Add your first one.</div>;
+    }
 
     // If a tenant is selected via URL, show detailed view
     const specificTenant = tenants.find(t => t.id === selectedTenantId);
