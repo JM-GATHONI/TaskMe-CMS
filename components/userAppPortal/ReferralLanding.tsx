@@ -361,11 +361,6 @@ const ReferralLanding: React.FC = () => {
 
         if (ref) {
             setReferrerCode(ref);
-            localStorage.setItem('taskme_referrer', ref);
-        } else {
-            // Check local storage if not in URL
-            const stored = localStorage.getItem('taskme_referrer');
-            if (stored) setReferrerCode(stored);
         }
     }, []);
 

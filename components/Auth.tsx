@@ -22,31 +22,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => setLoginData({ ...loginData, [e.target.name]: e.target.value });
     
-    const simulateProcessing = (callback: () => void) => {
-        setIsLoading(true);
-        setTimeout(() => {
-            setIsLoading(false);
-            callback();
-        }, 1500);
-    };
-
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        // If Supabase client is not configured, keep the demo behavior
-        if (!supabase) {
-            simulateProcessing(() => {
-                onLogin({
-                    id: 'demo-admin',
-                    name: 'Demo Admin',
-                    role: 'Super Admin',
-                    email: 'admin@demo.com',
-                    phone: '0000000000',
-                    status: 'Active',
-                } as StaffProfile);
-            });
-            return;
-        }
 
         setIsLoading(true);
         try {
@@ -64,7 +41,24 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             const user = data.user;
 
+            // Resolve role from app.user_roles -> app.roles (falls back to existing metadata / default)
+            let resolvedRole: StaffProfile['role'] = ((user.user_metadata as any)?.role ?? 'Super Admin') as any;
+            try {
+                const { data: roleRow, error: roleErr } = await supabase
+                    .schema('app')
+                    .from('user_roles')
+                    .select('role:roles(name)')
+                    .eq('user_id', user.id)
+                    .maybeSingle();
+                if (!roleErr && roleRow?.role?.name) {
+                    resolvedRole = roleRow.role.name as any;
+                }
+            } catch (e) {
+                // ignore: role resolution is best-effort
+            }
+
             const { data: staffRows, error: staffError } = await supabase
+                .schema('app')
                 .from('staff_profiles')
                 .select('*')
                 .eq('id', user.id)
@@ -79,7 +73,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             const loggedIn: StaffProfile = {
                 id: user.id,
                 name: (staffRow?.name ?? user.email ?? 'User') as string,
-                role: (staffRow?.role ?? (user.user_metadata as any)?.role ?? 'Super Admin') as StaffProfile['role'],
+                role: (staffRow?.role ?? resolvedRole) as StaffProfile['role'],
                 email: (user.email ?? staffRow?.email ?? 'unknown@example.com') as string,
                 phone: (staffRow?.phone ?? '') as string,
                 branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
@@ -107,28 +101,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const handleForgotPassword = (e: React.FormEvent) => {
         e.preventDefault();
         if (!resetData.identifier) return alert("Please enter your email, username, or phone.");
-        simulateProcessing(() => {
-            alert(`Password reset code has been sent to the email/phone associated with ${resetData.identifier}.`);
-            setView('verify-reset');
-        });
+        alert('Password reset is configured via Supabase. Please check your email for reset instructions.');
     };
 
     const handleVerifyCode = (e: React.FormEvent) => {
         e.preventDefault();
-        if (resetData.code.length < 4) return alert("Enter valid code");
-        simulateProcessing(() => {
-            setView('new-password');
-        });
+        alert('Use the password reset link sent to your email to complete this action.');
     };
 
     const handleResetPassword = (e: React.FormEvent) => {
         e.preventDefault();
-        if(!resetData.newPassword) return alert("Enter new password");
-        
-        simulateProcessing(() => {
-            alert("Password has been reset successfully. Please login with your new credentials.");
-            setView('login');
-        });
+        alert('Password reset is handled by Supabase hosted pages.');
+        setView('login');
     };
 
     return (

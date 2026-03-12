@@ -14,31 +14,9 @@ export const websiteApi = {
     // 1. Fetch Published Listings
     getPublishedListings: async (type?: 'Rent' | 'Sale' | 'AirBnB'): Promise<MarketplaceListing[]> => {
         await delay(500); // Simulate network delay
-        try {
-            // In a real app, this would query the DB. Here we read from localStorage
-            const storedData = localStorage.getItem('tm_listings_v11');
-            if (storedData) {
-                // Assuming simple encryption from security.ts, simplified here for demo
-                // You would use the decryptData util if needed.
-                // For simplicity in this mock, assuming plain JSON or handling the prefix
-                let listings: MarketplaceListing[] = [];
-                if (storedData.startsWith('ENC_v1_')) {
-                    // Quick mock decrypt logic duplicating security.ts for independence here
-                    listings = JSON.parse(decodeURIComponent(atob(storedData.substring(7))));
-                } else {
-                    listings = JSON.parse(storedData);
-                }
-
-                return listings.filter(l => 
-                    l.status === 'Published' && 
-                    (!type || l.type === type)
-                );
-            }
-            return [];
-        } catch (e) {
-            console.error("API Error:", e);
-            return [];
-        }
+        // For production, this should query a real API.
+        // For now, return an empty list and rely on Supabase-backed data in the main app.
+        return [];
     },
 
     // 2. Simulate AirBnB Booking

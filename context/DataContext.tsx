@@ -1,73 +1,29 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob } from '../types';
-import { SEED_PROPERTIES, SEED_TENANTS, SEED_LANDLORDS, SEED_TASKS, SEED_INVOICES, SEED_BILLS, SEED_FINE_RULES, SEED_OFFBOARDING_RECORDS, SEED_LANDLORD_APPLICATIONS, SEED_WORKFLOWS, SEED_AUTOMATION_RULES, SEED_ESCALATION_RULES, SEED_AUDIT_LOGS, SEED_VENDORS, SEED_PREVENTIVE_TASKS, SEED_MESSAGES, SEED_TEMPLATES, SEED_INCOME_SOURCES, SEED_RENOVATION_PROJECT_BILLS, SEED_STAFF_PROFILES, SEED_TENANT_APPLICATIONS, SEED_EXTERNAL_TRANSACTIONS, SEED_NOTIFICATIONS, SEED_LEADS, SEED_FUNDI_JOBS } from '../utils/seedData';
-import { MOCK_APPLICATIONS, GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA, MOCK_COMMISSION_RULES, MOCK_DEDUCTION_RULES, MOCK_EXTERNAL_TRANSACTIONS, MOCK_OVERPAYMENTS, INITIAL_FUNDS, MOCK_INVESTMENTS, MOCK_WITHDRAWALS, MOCK_RENOVATION_INVESTORS, MOCK_RF_TRANSACTIONS, MOCK_ROLES, MOCK_SCHEDULED_REPORTS, MOCK_TAX_RECORDS } from '../constants';
-import { encryptData, decryptData } from '../utils/security';
+import { GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA } from '../constants';
 import { websiteApi } from '../utils/websiteApi';
 import { supabase } from '../utils/supabaseClient';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
-
 const isSupabaseEnabled = !!supabase;
 
-function useLocalStickyState<T>(defaultValue: T, key: string): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const stickyValue = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
-      if (stickyValue !== null) {
-        const decrypted = decryptData(stickyValue);
-        return JSON.parse(decrypted);
-      }
-      return defaultValue;
-    } catch (error) {
-      console.warn(`Error reading localStorage key "${key}":`, error);
-      try {
-        const stickyValue = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
-        return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
-      } catch {
-        return defaultValue;
-      }
-    }
-  });
-
-  useEffect(() => {
-    try {
-      const stringified = JSON.stringify(value);
-      const encrypted = encryptData(stringified);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, encrypted);
-      }
-    } catch (error) {
-      console.warn(`Error saving localStorage key "${key}":`, error);
-    }
-  }, [key, value]);
-
-  return [value, setValue];
-}
-
 function useSupabaseBackedState<T>(
-  defaultValue: T,
+  emptyValue: T,
   key: string
 ): [T, React.Dispatch<React.SetStateAction<T>>, { loading: boolean; error: string | null }] {
-  // If Supabase is not configured, fall back to existing localStorage behavior
-  const [localValue, setLocalValue] = useLocalStickyState<T>(defaultValue, key);
-  const [value, setValue] = useState<T>(isSupabaseEnabled ? defaultValue : localValue);
-  const [loading, setLoading] = useState<boolean>(isSupabaseEnabled);
+  const [value, setValue] = useState<T>(emptyValue);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Initial load from Supabase, with seeding if empty
   useEffect(() => {
-    if (!isSupabaseEnabled || !supabase) {
-      return;
-    }
-
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
         const { data, error } = await supabase
+          .schema('app')
           .from('app_state')
           .select('value')
           .eq('key', key)
@@ -80,19 +36,14 @@ function useSupabaseBackedState<T>(
         if (data && data.value !== null && data.value !== undefined) {
           setValue(data.value as T);
         } else {
-          // Seed Supabase with the default value on first run
-          const { error: upsertError } = await supabase
-            .from('app_state')
-            .upsert({ key, value: defaultValue });
-          if (upsertError) throw upsertError;
-          if (!cancelled) {
-            setValue(defaultValue);
-          }
+          // No row yet: start with empty value in memory; Supabase will be written on first update
+          setValue(emptyValue);
         }
       } catch (e: any) {
         if (!cancelled) {
           console.warn(`Error loading Supabase state for key "${key}"`, e);
           setError(e?.message ?? 'Failed to load data');
+          setValue(emptyValue);
         }
       } finally {
         if (!cancelled) {
@@ -106,19 +57,13 @@ function useSupabaseBackedState<T>(
     return () => {
       cancelled = true;
     };
-  }, [key]);
+  }, [key, emptyValue]);
 
   const persistAndSetValue: React.Dispatch<React.SetStateAction<T>> = (updater) => {
-    if (!isSupabaseEnabled || !supabase) {
-      // Fallback: keep previous local behavior
-      setLocalValue(updater as any);
-      setValue((prev) => (typeof updater === 'function' ? (updater as any)(prev) : (updater as any)));
-      return;
-    }
-
     setValue((prev) => {
       const next = typeof updater === 'function' ? (updater as any)(prev) : (updater as any);
       supabase
+        .schema('app')
         .from('app_state')
         .upsert({ key, value: next })
         .then(({ error }) => {
@@ -130,63 +75,109 @@ function useSupabaseBackedState<T>(
     });
   };
 
-  return [isSupabaseEnabled ? value : localValue, isSupabaseEnabled ? persistAndSetValue : setLocalValue, { loading, error }];
+  return [value, persistAndSetValue, { loading, error }];
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     // Current User
     const [currentUser, setCurrentUser] = useState<User | StaffProfile | TenantProfile | null>(null);
 
-    // Core Data
-    const [tenants, setTenants, tenantsStatus] = useSupabaseBackedState<TenantProfile[]>(SEED_TENANTS, 'tm_tenants_v11');
-    const [properties, setProperties, propertiesStatus] = useSupabaseBackedState<Property[]>(SEED_PROPERTIES, 'tm_properties_v11');
-    const [landlords, setLandlords, landlordsStatus] = useSupabaseBackedState<User[]>(SEED_LANDLORDS, 'tm_landlords_v11');
-    const [tasks, setTasks, tasksStatus] = useSupabaseBackedState<Task[]>(SEED_TASKS, 'tm_tasks_v11');
-    const [bills, setBills, billsStatus] = useSupabaseBackedState<Bill[]>(SEED_BILLS, 'tm_bills_v11');
-    const [invoices, setInvoices, invoicesStatus] = useSupabaseBackedState<Invoice[]>(SEED_INVOICES, 'tm_invoices_v11');
+    // Core Data (start empty; Supabase becomes source of truth)
+    const [tenants, setTenants, tenantsStatus] = useSupabaseBackedState<TenantProfile[]>([], 'tm_tenants_v11');
+    const [properties, setProperties, propertiesStatus] = useSupabaseBackedState<Property[]>([], 'tm_properties_v11');
+    const [landlords, setLandlords, landlordsStatus] = useSupabaseBackedState<User[]>([], 'tm_landlords_v11');
+    const [tasks, setTasks, tasksStatus] = useSupabaseBackedState<Task[]>([], 'tm_tasks_v11');
+    const [bills, setBills, billsStatus] = useSupabaseBackedState<Bill[]>([], 'tm_bills_v11');
+    const [invoices, setInvoices, invoicesStatus] = useSupabaseBackedState<Invoice[]>([], 'tm_invoices_v11');
     const [quotations, setQuotations, quotationsStatus] = useSupabaseBackedState<Quotation[]>([], 'tm_quotations_v11'); 
-    const [applications, setApplications, applicationsStatus] = useSupabaseBackedState<TenantApplication[]>(SEED_TENANT_APPLICATIONS, 'tm_applications_v11');
-    const [landlordApplications, setLandlordApplications, landlordApplicationsStatus] = useSupabaseBackedState<LandlordApplication[]>(SEED_LANDLORD_APPLICATIONS, 'tm_landlord_applications_v11');
-    const [staff, setStaff, staffStatus] = useSupabaseBackedState<StaffProfile[]>(SEED_STAFF_PROFILES, 'tm_staff_v11');
-    const [fines, setFines, finesStatus] = useSupabaseBackedState<FineRule[]>(SEED_FINE_RULES, 'tm_fines_v11'); 
-    const [offboardingRecords, setOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>(SEED_OFFBOARDING_RECORDS, 'tm_offboarding_v11');
+    const [applications, setApplications, applicationsStatus] = useSupabaseBackedState<TenantApplication[]>([], 'tm_applications_v11');
+    const [landlordApplications, setLandlordApplications, landlordApplicationsStatus] = useSupabaseBackedState<LandlordApplication[]>([], 'tm_landlord_applications_v11');
+    const [staff, setStaff, staffStatus] = useSupabaseBackedState<StaffProfile[]>([], 'tm_staff_v11');
+    const [fines, setFines, finesStatus] = useSupabaseBackedState<FineRule[]>([], 'tm_fines_v11'); 
+    const [offboardingRecords, setOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>([], 'tm_offboarding_v11');
     const [geospatialData, setGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
-    const [commissionRules, setCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>(MOCK_COMMISSION_RULES, 'tm_commissions_v11');
-    const [deductionRules, setDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>(MOCK_DEDUCTION_RULES, 'tm_deductions_v11');
-    const [vendors, setVendors, vendorsStatus] = useSupabaseBackedState<Vendor[]>(SEED_VENDORS, 'tm_vendors_v11');
-    const [messages, setMessages, messagesStatus] = useSupabaseBackedState<Message[]>(SEED_MESSAGES, 'tm_messages_v11');
-    const [notifications, setNotifications, notificationsStatus] = useSupabaseBackedState<Notification[]>(SEED_NOTIFICATIONS, 'tm_notifications_v11');
-    const [templates, setTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>(SEED_TEMPLATES, 'tm_templates_v11');
-    const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>(SEED_WORKFLOWS, 'tm_workflows_v11');
-    const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>(SEED_AUTOMATION_RULES, 'tm_automation_rules_v11');
-    const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>(SEED_ESCALATION_RULES, 'tm_escalation_rules_v11');
-    const [auditLogs, setAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>(SEED_AUDIT_LOGS, 'tm_audit_logs_v11');
-    const [externalTransactions, setExternalTransactions, externalTxStatus] = useSupabaseBackedState<ExternalTransaction[]>(SEED_EXTERNAL_TRANSACTIONS, 'tm_external_transactions_v11');
-    const [overpayments, setOverpayments, overpaymentsStatus] = useSupabaseBackedState<Overpayment[]>(MOCK_OVERPAYMENTS, 'tm_overpayments_v11');
-    const [incomeSources, setIncomeSources, incomeSourcesStatus] = useSupabaseBackedState<IncomeSource[]>(SEED_INCOME_SOURCES, 'tm_income_sources_v11');
-    const [preventiveTasks, setPreventiveTasks, preventiveTasksStatus] = useSupabaseBackedState<PreventiveTask[]>(SEED_PREVENTIVE_TASKS, 'tm_preventive_tasks_v11');
-    const [funds, setFunds, fundsStatus] = useSupabaseBackedState<Fund[]>(INITIAL_FUNDS, 'tm_funds_v11');
-    const [investments, setInvestments, investmentsStatus] = useSupabaseBackedState<Investment[]>(MOCK_INVESTMENTS, 'tm_investments_v11');
-    const [withdrawals, setWithdrawals, withdrawalsStatus] = useSupabaseBackedState<WithdrawalRequest[]>(MOCK_WITHDRAWALS, 'tm_withdrawals_v11');
-    const [renovationInvestors, setRenovationInvestors, renovationInvestorsStatus] = useSupabaseBackedState<RenovationInvestor[]>(MOCK_RENOVATION_INVESTORS, 'tm_renovation_investors_v11');
-    const [rfTransactions, setRFTransactions, rfTxStatus] = useSupabaseBackedState<RFTransaction[]>(MOCK_RF_TRANSACTIONS, 'tm_rf_transactions_v11');
-    const [renovationProjectBills, setRenovationProjectBills, renovationBillsStatus] = useSupabaseBackedState<RenovationProjectBill[]>(SEED_RENOVATION_PROJECT_BILLS, 'tm_renovation_project_bills_v11');
-    const [roles, setRoles, rolesStatus] = useSupabaseBackedState<Role[]>(MOCK_ROLES, 'tm_roles_v13');
+    const [commissionRules, setCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
+    const [deductionRules, setDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>([], 'tm_deductions_v11');
+    const [vendors, setVendors, vendorsStatus] = useSupabaseBackedState<Vendor[]>([], 'tm_vendors_v11');
+    const [messages, setMessages, messagesStatus] = useSupabaseBackedState<Message[]>([], 'tm_messages_v11');
+    const [notifications, setNotifications, notificationsStatus] = useSupabaseBackedState<Notification[]>([], 'tm_notifications_v11');
+    const [templates, setTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>([], 'tm_templates_v11');
+    const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
+    const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
+    const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
+    const [auditLogs, setAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
+    const [externalTransactions, setExternalTransactions, externalTxStatus] = useSupabaseBackedState<ExternalTransaction[]>([], 'tm_external_transactions_v11');
+    const [overpayments, setOverpayments, overpaymentsStatus] = useSupabaseBackedState<Overpayment[]>([], 'tm_overpayments_v11');
+    const [incomeSources, setIncomeSources, incomeSourcesStatus] = useSupabaseBackedState<IncomeSource[]>([], 'tm_income_sources_v11');
+    const [preventiveTasks, setPreventiveTasks, preventiveTasksStatus] = useSupabaseBackedState<PreventiveTask[]>([], 'tm_preventive_tasks_v11');
+    const [funds, setFunds, fundsStatus] = useSupabaseBackedState<Fund[]>([], 'tm_funds_v11');
+    const [investments, setInvestments, investmentsStatus] = useSupabaseBackedState<Investment[]>([], 'tm_investments_v11');
+    const [withdrawals, setWithdrawals, withdrawalsStatus] = useSupabaseBackedState<WithdrawalRequest[]>([], 'tm_withdrawals_v11');
+    const [renovationInvestors, setRenovationInvestors, renovationInvestorsStatus] = useSupabaseBackedState<RenovationInvestor[]>([], 'tm_renovation_investors_v11');
+    const [rfTransactions, setRFTransactions, rfTxStatus] = useSupabaseBackedState<RFTransaction[]>([], 'tm_rf_transactions_v11');
+    const [renovationProjectBills, setRenovationProjectBills, renovationBillsStatus] = useSupabaseBackedState<RenovationProjectBill[]>([], 'tm_renovation_project_bills_v11');
+    const [roles, setRoles] = useState<Role[]>([]);
+    const [rolesStatus, setRolesStatus] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
     const [systemSettings, setSystemSettings, systemSettingsStatus] = useSupabaseBackedState<SystemSettings>({
         companyName: 'TaskMe Realty',
         logo: null,
         profilePic: null
     }, 'tm_system_settings_v11');
-    const [scheduledReports, setScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>(MOCK_SCHEDULED_REPORTS, 'tm_scheduled_reports_v11');
-    const [taxRecords, setTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>(MOCK_TAX_RECORDS, 'tm_tax_records_v11');
+    const [scheduledReports, setScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>([], 'tm_scheduled_reports_v11');
+    const [taxRecords, setTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>([], 'tm_tax_records_v11');
     const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11');
-    const [leads, setLeads, leadsStatus] = useSupabaseBackedState<Lead[]>(SEED_LEADS, 'tm_leads_v11');
-    const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>(SEED_FUNDI_JOBS, 'tm_fundi_jobs_v11');
+    const [leads, setLeads, leadsStatus] = useSupabaseBackedState<Lead[]>([], 'tm_leads_v11');
+    const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
 
     const isDataLoading =
       tenantsStatus.loading ||
       propertiesStatus.loading ||
-      staffStatus.loading;
+      staffStatus.loading ||
+      rolesStatus.loading;
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadRoles = async () => {
+            setRolesStatus({ loading: true, error: null });
+            try {
+                const { data, error } = await supabase
+                    .schema('app')
+                    .from('roles')
+                    .select('*')
+                    .order('name', { ascending: true });
+                if (error) throw error;
+                if (cancelled) return;
+
+                const mapped: Role[] = (data || []).map((r: any) => ({
+                    id: r.id,
+                    name: r.name,
+                    description: r.description ?? '',
+                    isSystem: !!r.is_system,
+                    permissions: (r.permissions ?? {}) as RolePermissions,
+                    accessibleSubmodules: (r.accessible_submodules ?? []) as string[],
+                    widgetAccess: (r.widget_access ?? []) as string[],
+                }));
+
+                setRoles(mapped);
+                setRolesStatus({ loading: false, error: null });
+            } catch (e: any) {
+                console.warn('Failed to load roles', e);
+                if (!cancelled) {
+                    setRoles([]);
+                    setRolesStatus({ loading: false, error: e?.message ?? 'Failed to load roles' });
+                }
+            }
+        };
+
+        loadRoles();
+        const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session) loadRoles();
+        });
+        return () => {
+            cancelled = true;
+            authSub?.subscription?.unsubscribe();
+        };
+    }, []);
 
     // --- AUTOMATION: Sync Vacancies to Marketplace ---
     useEffect(() => {
@@ -356,9 +347,92 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateRFTransaction = (id: string, d: Partial<RFTransaction>) => setRFTransactions(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
     const addRenovationProjectBill = (bill: RenovationProjectBill) => setRenovationProjectBills(prev => [bill, ...prev]);
     const updateRenovationProjectBill = (id: string, d: Partial<RenovationProjectBill>) => setRenovationProjectBills(prev => prev.map(b => b.id === id ? { ...b, ...d } : b));
-    const addRole = (r: Role) => setRoles(prev => [...prev, r]);
-    const updateRole = (id: string, d: Partial<Role>) => setRoles(prev => prev.map(r => r.id === id ? {...r, ...d} : r));
-    const deleteRole = (id: string) => setRoles(prev => prev.filter(r => r.id !== id));
+    const addRole = (r: Role) => {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const tempId = r.id;
+        setRoles(prev => [...prev, r]);
+        (async () => {
+            const payload: any = {
+                name: r.name,
+                description: r.description,
+                is_system: r.isSystem,
+                permissions: r.permissions,
+                accessible_submodules: r.accessibleSubmodules,
+                widget_access: r.widgetAccess || []
+            };
+            if (uuidRegex.test(tempId)) payload.id = tempId;
+            const { data, error } = await supabase
+                .schema('app')
+                .from('roles')
+                .insert(payload)
+                .select('*')
+                .single();
+            if (error || !data) {
+                console.error('Failed to create role', error);
+                setRoles(prev => prev.filter(x => x.id !== tempId));
+                alert(error?.message ?? 'Failed to create role');
+                return;
+            }
+            if (data.id && data.id !== tempId) {
+                setRoles(prev => prev.map(role => role.id === tempId ? { ...role, id: data.id } : role));
+            }
+        })();
+    };
+
+    const updateRole = (id: string, d: Partial<Role>) => {
+        setRoles(prev => prev.map(r => r.id === id ? { ...r, ...d } : r));
+        (async () => {
+            const patch: any = {};
+            if (d.name !== undefined) patch.name = d.name;
+            if (d.description !== undefined) patch.description = d.description;
+            if (d.isSystem !== undefined) patch.is_system = d.isSystem;
+            if (d.permissions !== undefined) patch.permissions = d.permissions;
+            if (d.accessibleSubmodules !== undefined) patch.accessible_submodules = d.accessibleSubmodules;
+            if (d.widgetAccess !== undefined) patch.widget_access = d.widgetAccess;
+            const { error } = await supabase
+                .schema('app')
+                .from('roles')
+                .update(patch)
+                .eq('id', id);
+            if (error) {
+                console.error('Failed to update role', error);
+                alert(error.message);
+                const { data } = await supabase
+                    .schema('app')
+                    .from('roles')
+                    .select('*')
+                    .order('name', { ascending: true });
+                if (data) {
+                    setRoles((data as any[]).map((r: any) => ({
+                        id: r.id,
+                        name: r.name,
+                        description: r.description ?? '',
+                        isSystem: !!r.is_system,
+                        permissions: (r.permissions ?? {}) as RolePermissions,
+                        accessibleSubmodules: (r.accessible_submodules ?? []) as string[],
+                        widgetAccess: (r.widget_access ?? []) as string[],
+                    })));
+                }
+            }
+        })();
+    };
+
+    const deleteRole = (id: string) => {
+        const prevRoles = roles;
+        setRoles(prev => prev.filter(r => r.id !== id));
+        (async () => {
+            const { error } = await supabase
+                .schema('app')
+                .from('roles')
+                .delete()
+                .eq('id', id);
+            if (error) {
+                console.error('Failed to delete role', error);
+                setRoles(prevRoles);
+                alert(error.message);
+            }
+        })();
+    };
     const addScheduledReport = (r: ScheduledReport) => setScheduledReports(prev => [r, ...prev]);
     const deleteScheduledReport = (id: string) => setScheduledReports(prev => prev.filter(r => r.id !== id));
     const addTaxRecord = (r: TaxRecord) => setTaxRecords(prev => [r, ...prev]);

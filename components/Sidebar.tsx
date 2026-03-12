@@ -76,21 +76,19 @@ const NavLink: React.FC<{ item: NavItem; isActive: boolean; isSubMenuOpen: boole
 const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobile }) => {
   const { currentUser, roles } = useData();
 
-  // Get active role
-  const userRole = roles.find(r => r.name === currentUser?.role) || roles.find(r => r.isSystem && r.name === 'Super Admin'); // Fallback for safety
-  
-  // Filter Navigation based on Role
-  const filteredNav = NAVIGATION_ITEMS.map(item => {
-    // Check if user has access to ANY submodules of this module
-    const allowedSubs = item.subModules.filter(sub => 
-        userRole?.accessibleSubmodules?.includes(`${item.name}/${sub}`) || 
-        userRole?.accessibleSubmodules?.includes(item.name) 
-    );
-
-    if (allowedSubs.length === 0) return null; // Hide module if no subs allowed
-
-    return { ...item, subModules: allowedSubs };
-  }).filter(item => item !== null) as NavItem[];
+  // Filter navigation based on role permissions (Super Admin sees everything).
+  // If roles haven't loaded yet, show all modules to avoid an empty sidebar flash.
+  const userRole = roles.find(r => r.name === currentUser?.role);
+  const filteredNav = (currentUser?.role === 'Super Admin' || roles.length === 0)
+    ? (NAVIGATION_ITEMS as NavItem[])
+    : (NAVIGATION_ITEMS.map(item => {
+        const allowedSubs = item.subModules.filter(sub =>
+          userRole?.accessibleSubmodules?.includes(`${item.name}/${sub}`) ||
+          userRole?.accessibleSubmodules?.includes(item.name)
+        );
+        if (allowedSubs.length === 0) return null;
+        return { ...item, subModules: allowedSubs };
+      }).filter(Boolean) as NavItem[]);
 
   const getActiveModuleFromRoute = (route: string) => {
     if (route.startsWith('#/dashboard')) return 'Dashboard';
@@ -132,9 +130,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
 
   // Visibility logic for Branch Selector
   const showBranchSelector = useMemo(() => {
-    if (!userRole) return false;
-    // Show for System Roles (Admin, Manager etc) OR Landlords
-    return userRole.isSystem || currentUser?.role === 'Landlord';
+    if (currentUser?.role === 'Super Admin') return true;
+    return userRole?.isSystem || currentUser?.role === 'Landlord';
   }, [userRole, currentUser]);
   
   return (
