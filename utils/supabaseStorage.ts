@@ -9,6 +9,7 @@ export async function uploadToBucket(
   path: string,
   file: File
 ): Promise<string> {
+  console.log('[Supabase] storage.upload', { bucket, path });
   const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
     upsert: true,
   });
@@ -18,6 +19,7 @@ export async function uploadToBucket(
   }
 
   const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+  console.log('[Supabase] storage.getPublicUrl', { bucket, path: data.path });
   return urlData.publicUrl;
 }
 

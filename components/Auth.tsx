@@ -29,6 +29,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         try {
             const { identifier, password } = loginData;
 
+            console.log('[Supabase] auth.signInWithPassword');
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: identifier,
                 password,
@@ -44,6 +45,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             // Resolve role from app.user_roles -> app.roles (falls back to existing metadata / default)
             let resolvedRole: StaffProfile['role'] = ((user.user_metadata as any)?.role ?? 'Super Admin') as any;
             try {
+                console.log('[Supabase] user_roles lookup', { userId: user.id });
                 const { data: roleRow, error: roleErr } = await supabase
                     .schema('app')
                     .from('user_roles')
@@ -57,10 +59,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 // ignore: role resolution is best-effort
             }
 
+            console.log('[Supabase] staff_profiles lookup', { userId: user.id });
             const { data: staffRows, error: staffError } = await supabase
                 .schema('app')
                 .from('staff_profiles')
-                .select('*')
+                .select('id,name,role,email,phone,branch,status,salaryConfig,bankDetails,payrollInfo,leaveBalance,commissions,deductions,attendanceRecord')
                 .eq('id', user.id)
                 .limit(1);
 

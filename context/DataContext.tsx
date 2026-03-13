@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob } from '../types';
 import { GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA } from '../constants';
 import { websiteApi } from '../utils/websiteApi';
@@ -13,69 +14,64 @@ function useSupabaseBackedState<T>(
   key: string
 ): [T, React.Dispatch<React.SetStateAction<T>>, { loading: boolean; error: string | null }] {
   const [value, setValue] = useState<T>(emptyValue);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const {
+    data: fetchedValue,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['app_state', key],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      console.log('[Supabase] app_state load', { key });
+      const { data, error } = await supabase
+        .schema('app')
+        .from('app_state')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data && data.value !== null && data.value !== undefined) {
+        return data.value as T;
+      }
+      return emptyValue;
+    },
+  });
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const { data, error } = await supabase
-          .schema('app')
-          .from('app_state')
-          .select('value')
-          .eq('key', key)
-          .maybeSingle();
+    if (fetchedValue !== undefined) {
+      setValue(fetchedValue);
+    }
+  }, [fetchedValue]);
 
-        if (error) throw error;
-
-        if (cancelled) return;
-
-        if (data && data.value !== null && data.value !== undefined) {
-          setValue(data.value as T);
-        } else {
-          // No row yet: start with empty value in memory; Supabase will be written on first update
-          setValue(emptyValue);
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          console.warn(`Error loading Supabase state for key "${key}"`, e);
-          setError(e?.message ?? 'Failed to load data');
-          setValue(emptyValue);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+  const upsertMutation = useMutation({
+    mutationFn: async (next: T) => {
+      console.log('[Supabase] app_state upsert', { key });
+      const { error } = await supabase
+        .schema('app')
+        .from('app_state')
+        .upsert({ key, value: next });
+      if (error) {
+        console.warn(`Error persisting Supabase state for key "${key}"`, error);
+        throw error;
       }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [key, emptyValue]);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['app_state', key] });
+    },
+  });
 
   const persistAndSetValue: React.Dispatch<React.SetStateAction<T>> = (updater) => {
     setValue((prev) => {
       const next = typeof updater === 'function' ? (updater as any)(prev) : (updater as any);
-      supabase
-        .schema('app')
-        .from('app_state')
-        .upsert({ key, value: next })
-        .then(({ error }) => {
-          if (error) {
-            console.warn(`Error persisting Supabase state for key "${key}"`, error);
-          }
-        });
+      upsertMutation.mutate(next);
       return next;
     });
   };
 
-  return [value, persistAndSetValue, { loading, error }];
+  return [value, persistAndSetValue, { loading: isLoading, error: (error as any)?.message ?? null }];
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -135,49 +131,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       staffStatus.loading ||
       rolesStatus.loading;
 
+    const queryClient = useQueryClient();
+
+    const {
+        data: rolesData,
+        isLoading: rolesLoading,
+        error: rolesError,
+    } = useQuery({
+        queryKey: ['roles'],
+        staleTime: 5 * 60 * 1000,
+        queryFn: async () => {
+            console.log('[Supabase] roles load');
+            const { data, error } = await supabase
+                .schema('app')
+                .from('roles')
+                .select('id,name,description,is_system,permissions,accessible_submodules,widget_access')
+                .order('name', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+    });
+
     useEffect(() => {
-        let cancelled = false;
-        const loadRoles = async () => {
-            setRolesStatus({ loading: true, error: null });
-            try {
-                const { data, error } = await supabase
-                    .schema('app')
-                    .from('roles')
-                    .select('*')
-                    .order('name', { ascending: true });
-                if (error) throw error;
-                if (cancelled) return;
+        if (rolesData) {
+            const mapped: Role[] = (rolesData as any[]).map((r: any) => ({
+                id: r.id,
+                name: r.name,
+                description: r.description ?? '',
+                isSystem: !!r.is_system,
+                permissions: (r.permissions ?? {}) as RolePermissions,
+                accessibleSubmodules: (r.accessible_submodules ?? []) as string[],
+                widgetAccess: (r.widget_access ?? []) as string[],
+            }));
+            setRoles(mapped);
+            setRolesStatus({ loading: false, error: null });
+        }
+    }, [rolesData]);
 
-                const mapped: Role[] = (data || []).map((r: any) => ({
-                    id: r.id,
-                    name: r.name,
-                    description: r.description ?? '',
-                    isSystem: !!r.is_system,
-                    permissions: (r.permissions ?? {}) as RolePermissions,
-                    accessibleSubmodules: (r.accessible_submodules ?? []) as string[],
-                    widgetAccess: (r.widget_access ?? []) as string[],
-                }));
+    useEffect(() => {
+        if (rolesError) {
+            console.warn('Failed to load roles', rolesError);
+            setRoles([]);
+            setRolesStatus({ loading: false, error: (rolesError as any)?.message ?? 'Failed to load roles' });
+        }
+    }, [rolesError]);
 
-                setRoles(mapped);
-                setRolesStatus({ loading: false, error: null });
-            } catch (e: any) {
-                console.warn('Failed to load roles', e);
-                if (!cancelled) {
-                    setRoles([]);
-                    setRolesStatus({ loading: false, error: e?.message ?? 'Failed to load roles' });
-                }
-            }
-        };
-
-        loadRoles();
+    useEffect(() => {
         const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (session) loadRoles();
+            if (session) {
+                console.log('[Supabase] auth state change, invalidating roles');
+                queryClient.invalidateQueries({ queryKey: ['roles'] });
+            }
         });
         return () => {
-            cancelled = true;
             authSub?.subscription?.unsubscribe();
         };
-    }, []);
+    }, [queryClient]);
 
     // --- AUTOMATION: Sync Vacancies to Marketplace ---
     useEffect(() => {
@@ -361,6 +370,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 widget_access: r.widgetAccess || []
             };
             if (uuidRegex.test(tempId)) payload.id = tempId;
+            console.log('[Supabase] role insert', payload);
             const { data, error } = await supabase
                 .schema('app')
                 .from('roles')
@@ -389,6 +399,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (d.permissions !== undefined) patch.permissions = d.permissions;
             if (d.accessibleSubmodules !== undefined) patch.accessible_submodules = d.accessibleSubmodules;
             if (d.widgetAccess !== undefined) patch.widget_access = d.widgetAccess;
+            console.log('[Supabase] role update', { id, patch });
             const { error } = await supabase
                 .schema('app')
                 .from('roles')
@@ -400,7 +411,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const { data } = await supabase
                     .schema('app')
                     .from('roles')
-                    .select('*')
+                    .select('id,name,description,is_system,permissions,accessible_submodules,widget_access')
                     .order('name', { ascending: true });
                 if (data) {
                     setRoles((data as any[]).map((r: any) => ({
@@ -421,6 +432,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const prevRoles = roles;
         setRoles(prev => prev.filter(r => r.id !== id));
         (async () => {
+            console.log('[Supabase] role delete', { id });
             const { error } = await supabase
                 .schema('app')
                 .from('roles')
