@@ -82,13 +82,13 @@ const StatementDetailModal: React.FC<{ statement: DetailedStatement, onClose: ()
                                     <tr key={idx}>
                                         <td className="py-3 font-medium text-gray-800">{prop.name}</td>
                                         <td className="py-3 text-center text-gray-600">{prop.unitCount}</td>
-                                        <td className="py-3 text-right font-medium">KES {prop.collected.toLocaleString()}</td>
+                                        <td className="py-3 text-right font-medium">KES {Number(prop.collected ?? 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
                                 <tr className="bg-gray-50 font-bold">
                                     <td className="py-3 pl-2">Total Gross Revenue</td>
                                     <td></td>
-                                    <td className="py-3 text-right pr-2">KES {statement.grossRent.toLocaleString()}</td>
+                                    <td className="py-3 text-right pr-2">KES {Number(statement.grossRent ?? 0).toLocaleString()}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -107,12 +107,12 @@ const StatementDetailModal: React.FC<{ statement: DetailedStatement, onClose: ()
                                 {statement.breakdown.deductions.map((deduction, idx) => (
                                     <tr key={idx}>
                                         <td className="py-3 text-gray-700">{deduction.item}</td>
-                                        <td className="py-3 text-right text-red-600 font-medium">- KES {deduction.amount.toLocaleString()}</td>
+                                        <td className="py-3 text-right text-red-600 font-medium">- KES {Number(deduction.amount ?? 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
                                 <tr className="bg-gray-50 font-bold">
                                     <td className="py-3 pl-2">Total Deductions</td>
-                                    <td className="py-3 text-right text-red-600 pr-2">- KES {statement.totalDeductions.toLocaleString()}</td>
+                                    <td className="py-3 text-right text-red-600 pr-2">- KES {Number(statement.totalDeductions ?? 0).toLocaleString()}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -122,7 +122,7 @@ const StatementDetailModal: React.FC<{ statement: DetailedStatement, onClose: ()
                         <div className="bg-gray-100 p-6 rounded-lg w-full md:w-1/2 text-right border border-gray-300">
                             <p className="text-sm font-semibold text-gray-500 uppercase mb-1">Net Payable Amount</p>
                             <p className="text-3xl font-extrabold text-gray-900 border-t-2 border-gray-800 pt-2 inline-block">
-                                KES {statement.netPayout.toLocaleString()}
+                                KES {Number(statement.netPayout ?? 0).toLocaleString()}
                             </p>
                         </div>
                     </div>
@@ -230,7 +230,7 @@ const LandlordPayouts: React.FC = () => {
             alert("No pending payouts to disburse.");
             return;
         }
-        if (window.confirm(`Are you sure you want to disburse KES ${totalPending.toLocaleString()} to ${filteredStatements.filter(s => s.status === 'Pending').length} landlords?`)) {
+        if (window.confirm(`Are you sure you want to disburse KES ${Number(totalPending ?? 0).toLocaleString()} to ${filteredStatements.filter(s => s.status === 'Pending').length} landlords?`)) {
             setIsProcessingAll(true);
             setTimeout(() => {
                 const newStatuses = { ...payoutStatuses };
@@ -247,7 +247,7 @@ const LandlordPayouts: React.FC = () => {
     };
 
     const handleDisburseSingle = (stmt: DetailedStatement) => {
-        if (window.confirm(`Confirm disbursement of KES ${stmt.netPayout.toLocaleString()} to ${stmt.landlordName}?`)) {
+        if (window.confirm(`Confirm disbursement of KES ${Number(stmt.netPayout ?? 0).toLocaleString()} to ${stmt.landlordName}?`)) {
             setProcessingId(stmt.id);
             setTimeout(() => {
                 setPayoutStatuses(prev => ({...prev, [stmt.landlordId]: 'Paid'}));
@@ -276,7 +276,7 @@ const LandlordPayouts: React.FC = () => {
                 <div className="flex gap-3 items-center">
                     <div className="text-right hidden md:block mr-2">
                         <p className="text-xs text-gray-500 uppercase font-bold">Pending Disbursement</p>
-                        <p className="text-xl font-bold text-gray-800">KES {totalPending.toLocaleString()}</p>
+                        <p className="text-xl font-bold text-gray-800">KES {Number(totalPending ?? 0).toLocaleString()}</p>
                     </div>
                     <button 
                         onClick={handleDisburseAll}
@@ -342,13 +342,13 @@ const LandlordPayouts: React.FC = () => {
                                         {stmt.totalProperties} Props ({stmt.totalUnits} Units)
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-600">
-                                        KES {stmt.grossRent.toLocaleString()}
+                                        KES {Number(stmt.grossRent ?? 0).toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-500">
-                                        - KES {stmt.totalDeductions.toLocaleString()}
+                                        - KES {Number(stmt.totalDeductions ?? 0).toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                                        <span className="text-base font-bold text-gray-900">KES {stmt.netPayout.toLocaleString()}</span>
+                                        <span className="text-base font-bold text-gray-900">KES {Number(stmt.netPayout ?? 0).toLocaleString()}</span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(stmt.status)}`}>

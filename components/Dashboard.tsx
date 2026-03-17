@@ -4,6 +4,7 @@ import Icon from './Icon';
 import { QuickStat, RecentActivity, UpcomingPayment, TaskStatus, TaskPriority } from '../types';
 import { QUICK_STATS_DATA } from '../constants';
 import { useData } from '../context/DataContext';
+import { useProfileFirstName } from '../hooks/useProfileFirstName';
 
 interface KeyStat {
   title: string;
@@ -303,7 +304,16 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie'; data: any; options?: any; 
 
 const Dashboard: React.FC = () => {
     const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
+    const { firstName, loading: profileLoading } = useProfileFirstName();
     const [searchQuery, setSearchQuery] = useState('');
+
+    const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
+        <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-pulse ${className}`}>
+            <div className="h-3 w-28 bg-gray-200 rounded mb-3"></div>
+            <div className="h-7 w-36 bg-gray-200 rounded mb-2"></div>
+            <div className="h-3 w-20 bg-gray-200 rounded"></div>
+        </div>
+    );
 
     // --- Helper: Date Logic for "Today", "Week", "Month" Stats ---
     const getGrowthStats = (data: any[], dateField: string) => {
@@ -424,34 +434,39 @@ const Dashboard: React.FC = () => {
     }, [tenants]);
 
     const totalTenants = tenants.length;
+    const totalUnits = properties.reduce((acc, p) => acc + (p.units?.length || 0), 0);
     const occupancyRate = getOccupancyRate();
     const revenue = getTotalRevenue();
+
+    const hasTenants = !isDataLoading && totalTenants > 0;
+    const hasUnits = !isDataLoading && totalUnits > 0;
+    const hasRevenue = !isDataLoading && revenue > 0;
     
     const keyStats: KeyStat[] = [
         { 
             title: 'Total Active Tenants', 
-            totalValue: totalTenants.toString(), 
-            todayStat: `+${tenantGrowth.today}`, 
-            weekStat: `+${tenantGrowth.week}`, 
-            monthStat: `+${tenantGrowth.month}`, 
+            totalValue: hasTenants ? totalTenants.toString() : (isDataLoading ? 'Loading…' : 'No active tenants yet'),
+            todayStat: hasTenants ? `+${tenantGrowth.today}` : '—',
+            weekStat: hasTenants ? `+${tenantGrowth.week}` : '—',
+            monthStat: hasTenants ? `+${tenantGrowth.month}` : '—',
             icon: '📈', 
             reportUrl: '#/reports/tenancy-reports' 
         },
         { 
             title: 'Portfolio Occupancy', 
-            totalValue: `${occupancyRate}%`, 
-            todayStat: '0%', 
-            weekStat: '0%', 
-            monthStat: '0%', 
+            totalValue: hasUnits ? `${occupancyRate}%` : (isDataLoading ? 'Loading…' : 'No units added'),
+            todayStat: hasUnits ? 'Stable' : '—',
+            weekStat: hasUnits ? 'Stable' : '—',
+            monthStat: hasUnits ? 'Stable' : '—',
             icon: '🏠', 
             reportUrl: '#/reports/property-reports?tab=vacancies' 
         },
         { 
             title: 'Revenue (Projected)', 
-            totalValue: `KES ${(revenue/1000000).toFixed(1)}M`, 
-            todayStat: `${revenueGrowth.today} txns`, 
-            weekStat: `${revenueGrowth.week} txns`, 
-            monthStat: `${revenueGrowth.month} txns`, 
+            totalValue: hasRevenue ? `KES ${(revenue/1000000).toFixed(1)}M` : (isDataLoading ? 'Loading…' : 'Start adding properties'),
+            todayStat: hasRevenue ? `${revenueGrowth.today} txns` : '—',
+            weekStat: hasRevenue ? `${revenueGrowth.week} txns` : '—',
+            monthStat: hasRevenue ? `${revenueGrowth.month} txns` : '—',
             icon: '💰', 
             reportUrl: '#/reports/financial-reports?view=revenue' 
         },
@@ -461,17 +476,17 @@ const Dashboard: React.FC = () => {
     const dynamicQuickStats = QUICK_STATS_DATA.map(stat => {
         if (stat.title === "Total Tenants") return { 
             ...stat, 
-            thisMonth: totalTenants.toString(), 
-            today: `+${tenantGrowth.today}`,
-            thisWeek: `+${tenantGrowth.week}`,
+            thisMonth: hasTenants ? totalTenants.toString() : (isDataLoading ? 'Loading…' : 'No tenants yet'),
+            today: hasTenants ? `+${tenantGrowth.today}` : '—',
+            thisWeek: hasTenants ? `+${tenantGrowth.week}` : '—',
             reportUrl: '#/reports/tenancy-reports' 
         };
-        if (stat.title === "Occupancy Rate") return { ...stat, thisMonth: `${occupancyRate}%`, reportUrl: '#/reports/property-reports?tab=vacancies' };
+        if (stat.title === "Occupancy Rate") return { ...stat, thisMonth: hasUnits ? `${occupancyRate}%` : (isDataLoading ? 'Loading…' : 'No units'), reportUrl: '#/reports/property-reports?tab=vacancies' };
         if (stat.title === "Revenue (MTD)") return { 
             ...stat, 
-            thisMonth: `KES ${(revenue/1000000).toFixed(1)}M`, 
-            today: `+${revenueGrowth.today}`,
-            thisWeek: `+${revenueGrowth.week}`,
+            thisMonth: hasRevenue ? `KES ${(revenue/1000000).toFixed(1)}M` : (isDataLoading ? 'Loading…' : 'Add properties'),
+            today: hasRevenue ? `+${revenueGrowth.today}` : '—',
+            thisWeek: hasRevenue ? `+${revenueGrowth.week}` : '—',
             reportUrl: '#/reports/financial-reports?view=revenue' 
         };
         if (stat.title === "Pending Tasks") return { 
@@ -527,7 +542,7 @@ const Dashboard: React.FC = () => {
       {canView('dash_welcome') && (
         <div>
             <h1 className="text-3xl font-bold text-gray-800">
-            Welcome back <span className="text-primary">{currentUser?.name.split(' ')[0]},</span>
+            Welcome back <span className="text-primary">{profileLoading ? 'Loading...' : ((firstName ?? '').trim() ? (firstName as string).trim() : currentUser?.name.split(' ')[0])},</span>
             </h1>
             <p className="text-lg text-gray-500 mt-1">
             Here is your portfolio performance overview.
@@ -600,7 +615,15 @@ const Dashboard: React.FC = () => {
       {/* Key Stats Cards */}
       {canView('dash_key_stats') && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {keyStats.map(stat => <KeyStatCard key={stat.title} stat={stat} />)}
+            {isDataLoading
+                ? (
+                    <>
+                        <SkeletonCard />
+                        <SkeletonCard />
+                        <SkeletonCard />
+                    </>
+                )
+                : keyStats.map(stat => <KeyStatCard key={stat.title} stat={stat} />)}
         </div>
       )}
 
@@ -609,7 +632,16 @@ const Dashboard: React.FC = () => {
         <div>
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Quick Stats</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {dynamicQuickStats.map(item => <QuickStatGridCard key={item.title} item={item} />)}
+                {isDataLoading
+                    ? (
+                        <>
+                            <SkeletonCard className="p-4" />
+                            <SkeletonCard className="p-4" />
+                            <SkeletonCard className="p-4" />
+                            <SkeletonCard className="p-4" />
+                        </>
+                    )
+                    : dynamicQuickStats.map(item => <QuickStatGridCard key={item.title} item={item} />)}
             </div>
         </div>
       )}

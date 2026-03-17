@@ -277,7 +277,7 @@ const AgentPortal: React.FC = () => {
             {activeTab === 'Dashboard' && (
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <KpiCard title="Commissions (YTD)" value={`KES ${totalCommission.toLocaleString()}`} subtext="Paid & Pending" icon="revenue" color="#10b981" />
+                        <KpiCard title="Commissions (YTD)" value={`KES ${Number(totalCommission ?? 0).toLocaleString()}`} subtext="Paid & Pending" icon="revenue" color="#10b981" />
                         <KpiCard title="Active Leads" value={myLeads.length.toString()} subtext="Potential Tenants" icon="tenants" color="#3b82f6" />
                         <KpiCard title="Collection Rate" value={`${collectionStats.rate}%`} subtext={`KES ${(collectionStats.collected/1000).toFixed(1)}k Collected`} icon="payments" color="#f59e0b" />
                         <KpiCard title="Portfolio Occ." value={`${occupancyRate}%`} subtext={`${myProperties.length} Properties`} icon="branch" color="#8b5cf6" />
@@ -319,7 +319,7 @@ const AgentPortal: React.FC = () => {
                                     <div key={t.id} className="flex items-center justify-between p-3 border-b last:border-0 hover:bg-gray-50 transition-colors">
                                         <div>
                                             <p className="font-bold text-gray-800 text-sm">{t.name}</p>
-                                            <p className="text-xs text-red-500 font-bold">Arrears: KES {t.rentAmount.toLocaleString()}</p>
+                                            <p className="text-xs text-red-500 font-bold">Arrears: KES {Number(t.rentAmount ?? 0).toLocaleString()}</p>
                                             <p className="text-[10px] text-gray-500">{t.unit} - {t.propertyName}</p>
                                         </div>
                                         <button onClick={() => setSelectedCollectionTenant(t)} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100">
@@ -374,7 +374,7 @@ const AgentPortal: React.FC = () => {
                                 <p className="text-xs text-gray-600 font-bold mb-1">{unit.propertyName}</p>
                                 <p className="text-xs text-gray-500 mb-3">{unit.location}</p>
                                 <div className="flex justify-between items-center border-t border-gray-100 pt-3">
-                                    <span className="font-bold text-blue-600 text-sm">KES {unit.defaultRent?.toLocaleString()}</span>
+                                    <span className="font-bold text-blue-600 text-sm">KES {Number(unit.defaultRent ?? 0).toLocaleString()}</span>
                                     <button 
                                         className="text-[10px] bg-green-600 text-white px-3 py-1.5 rounded font-bold hover:bg-green-700"
                                         onClick={() => {

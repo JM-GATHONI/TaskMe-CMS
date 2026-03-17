@@ -31,11 +31,11 @@ const Distributions: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-green-500">
                     <p className="text-gray-500 font-medium text-sm uppercase">Total Earned</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {totalDistributed.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {Number(totalDistributed ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-blue-500">
                     <p className="text-gray-500 font-medium text-sm uppercase">Last Payout</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {MOCK_DISTRIBUTIONS[0]?.amount.toLocaleString() || 0}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {Number(MOCK_DISTRIBUTIONS[0]?.amount ?? 0).toLocaleString()}</p>
                     <p className="text-xs text-gray-400 mt-1">{MOCK_DISTRIBUTIONS[0]?.date}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-yellow-500">
@@ -71,7 +71,7 @@ const Distributions: React.FC = () => {
                                 <tr key={idx} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{dist.date}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{dist.investorName}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">KES {dist.amount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">KES {Number(dist.amount ?? 0).toLocaleString()}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{dist.method}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${dist.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
@@ -123,7 +123,7 @@ const Distributions: React.FC = () => {
                             </div>
                             <div className="border-t border-dashed pt-3 mt-3 flex justify-between items-center">
                                 <span className="text-gray-800 font-bold">Amount Paid:</span>
-                                <span className="text-xl font-bold text-green-600">KES {selectedReceipt.amount.toLocaleString()}</span>
+                                <span className="text-xl font-bold text-green-600">KES {Number(selectedReceipt.amount ?? 0).toLocaleString()}</span>
                             </div>
                         </div>
                         <div className="mt-8 pt-4 border-t text-xs text-gray-400">

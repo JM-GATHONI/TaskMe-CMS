@@ -4,9 +4,11 @@ import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { User, TenantProfile, StaffProfile, RenovationInvestor, Vendor } from '../../types';
 import { hashPassword } from '../../utils/security';
+import { useProfileDisplay } from '../../hooks/useProfileDisplay';
 
 const UserProfile: React.FC = () => {
     const { currentUser, updateTenant, updateStaff, updateLandlord, updateRenovationInvestor, updateVendor } = useData();
+    const { displayName, initial } = useProfileDisplay();
     
     // Form state
     const [formData, setFormData] = useState({
@@ -128,7 +130,7 @@ const UserProfile: React.FC = () => {
                                     {profilePic ? (
                                         <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
                                     ) : (
-                                        <span className="text-4xl font-bold text-gray-400">{currentUser.name.charAt(0)}</span>
+                                        <span className="text-4xl font-bold text-gray-400">{initial}</span>
                                     )}
                                 </div>
                                 <button 
@@ -149,7 +151,7 @@ const UserProfile: React.FC = () => {
                             </div>
                             
                             <div className="flex-grow space-y-1">
-                                <h2 className="text-2xl font-bold text-gray-900">{currentUser.name}</h2>
+                                <h2 className="text-2xl font-bold text-gray-900">{displayName}</h2>
                                 <p className="text-gray-500 font-medium">{currentUser.role} • {('branch' in currentUser) ? (currentUser as any).branch : 'General'}</p>
                                 <div className="pt-2">
                                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${currentUser.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -168,7 +170,7 @@ const UserProfile: React.FC = () => {
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Full Name (Read Only)</label>
                                     <input 
-                                        value={currentUser.name} 
+                                        value={displayName} 
                                         disabled 
                                         className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 cursor-not-allowed"
                                     />

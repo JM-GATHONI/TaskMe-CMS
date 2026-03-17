@@ -557,7 +557,7 @@ const ListingCard: React.FC<{ listing: MarketplaceListing; onEdit: () => void; o
                  </div>
             )}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
-                <p className="text-white font-bold text-lg">KES {listing.price.toLocaleString()}</p>
+                <p className="text-white font-bold text-lg">KES {Number(listing.price ?? 0).toLocaleString()}</p>
             </div>
         </div>
         

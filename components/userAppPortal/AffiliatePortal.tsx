@@ -60,7 +60,7 @@ const AffiliatePortal: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard title="Total Earnings" value={`KES ${affiliate.stats.totalEarned.toLocaleString()}`} color="#10b981" icon="wallet" />
+                <StatCard title="Total Earnings" value={`KES ${Number(affiliate.stats?.totalEarned ?? 0).toLocaleString()}`} color="#10b981" icon="wallet" />
                 <StatCard title="Successful Referrals" value={affiliate.stats.leasesSigned} color="#3b82f6" icon="check" />
                 <StatCard title="Pending Leads" value={affiliate.stats.leadsReferred} color="#f59e0b" icon="time" />
             </div>
@@ -92,7 +92,7 @@ const AffiliatePortal: React.FC = () => {
                                                  {ref.status}
                                              </span>
                                         </td>
-                                        <td className="px-4 py-3 text-sm font-bold text-green-600 text-right">KES {ref.commission.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-sm font-bold text-green-600 text-right">KES {Number(ref.commission ?? 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
                                 {affiliate.referrals.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-400">No referrals yet.</td></tr>}

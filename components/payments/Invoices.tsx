@@ -135,7 +135,7 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
                                             className="w-full p-1 border rounded text-right" 
                                         />
                                     </td>
-                                    <td className="p-2 text-right font-semibold">{(item.amount || 0).toLocaleString()}</td>
+                                    <td className="p-2 text-right font-semibold">{Number(item.amount ?? 0).toLocaleString()}</td>
                                     <td className="p-2 text-center">
                                         <button onClick={() => removeItem(index)} className="text-red-500 font-bold hover:bg-red-50 rounded px-1">&times;</button>
                                     </td>
@@ -149,7 +149,7 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
                  <div className="flex justify-end items-center border-t pt-4 mb-6">
                     <div className="text-right">
                         <p className="text-gray-600">Total Payable:</p>
-                        <p className="text-2xl font-bold text-primary">KES {totalAmount.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-primary">KES {Number(totalAmount ?? 0).toLocaleString()}</p>
                     </div>
                 </div>
 
@@ -443,7 +443,7 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                                     <td className="p-2"><input value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} placeholder="Item Description" className="w-full p-1 border rounded" /></td>
                                     <td className="p-2"><input type="number" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-1 border rounded text-center" /></td>
                                     <td className="p-2"><input type="number" value={item.unitPrice} onChange={e => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))} className="w-full p-1 border rounded text-right" /></td>
-                                    <td className="p-2 text-right font-semibold">{(item.amount || 0).toLocaleString()}</td>
+                                    <td className="p-2 text-right font-semibold">{Number(item.amount ?? 0).toLocaleString()}</td>
                                     <td className="p-2 text-center"><button onClick={() => removeItem(index)} className="text-red-500 font-bold">&times;</button></td>
                                 </tr>
                             ))}
@@ -455,7 +455,7 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                 <div className="flex justify-end items-center border-t pt-4 mb-6">
                     <div className="text-right">
                         <p className="text-gray-600">Total Amount Due:</p>
-                        <p className="text-2xl font-bold text-primary">KES {totalAmount.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-primary">KES {Number(totalAmount ?? 0).toLocaleString()}</p>
                     </div>
                 </div>
 
@@ -475,7 +475,7 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
     
     // Simulated Link Generation
     const paymentLink = `https://portal.taskme.re/pay/${invoice.id}`;
-    const messageBody = `Dear ${invoice.tenantName}, please find your invoice #${invoice.invoiceNumber} for KES ${invoice.amount.toLocaleString()}. Pay securely here: ${paymentLink}`;
+    const messageBody = `Dear ${invoice.tenantName}, please find your invoice #${invoice.invoiceNumber} for KES ${Number(invoice.amount ?? 0).toLocaleString()}. Pay securely here: ${paymentLink}`;
 
     const handleSendEmail = () => {
         const subject = encodeURIComponent(`Invoice ${invoice.invoiceNumber} from TaskMe Realty`);
@@ -554,7 +554,7 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
                             <p className="text-gray-500">Nairobi, Kenya</p>
                             <div className="mt-4 bg-gray-100 p-3 rounded">
                                 <p className="text-xs text-gray-500 uppercase font-bold">Amount Due</p>
-                                <p className="text-xl font-bold text-primary">KES {invoice.amount.toLocaleString()}</p>
+                                <p className="text-xl font-bold text-primary">KES {Number(invoice.amount ?? 0).toLocaleString()}</p>
                                 <p className="text-xs text-red-500 mt-1">Due: {invoice.dueDate}</p>
                             </div>
                         </div>
@@ -574,8 +574,8 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
                                 <tr key={i}>
                                     <td className="py-3 text-gray-700">{item.description}</td>
                                     <td className="py-3 text-center text-gray-600">{item.quantity}</td>
-                                    <td className="py-3 text-right text-gray-600">{(item.unitPrice || 0).toLocaleString()}</td>
-                                    <td className="py-3 text-right font-medium text-gray-800">{(item.amount).toLocaleString()}</td>
+                                    <td className="py-3 text-right text-gray-600">{Number(item.unitPrice ?? 0).toLocaleString()}</td>
+                                    <td className="py-3 text-right font-medium text-gray-800">{Number(item.amount ?? 0).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -585,7 +585,7 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
                         <div className="w-1/2 border-t border-gray-300 pt-2">
                              <div className="flex justify-between text-lg font-bold">
                                 <span>Total</span>
-                                <span>KES {invoice.amount.toLocaleString()}</span>
+                                <span>KES {Number(invoice.amount ?? 0).toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
@@ -704,7 +704,7 @@ const Invoices: React.FC = () => {
                                     <td className="px-6 py-4 whitespace-nowrap text-gray-600">{inv.dueDate}</td>
                                     <td className="px-6 py-4 whitespace-nowrap font-mono text-gray-700">{inv.invoiceNumber}</td>
                                     <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{inv.tenantName}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right font-bold text-gray-800">KES {inv.amount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right font-bold text-gray-800">KES {Number(inv.amount ?? 0).toLocaleString()}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                                             inv.status === 'Paid' ? 'bg-green-100 text-green-800' : 

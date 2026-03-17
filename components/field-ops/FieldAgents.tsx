@@ -530,9 +530,9 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                         <h3 className="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Financial Performance (MTD)</h3>
                         <div className="grid grid-cols-2 gap-8">
                              <div>
-                                <p className="mb-2"><strong>Expected Revenue:</strong> KES {expectedCollection.toLocaleString()}</p>
-                                <p className="mb-2"><strong>Actual Collected:</strong> KES {actualCollection.toLocaleString()}</p>
-                                <p className="mb-2 text-red-600"><strong>Outstanding:</strong> KES {(expectedCollection - actualCollection).toLocaleString()}</p>
+                                <p className="mb-2"><strong>Expected Revenue:</strong> KES {Number(expectedCollection ?? 0).toLocaleString()}</p>
+                                <p className="mb-2"><strong>Actual Collected:</strong> KES {Number(actualCollection ?? 0).toLocaleString()}</p>
+                                <p className="mb-2 text-red-600"><strong>Outstanding:</strong> KES {(Number(expectedCollection ?? 0) - Number(actualCollection ?? 0)).toLocaleString()}</p>
                              </div>
                              <div className="h-48">
                                 <Bar data={financialChartData} options={{ responsive: true, maintainAspectRatio: false }} />

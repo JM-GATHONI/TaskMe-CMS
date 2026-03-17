@@ -4,6 +4,7 @@ import { NAVIGATION_ITEMS } from '../constants';
 import { NavItem } from '../types';
 import Icon from './Icon';
 import { useData } from '../context/DataContext';
+import { useProfileDisplay } from '../hooks/useProfileDisplay';
 
 interface SidebarProps {
   activeRoute: string;
@@ -75,6 +76,7 @@ const NavLink: React.FC<{ item: NavItem; isActive: boolean; isSubMenuOpen: boole
 
 const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobile }) => {
   const { currentUser, roles } = useData();
+  const { displayName, initial, email, loading: profileLoading } = useProfileDisplay();
 
   // Filter navigation based on role permissions (Super Admin sees everything).
   // If roles haven't loaded yet, show all modules to avoid an empty sidebar flash.
@@ -182,11 +184,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobi
       <div className="p-3 bg-black/20 mt-auto flex-shrink-0">
         <div className="flex items-center space-x-2">
           <div className="w-7 h-7 bg-secondary rounded-full flex items-center justify-center font-bold text-white text-[10px]">
-            {currentUser?.name?.charAt(0) || 'U'}
+            {profileLoading ? '…' : (initial || 'U')}
           </div>
           <div className="overflow-hidden min-w-0">
-            <p className="text-white text-xs font-semibold truncate">{currentUser?.name || 'User'}</p>
-            <p className="text-gray-400 text-[10px] truncate">{currentUser?.email || 'email@example.com'}</p>
+            <p className="text-white text-xs font-semibold truncate">{displayName}</p>
+            <p className="text-gray-400 text-[10px] truncate">{email || currentUser?.email || 'email@example.com'}</p>
           </div>
         </div>
       </div>

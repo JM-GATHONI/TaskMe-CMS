@@ -32,7 +32,7 @@ const ApplyOverpaymentModal: React.FC<{
                         <span className="font-bold text-gray-900 text-right">{payment.unit}</span>
                         
                         <span className="text-gray-600">Amount:</span>
-                        <span className="font-bold text-green-600 text-right">KES {payment.amount.toLocaleString()}</span>
+                        <span className="font-bold text-green-600 text-right">KES {Number(payment.amount ?? 0).toLocaleString()}</span>
                         
                         <span className="text-gray-600">Apply For:</span>
                         <span className="font-bold text-gray-900 text-right">{payment.appliedMonth}</span>
@@ -77,7 +77,7 @@ const Overpayments: React.FC = () => {
         if (tenant) {
             const newPayment = {
                 date: new Date().toISOString().split('T')[0],
-                amount: `KES ${selectedPayment.amount.toLocaleString()}`,
+                amount: `KES ${Number(selectedPayment.amount ?? 0).toLocaleString()}`,
                 status: 'Paid' as const,
                 method: 'Overpayment Applied',
                 reference: `APP-${selectedPayment.reference}`
@@ -119,7 +119,7 @@ const Overpayments: React.FC = () => {
                                 <tr key={op.id} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 font-medium text-gray-900">{op.tenantName}</td>
                                     <td className="px-4 py-3 text-gray-500">{op.unit}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-green-600">KES {op.amount.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right font-bold text-green-600">KES {Number(op.amount ?? 0).toLocaleString()}</td>
                                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{op.reference}</td>
                                     <td className="px-4 py-3 text-sm text-gray-600">{op.appliedMonth}</td>
                                     <td className="px-4 py-3 text-center">

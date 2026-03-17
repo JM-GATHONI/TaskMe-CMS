@@ -270,7 +270,7 @@ const QuickStats: React.FC = () => {
         return [
             { title: 'Active Tasks', value: open, change: 'Pending', changeType: 'neutral', period: 'require action', link: '#/general-operations/task-management' },
             { title: 'Completed', value: completed, change: `${tasksInRange.length > 0 ? Math.round((completed/tasksInRange.length)*100) : 0}%`, changeType: 'increase', period: 'completion rate', link: '#/general-operations/reporting' },
-            { title: 'Maint. Spend', value: `KES ${spend.toLocaleString()}`, change: 'Costs', changeType: 'decrease', period: 'in range', link: '#/maintenance/cost-tracking' },
+            { title: 'Maint. Spend', value: `KES ${Number(spend ?? 0).toLocaleString()}`, change: 'Costs', changeType: 'decrease', period: 'in range', link: '#/maintenance/cost-tracking' },
             { title: 'Avg Resolution', value: '2.4 Days', change: '-10%', changeType: 'increase', period: 'faster', link: '#/general-operations/reporting' },
         ];
     }, [tasks, properties, dateRange, branch]);

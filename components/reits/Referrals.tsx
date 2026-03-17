@@ -57,11 +57,11 @@ const Referrals: React.FC = () => {
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm text-center">
                     <p className="text-gray-500 text-sm font-medium">Ref. Assets Managed</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-1">KES {MOCK_REFERRAL_DATA.stats.activeBalance.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-1">KES {Number(MOCK_REFERRAL_DATA.stats?.activeBalance ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm text-center">
                     <p className="text-gray-500 text-sm font-medium">Commissions Earned</p>
-                    <p className="text-3xl font-bold text-green-600 mt-1">KES {MOCK_REFERRAL_DATA.stats.commission.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-green-600 mt-1">KES {Number(MOCK_REFERRAL_DATA.stats?.commission ?? 0).toLocaleString()}</p>
                 </div>
             </div>
 
@@ -80,8 +80,8 @@ const Referrals: React.FC = () => {
                             {MOCK_REFERRAL_DATA.referrals.map((ref, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 font-medium text-gray-900">{ref.name}</td>
-                                    <td className="px-6 py-4 text-right text-gray-600">KES {ref.activeBalance.toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-right font-bold text-green-600">KES {ref.monthlyCommission.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-right text-gray-600">KES {Number(ref.activeBalance ?? 0).toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-right font-bold text-green-600">KES {Number(ref.monthlyCommission ?? 0).toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>

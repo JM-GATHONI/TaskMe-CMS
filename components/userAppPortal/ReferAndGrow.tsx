@@ -136,7 +136,7 @@ const ReferAndGrow: React.FC = () => {
 
     const handleShareUnit = (unit: any) => {
         const commission = getCommission(unit.rent);
-        const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${unit.rent.toLocaleString()}. \n\nInterested? Book it here using my referral code *${user.referralCode}* to get priority processing! \n\nLink: https://taskme.re/book/${unit.id}?ref=${user.referralCode}`;
+        const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${Number(unit.rent ?? 0).toLocaleString()}. \n\nInterested? Book it here using my referral code *${user.referralCode}* to get priority processing! \n\nLink: https://taskme.re/book/${unit.id}?ref=${user.referralCode}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
@@ -175,7 +175,7 @@ const ReferAndGrow: React.FC = () => {
                         <div className="flex flex-wrap gap-4 pt-2">
                             <div className="bg-white/5 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 min-w-[180px]">
                                 <p className="text-[10px] text-gray-400 uppercase font-bold mb-1 tracking-wider">TOTAL EARNED</p>
-                                <p className="text-3xl font-bold text-[#4CAF50]">KES {totalEarned > 0 ? totalEarned.toLocaleString() : '4,700'}</p>
+                                <p className="text-3xl font-bold text-[#4CAF50]">KES {totalEarned > 0 ? Number(totalEarned ?? 0).toLocaleString() : '4,700'}</p>
                             </div>
                             <div className="bg-white/5 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 min-w-[180px]">
                                 <p className="text-[10px] text-gray-400 uppercase font-bold mb-1 tracking-wider">NEXT PAYOUT</p>
@@ -429,7 +429,7 @@ const ReferAndGrow: React.FC = () => {
                                     onChange={e => setCalcState({...calcState, investorsReferred: parseInt(e.target.value)})}
                                     className="w-full h-3 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-orange-600 hover:accent-orange-700"
                                 />
-                                <p className="text-xs text-gray-500 mt-2 font-medium">Avg Investment: KES {calcState.investmentAmount.toLocaleString()}</p>
+                                <p className="text-xs text-gray-500 mt-2 font-medium">Avg Investment: KES {Number(calcState.investmentAmount ?? 0).toLocaleString()}</p>
                             </div>
                         </div>
 
@@ -441,21 +441,21 @@ const ReferAndGrow: React.FC = () => {
                             
                             <h3 className="text-gray-500 font-bold uppercase text-xs tracking-widest text-center mb-6 z-10">Estimated Annual Earnings</h3>
                             <div className="text-center mb-10 z-10">
-                                <span className="text-6xl font-extrabold text-gray-900 tracking-tight">KES {(potentialEarnings.total).toLocaleString()}</span>
+                                <span className="text-6xl font-extrabold text-gray-900 tracking-tight">KES {Number(potentialEarnings.total ?? 0).toLocaleString()}</span>
                             </div>
                             
                             <div className="space-y-4 text-sm z-10">
                                 <div className="flex justify-between items-center p-3 bg-white rounded-xl shadow-sm border border-gray-100">
                                     <span className="text-gray-600 font-medium">Tenant Comm.</span>
-                                    <span className="font-bold text-blue-600 text-lg">KES {potentialEarnings.breakdown.tenant.toLocaleString()}</span>
+                                    <span className="font-bold text-blue-600 text-lg">KES {Number(potentialEarnings.breakdown?.tenant ?? 0).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between items-center p-3 bg-white rounded-xl shadow-sm border border-gray-100">
                                     <span className="text-gray-600 font-medium">Landlord Comm.</span>
-                                    <span className="font-bold text-purple-600 text-lg">KES {potentialEarnings.breakdown.landlord.toLocaleString()}</span>
+                                    <span className="font-bold text-purple-600 text-lg">KES {Number(potentialEarnings.breakdown?.landlord ?? 0).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between items-center p-3 bg-white rounded-xl shadow-sm border border-gray-100">
                                     <span className="text-gray-600 font-medium">Investor Comm.</span>
-                                    <span className="font-bold text-orange-600 text-lg">KES {potentialEarnings.breakdown.investor.toLocaleString()}</span>
+                                    <span className="font-bold text-orange-600 text-lg">KES {Number(potentialEarnings.breakdown?.investor ?? 0).toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>

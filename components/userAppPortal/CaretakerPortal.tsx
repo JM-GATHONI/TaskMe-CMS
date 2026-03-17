@@ -4,23 +4,34 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { Task, TaskPriority, TaskStatus } from '../../types';
 import AdBanners from './AdBanners';
+import { useProfileFirstName } from '../../hooks/useProfileFirstName';
 
 const CaretakerPortal: React.FC = () => {
-    const { tasks, staff, addTask, updateTask } = useData();
+    const { tasks, staff, addTask, updateTask, currentUser, isDataLoading } = useData();
     const [reportDescription, setReportDescription] = useState('');
+    const { firstName, loading: profileLoading } = useProfileFirstName();
     
-    // Simulate logged-in caretaker
-    const caretaker = useMemo(() => staff.find(s => s.role === 'Caretaker') || staff[0], [staff]);
+    // Prefer actual logged-in user if they are a caretaker; otherwise fall back to staff list (demo)
+    const caretaker = useMemo(() => {
+        if (currentUser && currentUser.role === 'Caretaker') return currentUser;
+        return staff.find(s => s.role === 'Caretaker') || staff[0];
+    }, [currentUser, staff]);
+
+    const caretakerName = (caretaker as any)?.name as string | undefined;
 
     const myTasks = useMemo(() => {
-        return tasks.filter(t => t.assignedTo === caretaker.name && t.status !== 'Closed').sort((a,b) => b.priority === 'High' ? 1 : -1);
-    }, [tasks, caretaker]);
+        if (!caretakerName) return [];
+        return tasks
+            .filter(t => t.assignedTo === caretakerName && t.status !== 'Closed')
+            .sort((a,b) => b.priority === 'High' ? 1 : -1);
+    }, [tasks, caretakerName]);
 
     const completedToday = useMemo(() => {
         const today = new Date().toISOString().split('T')[0];
         // In real app check completion date
-        return tasks.filter(t => t.assignedTo === caretaker.name && t.status === 'Completed').length;
-    }, [tasks, caretaker]);
+        if (!caretakerName) return 0;
+        return tasks.filter(t => t.assignedTo === caretakerName && t.status === 'Completed').length;
+    }, [tasks, caretakerName]);
 
     const handleReportIssue = (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,12 +66,16 @@ const CaretakerPortal: React.FC = () => {
         });
     };
 
+    if (!caretakerName) {
+        return <div className="p-8 text-center">{isDataLoading ? 'Loading caretaker portal...' : 'Profile loading or not found...'}</div>;
+    }
+
     return (
         <div className="space-y-6 pb-20">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Caretaker Portal</h1>
-                    <p className="text-gray-500">Welcome, {caretaker.name}.</p>
+                    <p className="text-gray-500">Welcome, {profileLoading ? 'Loading...' : ((firstName ?? '').trim() ? (firstName as string).trim() : caretakerName)}.</p>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="text-right">

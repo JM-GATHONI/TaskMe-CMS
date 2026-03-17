@@ -65,7 +65,7 @@ const Referrals: React.FC = () => {
                         <div className="flex gap-6">
                             <div>
                                 <p className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Total Earned</p>
-                                <p className="text-3xl font-bold text-white">KES {MOCK_REFERRAL_DATA.stats.commission.toLocaleString()}</p>
+                                <p className="text-3xl font-bold text-white">KES {Number(MOCK_REFERRAL_DATA.stats?.commission ?? 0).toLocaleString()}</p>
                             </div>
                             <div className="w-px bg-gray-700"></div>
                             <div>
@@ -169,8 +169,8 @@ const Referrals: React.FC = () => {
                                     {MOCK_REFERRAL_DATA.referrals.map((ref, idx) => (
                                         <tr key={idx} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-6 py-4 font-medium text-gray-900">{ref.name}</td>
-                                            <td className="px-6 py-4 text-right text-gray-500">KES {ref.activeBalance.toLocaleString()}</td>
-                                            <td className="px-6 py-4 text-right font-bold text-green-600">+KES {ref.monthlyCommission.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-right text-gray-500">KES {Number(ref.activeBalance ?? 0).toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-right font-bold text-green-600">+KES {Number(ref.monthlyCommission ?? 0).toLocaleString()}</td>
                                             <td className="px-6 py-4 text-center">
                                                 <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Active</span>
                                             </td>
@@ -201,7 +201,7 @@ const Referrals: React.FC = () => {
                                 <div>
                                     <div className="flex justify-between mb-2 text-sm">
                                         <span className="text-gray-600 font-medium">Friend Invests</span>
-                                        <span className="font-bold text-blue-600">KES {calcInvestment.toLocaleString()}</span>
+                                        <span className="font-bold text-blue-600">KES {Number(calcInvestment ?? 0).toLocaleString()}</span>
                                     </div>
                                     <input 
                                         type="range" 
@@ -215,7 +215,7 @@ const Referrals: React.FC = () => {
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded-xl text-center border border-blue-100">
                                     <p className="text-xs text-blue-600 uppercase font-bold mb-1">You Earn (One-Off)</p>
-                                    <p className="text-3xl font-extrabold text-blue-900">KES {estInvestorComm.toLocaleString()}</p>
+                                    <p className="text-3xl font-extrabold text-blue-900">KES {Number(estInvestorComm ?? 0).toLocaleString()}</p>
                                 </div>
                                 <p className="text-xs text-gray-400 text-center">Based on 2.5% Commission Rate</p>
                             </div>
@@ -224,7 +224,7 @@ const Referrals: React.FC = () => {
                                 <div>
                                     <div className="flex justify-between mb-2 text-sm">
                                         <span className="text-gray-600 font-medium">Property Rent Roll</span>
-                                        <span className="font-bold text-purple-600">KES {calcRentRoll.toLocaleString()} /mo</span>
+                                        <span className="font-bold text-purple-600">KES {Number(calcRentRoll ?? 0).toLocaleString()} /mo</span>
                                     </div>
                                     <input 
                                         type="range" 
@@ -238,8 +238,8 @@ const Referrals: React.FC = () => {
                                 </div>
                                 <div className="bg-purple-50 p-4 rounded-xl text-center border border-purple-100">
                                     <p className="text-xs text-purple-600 uppercase font-bold mb-1">You Earn (Per Year)</p>
-                                    <p className="text-3xl font-extrabold text-purple-900">KES {estLandlordComm.toLocaleString()}</p>
-                                    <p className="text-xs text-purple-700 mt-1 font-medium">Paid Monthly: KES {(estLandlordComm/12).toLocaleString()}</p>
+                                    <p className="text-3xl font-extrabold text-purple-900">KES {Number(estLandlordComm ?? 0).toLocaleString()}</p>
+                                    <p className="text-xs text-purple-700 mt-1 font-medium">Paid Monthly: KES {(Number(estLandlordComm ?? 0)/12).toLocaleString()}</p>
                                 </div>
                                 <p className="text-xs text-gray-400 text-center">Based on 10% of Agency Fees (Recurring)</p>
                             </div>

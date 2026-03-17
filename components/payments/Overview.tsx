@@ -89,7 +89,7 @@ const PaymentsOverview: React.FC = () => {
         return [
             { title: 'Collected (Total)', value: `KES ${(totalCollected / 1000000).toFixed(2)}M`, change: '12%', changeType: 'increase' },
             { title: 'Outstanding Invoices', value: outstandingCount.toString(), change: '5%', changeType: 'decrease' },
-            { title: 'Overdue Amount', value: `KES ${overdueAmount.toLocaleString()}`, change: '2%', changeType: 'increase' },
+            { title: 'Overdue Amount', value: `KES ${Number(overdueAmount ?? 0).toLocaleString()}`, change: '2%', changeType: 'increase' },
             { title: 'Total Expenses (MTD)', value: 'KES 1.8M', change: '8%', changeType: 'decrease' } 
         ];
     }, [tenants]);
@@ -166,7 +166,7 @@ const PaymentsOverview: React.FC = () => {
                                     <tr key={log.id}>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{log.date}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-800">{log.tenantName}</td>
-                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800 font-semibold">{log.amount.toLocaleString()}</td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800 font-semibold">{Number(log.amount ?? 0).toLocaleString()}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{log.method}</td>
                                         <td className="px-4 py-3 whitespace-nowrap text-sm">
                                             <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">{log.status}</span>

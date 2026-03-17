@@ -85,7 +85,7 @@ const Withdrawals: React.FC = () => {
                                     {requests.map(req => (
                                         <tr key={req.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3 text-sm text-gray-600">{req.requestDate}</td>
-                                            <td className="px-4 py-3 text-sm font-bold text-gray-900">KES {req.amount.toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-sm font-bold text-gray-900">KES {Number(req.amount ?? 0).toLocaleString()}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                                                     req.status === 'Paid' ? 'bg-green-100 text-green-800' : 

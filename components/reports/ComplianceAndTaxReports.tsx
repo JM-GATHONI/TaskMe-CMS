@@ -23,7 +23,7 @@ const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: strin
         <div className="flex justify-between items-start">
             <div>
                 <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">{title}</p>
-                <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {amount.toLocaleString()}</h3>
+                <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {Number(amount ?? 0).toLocaleString()}</h3>
             </div>
             {isOverdue && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded">OVERDUE</span>}
         </div>
@@ -92,8 +92,8 @@ const ComplianceAndTaxReports: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KpiCard title="Total Tax Due" value={`KES ${stats.totalDue.toLocaleString()}`} color="#ef4444" icon="arrears" />
-                <KpiCard title="Tax Remitted (YTD)" value={`KES ${stats.totalPaid.toLocaleString()}`} color="#10b981" icon="check" />
+                <KpiCard title="Total Tax Due" value={`KES ${Number(stats.totalDue ?? 0).toLocaleString()}`} color="#ef4444" icon="arrears" />
+                <KpiCard title="Tax Remitted (YTD)" value={`KES ${Number(stats.totalPaid ?? 0).toLocaleString()}`} color="#10b981" icon="check" />
                 <KpiCard title="Next Filing Date" value="20th Nov" color="#3b82f6" icon="time" />
             </div>
 
@@ -155,7 +155,7 @@ const ComplianceAndTaxReports: React.FC = () => {
                                     <tr key={tax.id} className="hover:bg-gray-50">
                                         <td className="px-4 py-3 font-bold text-gray-700">{tax.type}</td>
                                         <td className="px-4 py-3 text-gray-600">{tax.description}</td>
-                                        <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">KES {tax.amount.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">KES {Number(tax.amount ?? 0).toLocaleString()}</td>
                                         <td className="px-4 py-3 text-center text-gray-500 font-mono">{tax.date}</td>
                                         <td className="px-4 py-3 text-center">
                                             <span className={`px-2 py-1 text-xs font-bold uppercase rounded-full ${

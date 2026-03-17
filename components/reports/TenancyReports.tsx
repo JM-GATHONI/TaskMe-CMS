@@ -185,10 +185,10 @@ const TenantTasksModal: React.FC<{
                                                             <div>
                                                                 <h4 className="text-xs font-bold text-gray-500 uppercase mb-1">Cost Breakdown</h4>
                                                                 <div className="bg-white p-2 rounded border border-gray-200 text-sm">
-                                                                    <div className="flex justify-between"><span>Labor:</span> <span>KES {task.costs.labor.toLocaleString()}</span></div>
-                                                                    <div className="flex justify-between"><span>Materials:</span> <span>KES {task.costs.materials.toLocaleString()}</span></div>
-                                                                    <div className="flex justify-between"><span>Travel:</span> <span>KES {task.costs.travel.toLocaleString()}</span></div>
-                                                                    <div className="border-t mt-1 pt-1 flex justify-between font-bold"><span>Total:</span> <span>KES {(task.costs.labor + task.costs.materials + task.costs.travel).toLocaleString()}</span></div>
+                                                                    <div className="flex justify-between"><span>Labor:</span> <span>KES {Number(task.costs?.labor ?? 0).toLocaleString()}</span></div>
+                                                                    <div className="flex justify-between"><span>Materials:</span> <span>KES {Number(task.costs?.materials ?? 0).toLocaleString()}</span></div>
+                                                                    <div className="flex justify-between"><span>Travel:</span> <span>KES {Number(task.costs?.travel ?? 0).toLocaleString()}</span></div>
+                                                                    <div className="border-t mt-1 pt-1 flex justify-between font-bold"><span>Total:</span> <span>KES {(Number(task.costs?.labor ?? 0) + Number(task.costs?.materials ?? 0) + Number(task.costs?.travel ?? 0)).toLocaleString()}</span></div>
                                                                 </div>
                                                             </div>
                                                         )}

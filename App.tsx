@@ -7,6 +7,7 @@ import QuickStats from './components/QuickStats';
 import QuickSearch from './components/registration/QuickSearch';
 import { DataProvider, useData } from './context/DataContext';
 import Auth from './components/Auth';
+import SignUp from './components/SignUp';
 import Icon from './components/Icon'; 
 import { User, StaffProfile, TenantProfile } from './types'; 
 
@@ -222,13 +223,11 @@ const AppContent: React.FC = () => {
               </div>
           );
       }
-      return <Auth onLogin={(u) => {
+      const handleAuthLogin = (u: User | StaffProfile | TenantProfile) => {
           setCurrentUser(u as User | StaffProfile | TenantProfile);
-          
-          // Role-based Redirect Logic
+
           const role = u.role;
           let redirectPath = '#/dashboard';
-
           if (role === 'Tenant') redirectPath = '#/user-app-portal/tenant-portal';
           else if (role === 'Landlord') redirectPath = '#/user-app-portal/landlords-portal';
           else if (role === 'Field Agent') redirectPath = '#/user-app-portal/agent-portal';
@@ -239,7 +238,12 @@ const AppContent: React.FC = () => {
 
           window.location.hash = redirectPath;
           setCurrentPath(redirectPath);
-      }} />;
+      };
+
+      if (currentPath === '#/signup') {
+          return <SignUp onLogin={handleAuthLogin} />;
+      }
+      return <Auth onLogin={handleAuthLogin} />;
   }
 
   if (currentUser && currentUser.status !== 'Active') {

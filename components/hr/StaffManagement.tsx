@@ -651,7 +651,7 @@ const StaffManagement: React.FC = () => {
                                 </span>
                             </div>
                             <h3 className="text-lg font-bold text-gray-800 mb-1">{unit.name}</h3>
-                            <p className="text-xs text-gray-500">Payroll: KES {unitStats[unit.name].totalSalary.toLocaleString()}</p>
+                            <p className="text-xs text-gray-500">Payroll: KES {Number(unitStats?.[unit.name]?.totalSalary ?? 0).toLocaleString()}</p>
                             <div className="absolute bottom-0 left-0 w-full h-1 bg-gray-100 group-hover:bg-primary transition-colors"></div>
                         </div>
                     ))}
@@ -703,7 +703,7 @@ const StaffManagement: React.FC = () => {
                                         <td className="px-6 py-4 text-gray-600">
                                             <div className="flex flex-col text-xs">
                                                 <span className="font-bold">{s.salaryConfig?.type}</span>
-                                                <span>KES {s.salaryConfig?.amount.toLocaleString()}</span>
+                                                <span>KES {Number(s.salaryConfig?.amount ?? 0).toLocaleString()}</span>
                                                 {s.salaryConfig?.type === 'Target Based' && (
                                                     <span className="text-[10px] text-blue-600 italic flex items-center gap-1 mt-0.5">
                                                         <Icon name="analytics" className="w-3 h-3"/>

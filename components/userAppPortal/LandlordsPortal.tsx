@@ -113,7 +113,7 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
             </div>
 
             <div className="mt-auto pt-2 border-t border-black/5 flex justify-between items-center">
-                <span className="opacity-80 font-mono">{unit.rent ? `KES ${unit.rent.toLocaleString()}` : '-'}</span>
+                <span className="opacity-80 font-mono">{unit.rent ? `KES ${Number(unit.rent ?? 0).toLocaleString()}` : '-'}</span>
                 {tenant?.leaseEnd && (
                     <span className="text-[9px] opacity-70">
                         End: {new Date(tenant.leaseEnd).toLocaleDateString(undefined, {month:'short', year:'2-digit'})}
@@ -195,7 +195,7 @@ const IncomeStatementModal: React.FC<{
                         <tbody className="divide-y divide-gray-100">
                             <tr>
                                 <td className="py-3 font-bold text-gray-800" colSpan={2}>Gross Rental Revenue</td>
-                                <td className="py-3 text-right font-bold text-gray-800">KES {data.grossRevenueMonth.toLocaleString()}</td>
+                                <td className="py-3 text-right font-bold text-gray-800">KES {Number(data?.grossRevenueMonth ?? 0).toLocaleString()}</td>
                             </tr>
 
                             {/* Deductions Breakdown */}
@@ -209,18 +209,18 @@ const IncomeStatementModal: React.FC<{
                                 <tr key={idx}>
                                     <td className="py-2 pl-4 text-gray-600">{item.description}</td>
                                     <td className="py-2 text-gray-500 text-xs">{item.category}</td>
-                                    <td className="py-2 text-right text-red-600">- KES {item.amount.toLocaleString()}</td>
+                                    <td className="py-2 text-right text-red-600">- KES {Number(item?.amount ?? 0).toLocaleString()}</td>
                                 </tr>
                             ))}
 
                             <tr className="border-t-2 border-gray-200">
                                 <td className="py-3 font-bold text-gray-700" colSpan={2}>Total Deductions</td>
-                                <td className="py-3 text-right font-bold text-red-700">- KES {data.monthlyDeductions.toLocaleString()}</td>
+                                <td className="py-3 text-right font-bold text-red-700">- KES {Number(data?.monthlyDeductions ?? 0).toLocaleString()}</td>
                             </tr>
 
                             <tr className="bg-gray-100 font-extrabold border-t-2 border-gray-800 text-lg">
                                 <td className="py-4 pl-4 uppercase text-gray-900" colSpan={2}>Net Income (Payout)</td>
-                                <td className="py-4 text-right pr-4 text-green-700">KES {data.netIncome.toLocaleString()}</td>
+                                <td className="py-4 text-right pr-4 text-green-700">KES {Number(data?.netIncome ?? 0).toLocaleString()}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -352,7 +352,7 @@ export const LandlordInvestModal: React.FC<{
 // --- MAIN COMPONENT ---
 
 const LandlordsPortal: React.FC = () => {
-    const { landlords, properties, tenants, tasks, deductionRules, bills, addInvestment, currentUser, funds, rfTransactions, investments } = useData();
+    const { landlords, properties, tenants, tasks, deductionRules, bills, addInvestment, currentUser, funds, rfTransactions, investments, isDataLoading } = useData();
     
     // Tab State
     const [activeTab, setActiveTab] = useState<'dashboard' | 'properties' | 'financials' | 'requests' | 'growth'>('dashboard');
@@ -404,6 +404,8 @@ const LandlordsPortal: React.FC = () => {
 
     const myTenants = useMemo(() => tenants.filter(t => myProperties.some(p => p.id === t.propertyId)), [tenants, myProperties]);
     const myTasks = useMemo(() => tasks.filter(t => myProperties.some(p => p.name === t.property)), [tasks, myProperties]);
+
+    const isPortfolioEmpty = !isDataLoading && myProperties.length === 0;
 
     // 3. Calculate Financials
     const financials = useMemo(() => {
@@ -541,7 +543,7 @@ const LandlordsPortal: React.FC = () => {
 
         const tablePayments = useMockData 
             ? myTenants.slice(0, 6).map(t => ({
-                tenantName: t.name, unit: t.unit, amount: `KES ${t.rentAmount.toLocaleString()}`, date: `${financialPeriod}-${selectedDayFilter < 10 ? '0'+selectedDayFilter : selectedDayFilter}`
+                tenantName: t.name, unit: t.unit, amount: `KES ${Number(t.rentAmount ?? 0).toLocaleString()}`, date: `${financialPeriod}-${selectedDayFilter < 10 ? '0'+selectedDayFilter : selectedDayFilter}`
               }))
             : currentMonthPayments.filter(p => p.day <= selectedDayFilter);
 
@@ -576,7 +578,7 @@ const LandlordsPortal: React.FC = () => {
             list.push({ 
                 type: 'warning', 
                 title: 'Collections Alert',
-                text: `KES ${financials.unpaidRevenue.toLocaleString()} outstanding from ${myTenants.filter(t => t.status === 'Overdue').length} tenants.` 
+                text: `KES ${Number(financials.unpaidRevenue ?? 0).toLocaleString()} outstanding from ${myTenants.filter(t => t.status === 'Overdue').length} tenants.` 
             });
         }
         
@@ -796,10 +798,37 @@ const LandlordsPortal: React.FC = () => {
 
                         {/* Top KPIs */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <MetricCard title="Properties" value={myProperties.length.toString()} subtext="Managed Assets" color="blue" />
-                            <MetricCard title="Total Units" value={totalUnits.toString()} subtext="Portfolio Size" color="indigo" />
-                            <MetricCard title="Occupancy" value={`${occupancyRate}%`} subtext={`${occupiedUnits} Occupied`} color="green" />
-                            <MetricCard title="Collection (MTD)" value={`KES ${(collectionStats.collected/1000).toFixed(1)}k`} subtext={`${collectionStats.rate}% Collected`} color="purple" />
+                            {isDataLoading ? (
+                                <>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                        <div className="h-3 w-20 bg-gray-200 rounded mb-3"></div>
+                                        <div className="h-7 w-24 bg-gray-200 rounded mb-2"></div>
+                                        <div className="h-3 w-32 bg-gray-200 rounded"></div>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                        <div className="h-3 w-20 bg-gray-200 rounded mb-3"></div>
+                                        <div className="h-7 w-24 bg-gray-200 rounded mb-2"></div>
+                                        <div className="h-3 w-32 bg-gray-200 rounded"></div>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                        <div className="h-3 w-20 bg-gray-200 rounded mb-3"></div>
+                                        <div className="h-7 w-24 bg-gray-200 rounded mb-2"></div>
+                                        <div className="h-3 w-32 bg-gray-200 rounded"></div>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                        <div className="h-3 w-20 bg-gray-200 rounded mb-3"></div>
+                                        <div className="h-7 w-24 bg-gray-200 rounded mb-2"></div>
+                                        <div className="h-3 w-32 bg-gray-200 rounded"></div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <MetricCard title="Properties" value={myProperties.length.toString()} subtext={isPortfolioEmpty ? 'No managed properties yet' : 'Managed Assets'} color="blue" />
+                                    <MetricCard title="Total Units" value={totalUnits.toString()} subtext={isPortfolioEmpty ? 'Portfolio has no units yet' : 'Portfolio Size'} color="indigo" />
+                                    <MetricCard title="Occupancy" value={isPortfolioEmpty ? '—' : `${occupancyRate}%`} subtext={isPortfolioEmpty ? 'Portfolio occupancy: No units added' : `${occupiedUnits} Occupied`} color="green" />
+                                    <MetricCard title="Collection (MTD)" value={`KES ${(collectionStats.collected/1000).toFixed(1)}k`} subtext={isPortfolioEmpty ? 'No collections this month' : `${collectionStats.rate}% Collected`} color="purple" />
+                                </>
+                            )}
                         </div>
 
                         {/* Main Content Grid */}
@@ -866,7 +895,7 @@ const LandlordsPortal: React.FC = () => {
                                                                 <td className="py-2 font-medium text-gray-800">{p.tenantName} <span className="text-gray-400 text-[9px] ml-1">{p.unit}</span></td>
                                                                 <td className="py-2 text-gray-500">{p.unit}</td>
                                                                 <td className="py-2 text-right text-green-600 font-bold">
-                                                                    {p.amount ? p.amount : `KES ${p.amountVal.toLocaleString()}`}
+                                                                    {p.amount ? p.amount : `KES ${Number(p.amountVal ?? 0).toLocaleString()}`}
                                                                 </td>
                                                                 <td className="py-2 text-right text-gray-500">{p.date}</td>
                                                             </tr>
@@ -1061,15 +1090,15 @@ const LandlordsPortal: React.FC = () => {
                                         <div className="space-y-3 text-sm">
                                             <div className="flex justify-between pb-2 border-b border-gray-100">
                                                 <span className="text-gray-600">Total Gross Revenue</span>
-                                                <span className="font-bold text-gray-900">KES {financials.grossRevenueMonth.toLocaleString()}</span>
+                                                <span className="font-bold text-gray-900">KES {Number(financials.grossRevenueMonth ?? 0).toLocaleString()}</span>
                                             </div>
                                             <div className="flex justify-between pb-2 border-b border-gray-100 text-red-600">
                                                 <span>Total Deductions</span>
-                                                <span>- KES {financials.monthlyDeductions.toLocaleString()}</span>
+                                                <span>- KES {Number(financials.monthlyDeductions ?? 0).toLocaleString()}</span>
                                             </div>
                                             <div className="flex justify-between pt-2 text-lg font-extrabold text-green-700">
                                                 <span>Net Income</span>
-                                                <span>KES {financials.netIncome.toLocaleString()}</span>
+                                                <span>KES {Number(financials.netIncome ?? 0).toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1078,20 +1107,20 @@ const LandlordsPortal: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="bg-white p-4 rounded-xl border-t-4 border-indigo-500 shadow-sm">
                                             <p className="text-xs text-gray-500 uppercase">Placement Fees</p>
-                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.placementFeeDeduction.toLocaleString()}</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {Number(financials.placementFeeDeduction ?? 0).toLocaleString()}</p>
                                             <p className="text-xs text-gray-400">{financials.newTenants.length} New Tenants</p>
                                         </div>
                                         <div className="bg-white p-4 rounded-xl border-t-4 border-orange-500 shadow-sm">
                                             <p className="text-xs text-gray-500 uppercase">Bills & Utilities</p>
-                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.billDeductions.toLocaleString()}</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {Number(financials.billDeductions ?? 0).toLocaleString()}</p>
                                         </div>
                                         <div className="bg-white p-4 rounded-xl border-t-4 border-blue-500 shadow-sm">
                                             <p className="text-xs text-gray-500 uppercase">Mgmt & Rules</p>
-                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.ruleDeductions.toLocaleString()}</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {Number(financials.ruleDeductions ?? 0).toLocaleString()}</p>
                                         </div>
                                         <div className="bg-white p-4 rounded-xl border-t-4 border-gray-500 shadow-sm">
                                             <p className="text-xs text-gray-500 uppercase">Maintenance</p>
-                                            <p className="text-xl font-extrabold text-red-600">- KES {financials.maintenanceDeductions.toLocaleString()}</p>
+                                            <p className="text-xl font-extrabold text-red-600">- KES {Number(financials.maintenanceDeductions ?? 0).toLocaleString()}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1133,7 +1162,7 @@ const LandlordsPortal: React.FC = () => {
                                                         <td className="px-4 py-3 font-medium text-gray-800">{t.name}</td>
                                                         <td className="px-4 py-3 text-gray-600">{t.propertyName}</td>
                                                         <td className="px-4 py-3 text-gray-600">{t.unit}</td>
-                                                        <td className="px-4 py-3 text-right font-bold text-gray-800">KES {t.rentAmount.toLocaleString()}</td>
+                                                        <td className="px-4 py-3 text-right font-bold text-gray-800">KES {Number(t.rentAmount ?? 0).toLocaleString()}</td>
                                                         <td className="px-4 py-3 text-center">
                                                             {isNew ? (
                                                                 <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">NEW</span>

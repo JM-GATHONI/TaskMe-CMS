@@ -27,13 +27,13 @@ const ReviewQuoteModal: React.FC<{
                         <p className="font-bold text-gray-600 mb-1">Items:</p>
                         <ul className="list-disc pl-4 space-y-1 text-gray-600">
                             {quote.items.map((item, i) => (
-                                <li key={i}>{item.description} - KES {item.amount.toLocaleString()}</li>
+                                <li key={i}>{item.description} - KES {Number(item.amount ?? 0).toLocaleString()}</li>
                             ))}
                         </ul>
                     </div>
                     <div className="flex justify-between items-center mt-4 pt-2 border-t font-bold text-lg">
                         <span>Total Quote:</span>
-                        <span className="text-blue-600">KES {quote.totalAmount.toLocaleString()}</span>
+                        <span className="text-blue-600">KES {Number(quote.totalAmount ?? 0).toLocaleString()}</span>
                     </div>
                     {quote.notes && <p className="mt-2 text-xs text-gray-500 italic">Vendor Note: "{quote.notes}"</p>}
                 </div>

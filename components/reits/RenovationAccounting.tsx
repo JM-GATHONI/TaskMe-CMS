@@ -69,15 +69,15 @@ const RenovationAccounting: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
                     <p className="text-gray-500 text-sm font-bold uppercase">Total Budget</p>
-                    <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {(selectedProject?.budget || 0).toLocaleString()}</h3>
+                    <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {Number(selectedProject?.budget ?? 0).toLocaleString()}</h3>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500">
                     <p className="text-gray-500 text-sm font-bold uppercase">Total Spent</p>
-                    <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {totalSpent.toLocaleString()}</h3>
+                    <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {Number(totalSpent ?? 0).toLocaleString()}</h3>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
                     <p className="text-gray-500 text-sm font-bold uppercase">Remaining</p>
-                    <h3 className="text-2xl font-extrabold text-green-600 mt-2">KES {remainingBudget.toLocaleString()}</h3>
+                    <h3 className="text-2xl font-extrabold text-green-600 mt-2">KES {Number(remainingBudget ?? 0).toLocaleString()}</h3>
                 </div>
             </div>
 
@@ -104,7 +104,7 @@ const RenovationAccounting: React.FC = () => {
                                 <td className="px-6 py-4 font-bold">{exp.vendor}</td>
                                 <td className="px-6 py-4 text-gray-600">{exp.description}</td>
                                 <td className="px-6 py-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs">{exp.category}</span></td>
-                                <td className="px-6 py-4 text-right font-mono font-bold">KES {exp.amount.toLocaleString()}</td>
+                                <td className="px-6 py-4 text-right font-mono font-bold">KES {Number(exp.amount ?? 0).toLocaleString()}</td>
                                 <td className="px-6 py-4 text-center">
                                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${exp.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                         {exp.status}

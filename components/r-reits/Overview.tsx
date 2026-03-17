@@ -306,7 +306,7 @@ const RReitsOverview: React.FC = () => {
                                 </div>
                                 <div className="text-right">
                                     <p className={`text-sm font-bold ${tx.category === 'Inbound' ? 'text-green-600' : 'text-red-600'}`}>
-                                        {tx.category === 'Inbound' ? '+' : '-'} KES {tx.amount.toLocaleString()}
+                                        {tx.category === 'Inbound' ? '+' : '-'} KES {Number(tx.amount ?? 0).toLocaleString()}
                                     </p>
                                     <p className="text-[10px] text-gray-400">{tx.date}</p>
                                 </div>

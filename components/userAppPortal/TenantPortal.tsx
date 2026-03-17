@@ -5,20 +5,67 @@ import { useData } from '../../context/DataContext';
 import { TenantRequest, RequestMessage, TaskPriority, TaskStatus, Task, TenantProfile, Message } from '../../types';
 import { printSection } from '../../utils/exportHelper';
 import AdBanners from './AdBanners';
+import { useProfileFirstName } from '../../hooks/useProfileFirstName';
+import { supabase } from '../../utils/supabaseClient';
 
 // --- STK PUSH UI ---
-const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile }> = ({ onClose, amount, tenant }) => {
+const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile; userId: string; leaseId?: string | null }> = ({ onClose, amount, tenant, userId, leaseId = null }) => {
     const [step, setStep] = useState<'input' | 'processing' | 'success'>('input');
     const [phone, setPhone] = useState(tenant.phone);
     const [txCode, setTxCode] = useState('');
+    const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handlePay = () => {
+    useEffect(() => {
+        if (!userId) return;
+        if (!checkoutRequestId) return;
+
+        const channel = supabase
+            .channel(`payments-${userId}-${checkoutRequestId}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'payments', filter: `user_id=eq.${userId}` },
+                (payload: any) => {
+                    const row = payload?.new ?? payload?.old;
+                    if (!row) return;
+                    if (String(row.checkout_request_id ?? '') !== checkoutRequestId) return;
+                    if (String(row.status ?? '') === 'completed') {
+                        setTxCode(String(row.transaction_id ?? ''));
+                        setStep('success');
+                    }
+                    if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
+                        setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
+                        setStep('input');
+                        setIsSubmitting(false);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [userId, checkoutRequestId]);
+
+    const handlePay = async () => {
+        setErrorMsg(null);
+        setIsSubmitting(true);
         setStep('processing');
-        setTimeout(() => {
-            const randomCode = `LGR${Math.floor(Math.random()*10000).toString().padStart(4, '0')}QT${Math.floor(Math.random()*9)}M`;
-            setTxCode(randomCode);
-            setStep('success');
-        }, 3000);
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: { phone, amount, leaseId, userId },
+            });
+            if (error) throw error;
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+            setCheckoutRequestId(id);
+            // stay on processing: user should complete prompt, callback flips to success
+        } catch (e: any) {
+            setErrorMsg(e?.message ?? 'Failed to initiate STK push.');
+            setStep('input');
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -43,9 +90,14 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
                                 <label className="block mb-2 font-semibold text-[#2d3748] text-[15px]">Amount Due (KES)</label>
                                 <div className="w-full p-3.5 border-2 border-[#c8e6c9] bg-gray-50 rounded-xl text-base font-bold text-[#1a365d]">{amount.toLocaleString()}</div>
                             </div>
+                            {errorMsg && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">
+                                    {errorMsg}
+                                </div>
+                            )}
                             <div className="flex gap-3 pt-2">
                                 <button onClick={onClose} className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors">Cancel</button>
-                                <button onClick={handlePay} className="flex-[2] bg-gradient-to-r from-[#1F9F21] to-[#177D1A] text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all">Pay Now</button>
+                                <button onClick={handlePay} disabled={isSubmitting} className="flex-[2] bg-gradient-to-r from-[#1F9F21] to-[#177D1A] text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed">Pay Now</button>
                             </div>
                         </div>
                     </div>
@@ -68,7 +120,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
                                 <div className="text-left mb-6">
                                     <p className="text-[#4caf50] font-medium mb-1">Time: {new Date().toLocaleTimeString()}</p>
                                     <div className="bg-[#f1fdf1] p-3 rounded-lg border border-dashed border-[#1F9F21] text-center font-mono font-bold text-[#177D1A]">
-                                        {txCode}
+                                        {txCode || checkoutRequestId || '—'}
                                     </div>
                                 </div>
                                 <button onClick={onClose} className="w-full py-3.5 bg-[#1F9F21] text-white font-bold rounded-xl shadow-lg">Done</button>
@@ -82,13 +134,14 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
 };
 
 const TenantPortal: React.FC = () => {
-    const { tenants, updateTenant, tasks, addTask, messages, addMessage, currentUser } = useData();
+    const { tenants, updateTenant, tasks, addTask, messages, addMessage, currentUser, isDataLoading } = useData();
     const [requestType, setRequestType] = useState<'Maintenance' | 'General'>('Maintenance');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [isPayRentModalOpen, setIsPayRentModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
     const [newMessageContent, setNewMessageContent] = useState('');
+    const { firstName, loading: profileLoading } = useProfileFirstName();
 
     // Use logged-in user if available and is a tenant, fallback to first tenant only for dev/demo
     const activeUser = (currentUser?.role === 'Tenant' ? (currentUser as TenantProfile) : undefined) || tenants[0];
@@ -111,9 +164,9 @@ const TenantPortal: React.FC = () => {
 
     const balance = useMemo(() => {
         if (!activeUser) return 0;
-        const rent = activeUser.status === 'Overdue' ? activeUser.rentAmount : 0;
-        const bills = activeUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0;
-        const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0;
+        const rent = activeUser.status === 'Overdue' ? Number(activeUser.rentAmount ?? 0) : 0;
+        const bills = activeUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + Number(b.amount ?? 0), 0) || 0;
+        const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + Number(f.amount ?? 0), 0) || 0;
         return rent + bills + fines;
     }, [activeUser]);
 
@@ -188,6 +241,13 @@ const TenantPortal: React.FC = () => {
 
     if (!activeUser) return <div className="p-8 text-center">Loading Tenant Profile...</div>;
 
+    const displayName = profileLoading
+        ? 'Loading...'
+        : ((firstName ?? '').trim() ? (firstName as string).trim() : activeUser.name);
+
+    const hasLease = !!activeUser.propertyName && Number(activeUser.rentAmount ?? 0) > 0;
+    const canPayNow = Number(balance ?? 0) > 0;
+
     return (
         <div className="space-y-6 pb-20">
             {/* Header */}
@@ -198,10 +258,10 @@ const TenantPortal: React.FC = () => {
                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-4">
                         <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold border-2 border-white/50">
-                            {activeUser.name.charAt(0)}
+                            {displayName.charAt(0)}
                         </div>
                         <div>
-                            <h1 className="text-2xl font-bold">Welcome, {activeUser.name}</h1>
+                            <h1 className="text-2xl font-bold">Welcome, {displayName}</h1>
                             <p className="opacity-90">{activeUser.unit} • {activeUser.propertyName}</p>
                         </div>
                     </div>
@@ -227,17 +287,46 @@ const TenantPortal: React.FC = () => {
             {activeTab === 'dashboard' && (
                 <div className="space-y-6 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {isDataLoading ? (
+                            <>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                    <div className="h-3 w-28 bg-gray-200 rounded mb-3"></div>
+                                    <div className="h-7 w-36 bg-gray-200 rounded mb-2"></div>
+                                    <div className="h-3 w-24 bg-gray-200 rounded"></div>
+                                    <div className="h-9 w-full bg-gray-200 rounded mt-6"></div>
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                    <div className="h-3 w-28 bg-gray-200 rounded mb-4"></div>
+                                    <div className="space-y-3">
+                                        <div className="h-4 w-full bg-gray-200 rounded"></div>
+                                        <div className="h-4 w-full bg-gray-200 rounded"></div>
+                                        <div className="h-4 w-full bg-gray-200 rounded"></div>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse">
+                                    <div className="h-3 w-28 bg-gray-200 rounded mb-4"></div>
+                                    <div className="space-y-3">
+                                        <div className="h-9 w-full bg-gray-200 rounded"></div>
+                                        <div className="h-9 w-full bg-gray-200 rounded"></div>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <>
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
                             <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase">Current Balance</p>
                                 <p className={`text-3xl font-extrabold mt-1 ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                    KES {balance.toLocaleString()}
+                                    KES {Number(balance ?? 0).toLocaleString()}
                                 </p>
-                                <p className="text-xs text-gray-400 mt-1">Due Date: 5th of Month</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {hasLease ? 'Due Date: 5th of Month' : 'No active lease found'}
+                                </p>
                             </div>
                             <button 
                                 onClick={() => setIsPayRentModalOpen(true)}
-                                className="w-full mt-4 py-2 bg-primary text-white font-bold rounded-lg shadow-md hover:bg-primary-dark transition-colors"
+                                disabled={!canPayNow}
+                                className={`w-full mt-4 py-2 font-bold rounded-lg shadow-md transition-colors ${canPayNow ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
                             >
                                 Pay Now
                             </button>
@@ -248,15 +337,23 @@ const TenantPortal: React.FC = () => {
                             <div className="space-y-3 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Status</span>
-                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-bold">{activeUser.status}</span>
+                                    {hasLease ? (
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-bold">{activeUser.status}</span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-bold">No active lease</span>
+                                    )}
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Lease Ends</span>
-                                    <span className="font-medium">{activeUser.leaseEnd ? new Date(activeUser.leaseEnd).toLocaleDateString() : 'Month-to-Month'}</span>
+                                    <span className="font-medium">
+                                        {hasLease ? (activeUser.leaseEnd ? new Date(activeUser.leaseEnd).toLocaleDateString() : 'Month-to-Month') : '—'}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Rent</span>
-                                    <span className="font-medium">KES {activeUser.rentAmount.toLocaleString()}</span>
+                                    <span className="font-medium">
+                                        KES {Number(activeUser.rentAmount ?? 0).toLocaleString()}{hasLease ? '' : ' (no lease)'}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -272,6 +369,8 @@ const TenantPortal: React.FC = () => {
                                 </button>
                             </div>
                         </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -417,7 +516,15 @@ const TenantPortal: React.FC = () => {
                 </div>
             )}
 
-            {isPayRentModalOpen && <MpesaStkModal onClose={() => setIsPayRentModalOpen(false)} amount={balance > 0 ? balance : activeUser.rentAmount} tenant={activeUser} />}
+            {isPayRentModalOpen && (
+                <MpesaStkModal
+                    onClose={() => setIsPayRentModalOpen(false)}
+                    amount={balance > 0 ? balance : activeUser.rentAmount}
+                    tenant={activeUser}
+                    userId={String(currentUser?.id ?? activeUser.id)}
+                    leaseId={null}
+                />
+            )}
             
             {/* Advertising Banners */}
             <AdBanners />

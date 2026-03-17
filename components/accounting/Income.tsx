@@ -183,7 +183,7 @@ const Income: React.FC = () => {
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Gross Revenue</p>
-                            <h3 className="text-3xl font-extrabold text-gray-800 mt-2">KES {totals.gross.toLocaleString()}</h3>
+                            <h3 className="text-3xl font-extrabold text-gray-800 mt-2">KES {Number(totals.gross ?? 0).toLocaleString()}</h3>
                         </div>
                         <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Icon name="revenue" className="w-6 h-6" /></div>
                     </div>
@@ -192,7 +192,7 @@ const Income: React.FC = () => {
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Net Agency Income</p>
-                            <h3 className="text-3xl font-extrabold text-blue-600 mt-2">KES {totals.agency.toLocaleString()}</h3>
+                            <h3 className="text-3xl font-extrabold text-blue-600 mt-2">KES {Number(totals.agency ?? 0).toLocaleString()}</h3>
                         </div>
                         <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Icon name="wallet" className="w-6 h-6" /></div>
                     </div>

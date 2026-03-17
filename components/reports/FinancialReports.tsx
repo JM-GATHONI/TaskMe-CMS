@@ -210,7 +210,7 @@ const FinancialReports: React.FC = () => {
                                     </tr></thead>
                                     <tbody>
                                         {Object.entries(collectionsByDate).map(([date, amt], i) => (
-                                            <tr key={i} className="hover:bg-gray-50"><td className="px-3 py-2">{date}</td><td className="px-3 py-2 text-gray-500">Consolidated</td><td className="px-3 py-2 text-right font-bold text-green-600">KES {amt.toLocaleString()}</td></tr>
+                                            <tr key={i} className="hover:bg-gray-50"><td className="px-3 py-2">{date}</td><td className="px-3 py-2 text-gray-500">Consolidated</td><td className="px-3 py-2 text-right font-bold text-green-600">KES {Number(amt ?? 0).toLocaleString()}</td></tr>
                                         ))}
                                     </tbody>
                                  </table>
@@ -225,7 +225,7 @@ const FinancialReports: React.FC = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm animate-fade-in">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-bold text-gray-800">Operational Expenses</h2>
-                        <p className="text-2xl font-bold text-red-600">Total: KES {expenseData.total.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-red-600">Total: KES {Number(expenseData?.total ?? 0).toLocaleString()}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
@@ -241,7 +241,7 @@ const FinancialReports: React.FC = () => {
                                             <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: expenseChartData.datasets[0].backgroundColor[i] }}></span>
                                             <span className="font-medium text-gray-700">{cat}</span>
                                         </div>
-                                        <span className="font-bold text-gray-900">KES {amt.toLocaleString()}</span>
+                                        <span className="font-bold text-gray-900">KES {Number(amt ?? 0).toLocaleString()}</span>
                                     </div>
                                 ))}
                             </div>
@@ -258,7 +258,7 @@ const FinancialReports: React.FC = () => {
                         <div className="text-right">
                             <p className="text-sm text-gray-500">Total Outstanding</p>
                             <p className="text-2xl font-bold text-red-600">
-                                KES {arrearsData.reduce((sum, a) => sum + (a.amount || 0), 0).toLocaleString()}
+                                KES {Number(arrearsData.reduce((sum, a) => sum + (a.amount || 0), 0) ?? 0).toLocaleString()}
                             </p>
                         </div>
                     </div>
@@ -291,7 +291,7 @@ const FinancialReports: React.FC = () => {
                                                         {a.daysOverdue} Days
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 text-right font-bold text-red-600">KES {a.amount.toLocaleString()}</td>
+                                                <td className="px-4 py-3 text-right font-bold text-red-600">KES {Number(a.amount ?? 0).toLocaleString()}</td>
                                             </tr>
                                         )) : (
                                             <tr>
@@ -312,17 +312,17 @@ const FinancialReports: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-800 mb-6">Net Performance (Profit/Loss)</h2>
                     <div className="flex justify-center gap-12 items-end h-64">
                         <div className="text-center w-32">
-                            <p className="mb-2 font-bold text-green-600">KES {totalRevenue.toLocaleString()}</p>
+                            <p className="mb-2 font-bold text-green-600">KES {Number(totalRevenue ?? 0).toLocaleString()}</p>
                             <div className="bg-green-500 w-full rounded-t-lg" style={{ height: '200px' }}></div>
                             <p className="mt-2 font-semibold text-gray-600">Revenue</p>
                         </div>
                         <div className="text-center w-32">
-                            <p className="mb-2 font-bold text-red-600">KES {expenseData.total.toLocaleString()}</p>
+                            <p className="mb-2 font-bold text-red-600">KES {Number(expenseData?.total ?? 0).toLocaleString()}</p>
                             <div className="bg-red-500 w-full rounded-t-lg" style={{ height: '120px' }}></div>
                             <p className="mt-2 font-semibold text-gray-600">Expenses</p>
                         </div>
                         <div className="text-center w-32">
-                            <p className="mb-2 font-bold text-blue-600">KES {(totalRevenue - expenseData.total).toLocaleString()}</p>
+                            <p className="mb-2 font-bold text-blue-600">KES {(Number(totalRevenue ?? 0) - Number(expenseData?.total ?? 0)).toLocaleString()}</p>
                             <div className="bg-blue-500 w-full rounded-t-lg" style={{ height: '80px' }}></div>
                             <p className="mt-2 font-semibold text-gray-600">Net Profit</p>
                         </div>

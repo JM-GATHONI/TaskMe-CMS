@@ -59,19 +59,22 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 // ignore: role resolution is best-effort
             }
 
-            console.log('[Supabase] staff_profiles lookup', { userId: user.id });
-            const { data: staffRows, error: staffError } = await supabase
-                .schema('app')
-                .from('staff_profiles')
-                .select('id,name,role,email,phone,branch,status,salaryConfig,bankDetails,payrollInfo,leaveBalance,commissions,deductions,attendanceRecord')
-                .eq('id', user.id)
-                .limit(1);
+            let staffRow: any = null;
+            if (resolvedRole !== 'Tenant' && resolvedRole !== 'Caretaker') {
+                console.log('[Supabase] staff_profiles lookup', { userId: user.id });
+                const { data: staffRows, error: staffError } = await supabase
+                    .schema('app')
+                    .from('staff_profiles')
+                    .select('id,name,role,email,phone,branch,status,salaryConfig,bankDetails,payrollInfo,leaveBalance,commissions,deductions,attendanceRecord')
+                    .eq('id', user.id)
+                    .limit(1);
 
-            if (staffError) {
-                console.warn('Error loading staff profile', staffError);
+                if (staffError) {
+                    console.warn('Error loading staff profile', staffError);
+                }
+
+                staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
             }
-
-            const staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
 
             const loggedIn: StaffProfile = {
                 id: user.id,
@@ -192,6 +195,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                     </svg>
                                 ) : 'Login'}
                             </button>
+
+                            <p className="text-center text-xs text-gray-600 mt-3">
+                                Don't have an account?{' '}
+                                <a href="#/signup" className="font-semibold text-primary hover:text-primary-dark hover:underline transition-colors">
+                                    Sign up here
+                                </a>
+                            </p>
                         </form>
                     )}
 

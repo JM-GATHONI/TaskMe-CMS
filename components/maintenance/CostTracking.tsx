@@ -81,15 +81,15 @@ const CostTracking: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                  <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
                     <p className="text-gray-500 text-xs font-bold uppercase">Total Budget (Mo)</p>
-                    <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {budget.toLocaleString()}</h3>
+                    <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {Number(budget ?? 0).toLocaleString()}</h3>
                 </div>
                  <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500">
                     <p className="text-gray-500 text-xs font-bold uppercase">Total Spent</p>
-                    <h3 className="text-2xl font-extrabold text-red-600 mt-2">KES {costData.total.toLocaleString()}</h3>
+                    <h3 className="text-2xl font-extrabold text-red-600 mt-2">KES {Number(costData?.total ?? 0).toLocaleString()}</h3>
                 </div>
                  <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
                     <p className="text-gray-500 text-xs font-bold uppercase">Remaining</p>
-                    <h3 className="text-2xl font-extrabold text-green-600 mt-2">KES {(budget - costData.total).toLocaleString()}</h3>
+                    <h3 className="text-2xl font-extrabold text-green-600 mt-2">KES {(Number(budget ?? 0) - Number(costData?.total ?? 0)).toLocaleString()}</h3>
                 </div>
             </div>
 
@@ -135,10 +135,10 @@ const CostTracking: React.FC = () => {
                             {MOCK_TASKS.filter(t => t.costs && (t.costs.labor + t.costs.materials) > 2000).slice(0, 5).map((t, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 font-medium text-gray-800">{t.title}</td>
-                                    <td className="px-4 py-3 text-gray-600">{t.costs?.labor.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-gray-600">{t.costs?.materials.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-gray-600">{Number(t.costs?.labor ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-gray-600">{Number(t.costs?.materials ?? 0).toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right font-bold text-gray-800">
-                                        KES {((t.costs?.labor||0) + (t.costs?.materials||0) + (t.costs?.travel||0)).toLocaleString()}
+                                        KES {(Number(t.costs?.labor ?? 0) + Number(t.costs?.materials ?? 0) + Number(t.costs?.travel ?? 0)).toLocaleString()}
                                     </td>
                                 </tr>
                             ))}

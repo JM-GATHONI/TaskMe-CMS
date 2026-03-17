@@ -124,7 +124,7 @@ const RecordPaymentModal: React.FC<{
                             onChange={e => setAmount(e.target.value)} 
                             className="w-full p-2 border rounded font-bold text-gray-800"
                         />
-                         <p className="text-[10px] text-gray-400 mt-1">Total Balance: KES {balance.toLocaleString()}</p>
+                         <p className="text-[10px] text-gray-400 mt-1">Total Balance: KES {Number(balance ?? 0).toLocaleString()}</p>
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-500 mb-1">Payment Method</label>
@@ -198,7 +198,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
             if (tenant) {
                 const newPayment = {
                     date: new Date().toISOString().split('T')[0],
-                    amount: `KES ${editableAmount.toLocaleString()}`,
+                    amount: `KES ${Number(editableAmount ?? 0).toLocaleString()}`,
                     status: 'Paid' as const,
                     method: 'M-Pesa',
                     reference: randomCode
@@ -208,7 +208,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                 updateTenant(tenantId, { paymentHistory: [newPayment, ...currentHistory] });
 
                 // --- TRIGGER NOTIFICATIONS ---
-                const msg = `Tenant ${tenant.name} paid KES ${editableAmount.toLocaleString()} via M-Pesa.`;
+                const msg = `Tenant ${tenant.name} paid KES ${Number(editableAmount ?? 0).toLocaleString()} via M-Pesa.`;
                 const newNotif: Notification = {
                     id: `notif-${Date.now()}`,
                     title: 'Payment Received',
@@ -224,7 +224,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                 const receiptSMS: Message = {
                     id: `msg-${Date.now()}`,
                     recipient: { name: tenant.name, contact: tenant.phone },
-                    content: `Payment of KES ${editableAmount.toLocaleString()} received. Ref: ${randomCode}. Thank you!`,
+                    content: `Payment of KES ${Number(editableAmount ?? 0).toLocaleString()} received. Ref: ${randomCode}. Thank you!`,
                     channel: 'SMS',
                     status: 'Sent',
                     timestamp: new Date().toLocaleString(),
@@ -466,7 +466,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         {step === 'success' && (
                             <div className="animate-fade-in">
                                 <div className="mpesa-success-msg">
-                                    Payment of <span className="text-[#1F9F21] font-bold ml-1">KES {editableAmount.toLocaleString()}</span> confirmed successfully!
+                                    Payment of <span className="text-[#1F9F21] font-bold ml-1">KES {Number(editableAmount ?? 0).toLocaleString()}</span> confirmed successfully!
                                 </div>
                                 <div className="text-left">
                                     <p className="text-[#4caf50] font-medium mb-1">Time:</p>
@@ -519,7 +519,7 @@ const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => voi
         updateTenant(tenant.id, { outstandingFines: updatedFines });
         
         // --- NOTIFICATION & SMS ---
-        const msgText = `You have been fined KES ${amount.toLocaleString()} for ${rule.type}, kindly pay to avoid further penalties.`;
+        const msgText = `You have been fined KES ${Number(amount ?? 0).toLocaleString()} for ${rule.type}, kindly pay to avoid further penalties.`;
         
         // 1. SMS
         const sms: Message = {
@@ -537,7 +537,7 @@ const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => voi
         addNotification({
             id: `notif-${Date.now()}`,
             title: 'Fine Applied',
-            message: `Fine of KES ${amount.toLocaleString()} applied to ${tenant.name} for ${rule.type}`,
+            message: `Fine of KES ${Number(amount ?? 0).toLocaleString()} applied to ${tenant.name} for ${rule.type}`,
             date: new Date().toLocaleString(),
             read: false,
             type: 'Warning',
@@ -858,7 +858,7 @@ const BillManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded text-center">
                                     <p className="text-xs text-blue-600 uppercase font-bold">Calculated Total</p>
-                                    <p className="text-2xl font-bold text-blue-900">KES {calculatedAmount.toLocaleString()}</p>
+                                    <p className="text-2xl font-bold text-blue-900">KES {Number(calculatedAmount ?? 0).toLocaleString()}</p>
                                     <p className="text-xs text-blue-500 mt-1">{(parseFloat(currRead)||0) - (parseFloat(prevRead)||0)} Units</p>
                                 </div>
                                 <button onClick={handleSaveMetered} className="w-full bg-primary text-white py-2 rounded font-bold hover:bg-primary-dark">Save Bill</button>
@@ -876,7 +876,7 @@ const BillManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                                         <p className="text-xs text-gray-500">{bill.date} {bill.description ? `• ${bill.description}` : ''}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="font-bold text-gray-800">KES {bill.amount.toLocaleString()}</p>
+                                        <p className="font-bold text-gray-800">KES {Number(bill.amount ?? 0).toLocaleString()}</p>
                                         <span className={`text-[10px] px-2 py-0.5 rounded ${bill.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                             {bill.status}
                                         </span>
@@ -1112,8 +1112,8 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
                             <tr key={idx}>
                                 <td className="py-2 px-2">{item.date}</td>
                                 <td className="py-2 px-2">{item.desc}</td>
-                                <td className="py-2 px-2 text-right">{item.type === 'Debit' ? item.amount.toLocaleString() : '-'}</td>
-                                <td className="py-2 px-2 text-right">{item.type === 'Credit' ? item.amount.toLocaleString() : '-'}</td>
+                                <td className="py-2 px-2 text-right">{item.type === 'Debit' ? Number(item.amount ?? 0).toLocaleString() : '-'}</td>
+                                <td className="py-2 px-2 text-right">{item.type === 'Credit' ? Number(item.amount ?? 0).toLocaleString() : '-'}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -1436,7 +1436,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const handleRecordPayment = (amount: number, method: string, reference: string, date: string) => {
         const newPayment = {
             date: date,
-            amount: `KES ${amount.toLocaleString()}`,
+            amount: `KES ${Number(amount ?? 0).toLocaleString()}`,
             status: 'Paid' as const,
             method: method,
             reference: reference
@@ -1624,37 +1624,37 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     <div className="p-3 bg-gray-50 rounded-lg space-y-2 border border-gray-100">
                         <div className="flex justify-between">
                             <span className="text-gray-600">Base Rent ({currentMonthName})</span>
-                            <span className="font-medium">KES {rentDue.toLocaleString()}</span>
+                            <span className="font-medium">KES {Number(rentDue ?? 0).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-600">Recurrent Bills</span>
-                            <span className="font-medium">KES {recurrentBills.toLocaleString()}</span>
+                            <span className="font-medium">KES {Number(recurrentBills ?? 0).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-600">Pending Bills/Fines</span>
-                            <span className="font-medium">KES {(pendingBills + fines).toLocaleString()}</span>
+                            <span className="font-medium">KES {(Number(pendingBills ?? 0) + Number(fines ?? 0)).toLocaleString()}</span>
                         </div>
                         {automatedLateFine > 0 && (
                             <div className="flex justify-between text-red-600">
                                 <span>Late Fee</span>
-                                <span>KES {automatedLateFine.toLocaleString()}</span>
+                                <span>KES {Number(automatedLateFine ?? 0).toLocaleString()}</span>
                             </div>
                         )}
                         <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-800">
                             <span>Total Invoiced</span>
-                            <span>KES {totalExpected.toLocaleString()}</span>
+                            <span>KES {Number(totalExpected ?? 0).toLocaleString()}</span>
                         </div>
                     </div>
 
                     <div className="flex justify-between items-center text-green-600">
                         <span className="font-medium">Amount Paid (This Month)</span>
-                        <span className="font-bold">- KES {amountPaidThisMonth.toLocaleString()}</span>
+                        <span className="font-bold">- KES {Number(amountPaidThisMonth ?? 0).toLocaleString()}</span>
                     </div>
 
                     <div className="border-t pt-3 mt-2 flex justify-between items-center">
                         <span className="font-bold text-gray-800 text-base">Balance Due</span>
                         <span className={`text-xl font-extrabold ${balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            KES {balanceDue.toLocaleString()}
+                            KES {Number(balanceDue ?? 0).toLocaleString()}
                         </span>
                     </div>
                 </div>
@@ -2005,12 +2005,12 @@ const ActiveTenants: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-2 text-sm mt-auto border-t pt-3 mb-3">
                                     <div>
                                         <p className="text-xs text-gray-400 uppercase font-bold">Rent</p>
-                                        <p className="font-semibold">KES {tenant.rentAmount?.toLocaleString()}</p>
+                                        <p className="font-semibold">KES {Number(tenant.rentAmount ?? 0).toLocaleString()}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-gray-400 uppercase font-bold">Total Due</p>
                                         <p className={`font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                            KES {totalDue.toLocaleString()}
+                                            KES {Number(totalDue ?? 0).toLocaleString()}
                                         </p>
                                     </div>
                                 </div>

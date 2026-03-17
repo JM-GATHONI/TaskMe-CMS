@@ -196,7 +196,7 @@ const TransactionModal: React.FC<{
                                         <option value="">-- Select Pending Bill --</option>
                                         {pendingBills.map(b => (
                                             <option key={b.id} value={b.id}>
-                                                {b.vendor} - {b.category} (KES {b.amount.toLocaleString()})
+                                                {b.vendor} - {b.category} (KES {Number(b.amount ?? 0).toLocaleString()})
                                             </option>
                                         ))}
                                     </select>

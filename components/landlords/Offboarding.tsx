@@ -263,7 +263,7 @@ const ManageOffboardingModal: React.FC<{
                                 </div>
                                 <div className="mt-4 pt-4 border-t border-blue-200 flex justify-between items-center">
                                     <span className="font-bold text-blue-900">Net Final Payout</span>
-                                    <span className="text-2xl font-bold text-blue-900">KES {financials.netPayout.toLocaleString()}</span>
+                                    <span className="text-2xl font-bold text-blue-900">KES {Number(financials.netPayout ?? 0).toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>
@@ -277,7 +277,7 @@ const ManageOffboardingModal: React.FC<{
                             <h3 className="text-xl font-bold text-gray-800">Ready to Terminate?</h3>
                             <p className="text-gray-600 text-sm max-w-md mx-auto">
                                 Ensure all checklists are complete, documents uploaded, and the final financial settlement of 
-                                <strong> KES {financials.netPayout.toLocaleString()}</strong> has been disbursed or approved.
+                                <strong> KES {Number(financials.netPayout ?? 0).toLocaleString()}</strong> has been disbursed or approved.
                             </p>
                             
                             <div className="flex flex-col gap-3 mt-6 max-w-xs mx-auto">

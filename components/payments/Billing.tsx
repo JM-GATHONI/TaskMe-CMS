@@ -63,7 +63,7 @@ const MeteredBill: React.FC<{ title: string; unit: string; category: string }> =
         };
         addBill(newBill);
         setStatus('Paid');
-        alert(`Payment of KES ${total.toLocaleString()} for ${title} recorded and marked as paid.`);
+        alert(`Payment of KES ${Number(total ?? 0).toLocaleString()} for ${title} recorded and marked as paid.`);
     };
 
     const handleReset = () => {
@@ -83,7 +83,7 @@ const MeteredBill: React.FC<{ title: string; unit: string; category: string }> =
             <div className="text-center pt-4 border-t">
                 <p className="text-gray-500">Current Bill</p>
                 <p className={`text-3xl font-bold ${status === 'Paid' ? 'text-gray-500' : 'text-primary'}`}>
-                    KES {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    KES {Number(total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
             </div>
             {status === 'Paid' ? (
@@ -130,7 +130,7 @@ const FixedBill: React.FC<{ title: string, category: string }> = ({ title, categ
         };
         addBill(newBill);
         setStatus('Paid');
-        alert(`Payment of KES ${val.toLocaleString()} for ${title} recorded.`);
+        alert(`Payment of KES ${Number(val ?? 0).toLocaleString()} for ${title} recorded.`);
     };
     
     const handleReset = () => {

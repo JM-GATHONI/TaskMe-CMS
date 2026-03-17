@@ -47,7 +47,7 @@ const PayRentModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             </div>
                             <div>
                                 <label className="block mb-2 font-semibold text-[#2d3748] text-[15px]">Amount Due (KES)</label>
-                                <div className="w-full p-3.5 border-2 border-[#c8e6c9] bg-gray-50 rounded-xl text-base font-bold text-[#1a365d]">{amountDue.toLocaleString()}</div>
+                                <div className="w-full p-3.5 border-2 border-[#c8e6c9] bg-gray-50 rounded-xl text-base font-bold text-[#1a365d]">{Number(amountDue ?? 0).toLocaleString()}</div>
                             </div>
                             <div className="flex gap-3 pt-2">
                                 <button onClick={onClose} className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors">Cancel</button>
@@ -77,7 +77,7 @@ const PayRentModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             {step === 'success' && (
                                 <div>
                                     <div className="bg-[#e8f5e9] border-l-4 border-[#1F9F21] p-5 rounded-r-xl mb-6 text-left border border-[#c8e6c9]">
-                                        <p className="text-lg text-[#1b5e20] font-semibold">Payment of <span className="text-[#1F9F21] font-bold text-2xl ml-1">KES {amountDue.toLocaleString()}</span> confirmed!</p>
+                                        <p className="text-lg text-[#1b5e20] font-semibold">Payment of <span className="text-[#1F9F21] font-bold text-2xl ml-1">KES {Number(amountDue ?? 0).toLocaleString()}</span> confirmed!</p>
                                     </div>
                                     <div className="text-left">
                                         <p className="text-[#4caf50] font-medium mb-1">Time:</p>
