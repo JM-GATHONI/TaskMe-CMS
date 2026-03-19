@@ -3,14 +3,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Icon from './Icon';
 import { useData } from '../context/DataContext';
 import { exportToCSV, printSection } from '../utils/exportHelper';
-import { 
-    CASH_FLOW_CHART_DATA,
-    TENANT_GROWTH_CHART_DATA,
-    AGENT_PERFORMANCE_CHART_DATA,
-    LEASE_VACANCY_CHART_DATA,
-    MAINTENANCE_PERFORMANCE_CHART_DATA,
-    PAYMENT_DISTRIBUTION_CHART_DATA
-} from '../constants';
 
 const navigate = (url: string) => {
     window.location.hash = url;
@@ -124,7 +116,7 @@ const CollapsibleSection: React.FC<{ title: string; children: React.ReactNode; d
 
 
 const QuickStats: React.FC = () => {
-    const { tenants, tasks, properties, staff } = useData();
+    const { tenants, tasks, properties, staff, bills } = useData();
     const [dateRange, setDateRange] = useState('Last 30 Days');
     const [branch, setBranch] = useState('All Branches');
 
@@ -330,6 +322,113 @@ const QuickStats: React.FC = () => {
         };
     }, [tenants, properties, membershipStats, financialStats, staff, branch]);
 
+    // --- Real Chart Data (top-level hooks) ---
+    const cashFlowChartData = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const currentYear = new Date().getFullYear();
+        const incomeData = new Array(12).fill(0);
+        const expenseData = new Array(12).fill(0);
+        (tenants || []).forEach(t => {
+            (t.paymentHistory || []).forEach(p => {
+                const d = new Date(p.date);
+                if (d.getFullYear() === currentYear && p.status === 'Paid') {
+                    incomeData[d.getMonth()] += parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0;
+                }
+            });
+        });
+        (bills || []).forEach((b: any) => {
+            const d = new Date(b.invoiceDate || b.dueDate || 0);
+            if (d.getFullYear() === currentYear && b.status === 'Paid') {
+                expenseData[d.getMonth()] += b.amount || 0;
+            }
+        });
+        const idx = new Date().getMonth();
+        const start = Math.max(0, idx - 5);
+        return {
+            labels: months.slice(start, idx + 1),
+            datasets: [
+                { label: 'Income', data: incomeData.slice(start, idx + 1), borderColor: '#10b981' },
+                { label: 'Expenses', data: expenseData.slice(start, idx + 1), borderColor: '#ef4444' }
+            ]
+        };
+    }, [tenants, bills]);
+
+    const tenantGrowthChartData = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const counts = new Array(12).fill(0);
+        const currentYear = new Date().getFullYear();
+        (tenants || []).forEach(t => {
+            try {
+                const d = new Date(t.onboardingDate);
+                if (!isNaN(d.getTime()) && d.getFullYear() === currentYear) counts[d.getMonth()]++;
+            } catch (_) {}
+        });
+        const idx = new Date().getMonth();
+        const start = Math.max(0, idx - 5);
+        return {
+            labels: months.slice(start, idx + 1),
+            datasets: [{ label: 'New Tenants', data: counts.slice(start, idx + 1), backgroundColor: '#3b82f6' }]
+        };
+    }, [tenants]);
+
+    const agentPerformanceChartData = useMemo(() => {
+        const byAgent: Record<string, number> = {};
+        (tasks || []).filter(t => t.status === 'Completed' || t.status === 'Closed').forEach(t => {
+            const name = t.assignedTo || 'Unassigned';
+            byAgent[name] = (byAgent[name] || 0) + 1;
+        });
+        const names = Object.keys(byAgent).slice(0, 6);
+        if (names.length === 0) return { labels: ['No completed tasks'], datasets: [{ label: 'Completed', data: [0], backgroundColor: '#8b5cf6' }] };
+        return {
+            labels: names,
+            datasets: [{ label: 'Completed', data: names.map(n => byAgent[n]), backgroundColor: '#8b5cf6' }]
+        };
+    }, [tasks]);
+
+    const occupancyChartData = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const totalUnits = (properties || []).reduce((acc, p) => acc + (p.units?.length || 0), 0);
+        const occupied = (properties || []).reduce((acc, p) => acc + (p.units || []).filter(u => u.status === 'Occupied').length, 0);
+        const rate = totalUnits > 0 ? Math.round((occupied / totalUnits) * 100) : 0;
+        const idx = new Date().getMonth();
+        const start = Math.max(0, idx - 5);
+        const data = new Array(Math.max(0, idx - start + 1)).fill(rate);
+        return {
+            labels: months.slice(start, idx + 1),
+            datasets: [{ label: 'Occupancy', data, borderColor: '#10b981' }]
+        };
+    }, [properties]);
+
+    const maintenanceChartData = useMemo(() => {
+        const cats: Record<string, number> = { Plumbing: 0, Electrical: 0, Structural: 0, Other: 0 };
+        (tasks || []).forEach(t => {
+            const title = (t.title || '').toLowerCase();
+            if (title.includes('plumb') || title.includes('leak') || title.includes('tap')) cats.Plumbing++;
+            else if (title.includes('electric') || title.includes('power') || title.includes('light')) cats.Electrical++;
+            else if (title.includes('struct') || title.includes('wall') || title.includes('roof')) cats.Structural++;
+            else if (t.title) cats.Other++;
+        });
+        return {
+            labels: ['Plumbing', 'Electrical', 'Structural', 'Other'],
+            datasets: [{ label: 'Requests', data: [cats.Plumbing, cats.Electrical, cats.Structural, cats.Other], backgroundColor: '#f59e0b' }]
+        };
+    }, [tasks]);
+
+    const paymentDistributionChartData = useMemo(() => {
+        const methods: Record<string, number> = { 'M-Pesa': 0, Bank: 0, Cash: 0 };
+        (tenants || []).forEach(t => {
+            (t.paymentHistory || []).filter(p => p.status === 'Paid').forEach(p => {
+                const m = (p.method || '').toLowerCase();
+                if (m.includes('mpesa') || m.includes('m-pesa')) methods['M-Pesa']++;
+                else if (m.includes('bank') || m.includes('transfer')) methods.Bank++;
+                else methods.Cash++;
+            });
+        });
+        return {
+            labels: ['M-Pesa', 'Bank', 'Cash'],
+            datasets: [{ data: [methods['M-Pesa'], methods.Bank, methods.Cash], backgroundColor: ['#10b981', '#3b82f6', '#9ca3af'] }]
+        };
+    }, [tenants]);
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -401,13 +500,13 @@ const QuickStats: React.FC = () => {
                     <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                         <div className="relative z-10">
                             <h4 className="font-semibold mb-4 text-center text-gray-600">Tenant Growth Trend</h4>
-                            <Chart type="bar" data={TENANT_GROWTH_CHART_DATA} />
+                            <Chart type="bar" data={tenantGrowthChartData} />
                         </div>
                     </div>
                     <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                         <div className="relative z-10">
                             <h4 className="font-semibold mb-4 text-center text-gray-600">Agent Performance</h4>
-                            <Chart type="bar" data={AGENT_PERFORMANCE_CHART_DATA} />
+                            <Chart type="bar" data={agentPerformanceChartData} />
                         </div>
                     </div>
                 </div>
@@ -424,7 +523,7 @@ const QuickStats: React.FC = () => {
                     <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                         <div className="relative z-10">
                             <h4 className="font-semibold mb-4 text-center text-gray-600">Cash Flow (In vs Out)</h4>
-                            <Chart type="line" data={CASH_FLOW_CHART_DATA} />
+                            <Chart type="line" data={cashFlowChartData} />
                         </div>
                     </div>
                     <div className={`${MAJOR_CARD_CLASSES} p-6`}>
@@ -432,7 +531,7 @@ const QuickStats: React.FC = () => {
                             <h4 className="font-semibold mb-4 text-center text-gray-600">Payment Methods</h4>
                             <div className="flex items-center justify-center">
                                 <div className="w-64">
-                                    <Chart type="pie" data={PAYMENT_DISTRIBUTION_CHART_DATA} />
+                                    <Chart type="pie" data={paymentDistributionChartData} />
                                 </div>
                             </div>
                         </div>
@@ -451,13 +550,13 @@ const QuickStats: React.FC = () => {
                     <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                         <div className="relative z-10">
                             <h4 className="font-semibold mb-4 text-center text-gray-600">Occupancy vs Vacancy</h4>
-                            <Chart type="line" data={LEASE_VACANCY_CHART_DATA} />
+                            <Chart type="line" data={occupancyChartData} />
                         </div>
                     </div>
                     <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                         <div className="relative z-10">
                             <h4 className="font-semibold mb-4 text-center text-gray-600">Maintenance Categories</h4>
-                            <Chart type="bar" data={MAINTENANCE_PERFORMANCE_CHART_DATA} options={{ scales: { x: { stacked: true }, y: { stacked: true } } }}/>
+                            <Chart type="bar" data={maintenanceChartData} options={{ scales: { x: { stacked: true }, y: { stacked: true } } }}/>
                         </div>
                     </div>
                 </div>

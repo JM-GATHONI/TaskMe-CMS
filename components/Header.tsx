@@ -2,6 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from './Icon';
 import { useData } from '../context/DataContext';
+import { useProfileDisplay } from '../hooks/useProfileDisplay';
+import { uploadToBucket } from '../utils/supabaseStorage';
+import { supabase } from '../utils/supabaseClient';
 import { Notification } from '../types';
 
 interface HeaderProps {
@@ -12,6 +15,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogout }) => {
   const { systemSettings, updateSystemSettings, notifications } = useData();
+  const { initial: profileInitial } = useProfileDisplay();
   const { logo, profilePic, companyName } = systemSettings;
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -72,8 +76,17 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
   const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       try {
-        const resizedPic = await resizeImage(e.target.files[0], 150, 150);
-        updateSystemSettings({ profilePic: resizedPic });
+        const file = e.target.files[0];
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const ext = file.name.split('.').pop() || 'jpg';
+          const path = `${user.id}/header-profile-${Date.now()}.${ext}`;
+          const url = await uploadToBucket('profile-pictures', path, file);
+          updateSystemSettings({ profilePic: url });
+        } else {
+          const resizedPic = await resizeImage(file, 150, 150);
+          updateSystemSettings({ profilePic: resizedPic });
+        }
       } catch (error) {
         console.error("Error processing profile pic", error);
       }
@@ -118,7 +131,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
                   {profilePic ? (
                       <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                      <span>JD</span>
+                      <span>{profileInitial}</span>
                   )}
                 </div>
              </label>

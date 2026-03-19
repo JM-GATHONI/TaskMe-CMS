@@ -16,6 +16,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -23,6 +24,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
         idNumber: '',
         email: '',
         password: '',
+        confirmPassword: '',
         role: ROLES[0],
     });
 
@@ -38,13 +40,17 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
         setIsLoading(true);
 
         try {
-            const { firstName, lastName, phone, idNumber, email, password, role } = formData;
+            const { firstName, lastName, phone, idNumber, email, password, confirmPassword, role } = formData;
             if (!email || !password) {
                 setError('Email and password are required.');
                 return;
             }
             if (password.length < 6) {
                 setError('Password must be at least 6 characters.');
+                return;
+            }
+            if (password !== confirmPassword) {
+                setError('Passwords do not match.');
                 return;
             }
 
@@ -76,6 +82,19 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                 return;
             }
 
+            // Fire-and-forget welcome email via Edge Function (Resend). Keep silent fallback for safety.
+            try {
+                await supabase.functions.invoke('send-email', {
+                    body: {
+                        to: email,
+                        subject: 'Welcome to TaskMe Realty',
+                        html: `<div style="font-family:Arial,sans-serif;line-height:1.5"><h2>Welcome to TaskMe Realty</h2><p>Hello ${firstName || fullName || 'there'},</p><p>Your account was created successfully.</p></div>`,
+                    },
+                });
+            } catch (e) {
+                console.warn('[send-email] welcome failed (non-blocking)', e);
+            }
+
             setSuccess(true);
 
             // Try auto sign-in (works if email confirmation is disabled)
@@ -105,15 +124,29 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                     .limit(1);
                 const staffRow = staffRows?.[0] ?? null;
 
+                // Resolve display name from public.profiles (populated by handle_new_user), then staff, then form fullName
+                let displayName: string = (staffRow?.name ?? fullName ?? user.email ?? 'User') as string;
+                try {
+                    const { data: prof } = await supabase
+                        .from('profiles')
+                        .select('first_name, full_name')
+                        .eq('id', user.id)
+                        .maybeSingle();
+                    const first = (prof as any)?.first_name?.trim?.();
+                    const full = (prof as any)?.full_name?.trim?.();
+                    if (first) displayName = first;
+                    else if (full) displayName = full;
+                } catch (_) {}
+
                 const loggedIn: StaffProfile = {
                     id: user.id,
-                    name: (staffRow?.name ?? fullName ?? user.email ?? 'User') as string,
+                    name: displayName,
                     role: (staffRow?.role ?? resolvedRole) as StaffProfile['role'],
                     email: (user.email ?? staffRow?.email ?? email) as string,
                     phone: (staffRow?.phone ?? phone) as string,
                     branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
                     status: (staffRow?.status ?? 'Active') as any,
-                    avatar: ((staffRow?.name ?? fullName ?? user.email ?? 'U') as string).split(' ').map((n: string) => n[0]).join(''),
+                    avatar: displayName.split(' ').map((n: string) => n[0]).join('') || 'U',
                     salaryConfig: staffRow?.salaryConfig ?? { type: 'Monthly', amount: 0 },
                     bankDetails: staffRow?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
                     payrollInfo: staffRow?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
@@ -264,11 +297,44 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                             <Icon name="shield" className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
                             <input
                                 name="password"
-                                type="password"
+                                type={showPassword ? "text" : "password"}
                                 value={formData.password}
                                 onChange={handleChange}
                                 className={inputClass}
                                 placeholder="Password"
+                                required
+                                minLength={6}
+                                autoComplete="new-password"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(v => !v)}
+                                className="absolute right-3 top-2.5 w-4 h-4 text-gray-400 group-hover:text-primary transition-colors"
+                                aria-label={showPassword ? "Hide password" : "Show password"}
+                                title={showPassword ? "Hide password" : "Show password"}
+                            >
+                                {showPassword ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.5a10.522 10.522 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.243 4.243L9.88 9.88" />
+                                    </svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+
+                        <div className="relative group">
+                            <Icon name="shield" className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
+                            <input
+                                name="confirmPassword"
+                                type={showPassword ? "text" : "password"}
+                                value={formData.confirmPassword}
+                                onChange={handleChange}
+                                className={inputClass}
+                                placeholder="Confirm Password"
                                 required
                                 minLength={6}
                                 autoComplete="new-password"

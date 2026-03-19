@@ -83,6 +83,23 @@ const OccupancyTenancy: React.FC = () => {
         }]
     };
 
+    const { churnMoveOuts, churnMoveIns, netAbsorption } = useMemo(() => {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const moveOuts = tenants.filter(t => {
+            if (t.status !== 'Vacated' && t.status !== 'Evicted') return false;
+            if (!t.leaseEnd) return false;
+            const d = new Date(t.leaseEnd);
+            return d.getFullYear() === y && d.getMonth() === m;
+        }).length;
+        const moveIns = tenants.filter(t => {
+            const d = new Date(t.onboardingDate);
+            return d.getFullYear() === y && d.getMonth() === m;
+        }).length;
+        return { churnMoveOuts: moveOuts, churnMoveIns: moveIns, netAbsorption: moveIns - moveOuts };
+    }, [tenants]);
+
     return (
         <div className="space-y-8 pb-10">
             <div>
@@ -121,15 +138,15 @@ const OccupancyTenancy: React.FC = () => {
                     <div className="space-y-4">
                         <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
                             <span className="text-sm font-medium text-red-800">Move-Outs (MTD)</span>
-                            <span className="font-bold text-red-900">4</span>
+                            <span className="font-bold text-red-900">{churnMoveOuts}</span>
                         </div>
                         <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                             <span className="text-sm font-medium text-green-800">Move-Ins (MTD)</span>
-                            <span className="font-bold text-green-900">7</span>
+                            <span className="font-bold text-green-900">{churnMoveIns}</span>
                         </div>
                         <div className="p-3 bg-blue-50 rounded-lg text-center">
                             <p className="text-xs text-blue-600 uppercase font-bold">Net Absorption</p>
-                            <p className="text-2xl font-bold text-blue-900">+3 Units</p>
+                            <p className="text-2xl font-bold text-blue-900">{netAbsorption >= 0 ? '+' : ''}{netAbsorption} Units</p>
                         </div>
                     </div>
                 </div>

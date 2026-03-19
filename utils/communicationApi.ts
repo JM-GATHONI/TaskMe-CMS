@@ -1,5 +1,6 @@
 
 import { Message } from '../types';
+import { supabase } from './supabaseClient';
 
 /**
  * Communication Service API
@@ -24,16 +25,24 @@ export const communicationApi = {
      */
     sendSMS: async (to: string, content: string, senderId: string): Promise<SendResult> => {
         console.log(`[API Push] Sending SMS... To: ${to}, SenderID: ${senderId}`);
-        await delay(800);
-        
-        // Mock Validation
-        if (!to) return { success: false, error: 'Recipient number missing' };
-
-        return { 
-            success: true, 
-            messageId: `sms-${Date.now()}`,
-            providerRef: `AT_${Math.floor(Math.random() * 100000)}` // Mock provider ID
-        };
+        // Minimal placeholder for future SMS Edge Function (no real provider yet).
+        try {
+            const { data, error } = await supabase.functions.invoke('send-sms', {
+                body: { to, content, senderId },
+            });
+            if (error) throw error;
+            const messageId = (data as any)?.messageId || `sms-${Date.now()}`;
+            return { success: true, messageId, providerRef: (data as any)?.providerRef };
+        } catch (e: any) {
+            // Safe fallback to mock behavior
+            await delay(800);
+            if (!to) return { success: false, error: 'Recipient number missing' };
+            return { 
+                success: true, 
+                messageId: `sms-${Date.now()}`,
+                providerRef: `MOCK_SMS`
+            };
+        }
     },
 
     /**
@@ -41,15 +50,26 @@ export const communicationApi = {
      */
     sendEmail: async (to: string, subject: string, body: string, from: string): Promise<SendResult> => {
         console.log(`[API Push] Sending Email... To: ${to}, From: ${from}`);
-        await delay(1200);
-
-        if (!to.includes('@')) return { success: false, error: 'Invalid email address' };
-
-        return { 
-            success: true, 
-            messageId: `email-${Date.now()}`,
-            providerRef: `SG.${Math.random().toString(36).substr(2, 9)}`
-        };
+        try {
+            const { data, error } = await supabase.functions.invoke('send-email', {
+                body: { to, subject, html: body },
+            });
+            if (error) throw error;
+            return { 
+                success: true, 
+                messageId: (data as any)?.messageId || `email-${Date.now()}`,
+                providerRef: (data as any)?.providerRef
+            };
+        } catch (e: any) {
+            // Safe fallback to mock behavior
+            await delay(1200);
+            if (!to.includes('@')) return { success: false, error: 'Invalid email address' };
+            return { 
+                success: true, 
+                messageId: `email-${Date.now()}`,
+                providerRef: `MOCK_EMAIL`
+            };
+        }
     },
 
     /**

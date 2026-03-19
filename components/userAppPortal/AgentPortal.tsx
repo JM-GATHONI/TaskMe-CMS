@@ -2,6 +2,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
+import { useProfileDisplay } from '../../hooks/useProfileDisplay';
+import { supabase } from '../../utils/supabaseClient';
 import { PropertyForm } from '../registration/Properties';
 import { Property, TenantApplication, User, TenantProfile, Task, TaskStatus, TaskPriority, LandlordApplication, StaffProfile } from '../../types';
 import { CollectionManagerModal } from '../operations/TaskManagement';
@@ -89,6 +91,7 @@ const AgentPortal: React.FC = () => {
         updateTask, addTenant, addMessage, updateTenant, addLandlordApplication,
         currentUser
     } = useData();
+    const { displayName: profileDisplayName, initial: profileInitial } = useProfileDisplay();
     
     // Updated tab state to include Vacancies and reordered
     const [activeTab, setActiveTab] = useState<'Dashboard' | 'Tasks' | 'Vacancies' | 'My Properties' | 'My Tenants' | 'My Landlords'>('Dashboard');
@@ -169,8 +172,7 @@ const AgentPortal: React.FC = () => {
         return { collected, rate };
     }, [myTenants]);
 
-    const handleRegisterTenant = (data: UnifiedRecord) => {
-        // ... (existing logic) ...
+    const handleRegisterTenant = async (data: UnifiedRecord) => {
         if (data.recordType === 'Application') {
              const newApp: TenantApplication = {
                 id: `app-${Date.now()}`,
@@ -212,21 +214,110 @@ const AgentPortal: React.FC = () => {
                  leaseType: 'Fixed',
                  rentDueDate: 5
              };
+             try {
+                 const { error } = await supabase.from('tenants').insert({
+                     id: newTenant.id,
+                     created_by: agent.id,
+                     name: newTenant.name,
+                     email: newTenant.email,
+                     phone: newTenant.phone,
+                     id_number: newTenant.idNumber,
+                     status: newTenant.status,
+                     property_id: newTenant.propertyId,
+                     property_name: newTenant.propertyName,
+                     unit_id: newTenant.unitId,
+                     unit: newTenant.unit,
+                     rent_amount: newTenant.rentAmount,
+                     deposit_paid: newTenant.depositPaid,
+                     onboarding_date: newTenant.onboardingDate,
+                     lease_type: newTenant.leaseType,
+                     rent_due_date: newTenant.rentDueDate,
+                     payment_history: newTenant.paymentHistory,
+                     outstanding_bills: newTenant.outstandingBills,
+                     outstanding_fines: newTenant.outstandingFines,
+                     maintenance_requests: newTenant.maintenanceRequests,
+                     notes: newTenant.notes,
+                 });
+                 if (error) throw error;
+             } catch (e: any) {
+                 console.warn('Insert into tenants failed, using app state only:', e?.message);
+             }
              addTenant(newTenant);
              alert("Tenant registered active successfully.");
         }
         setModalOpen('none');
     };
 
-    const handleRegisterLandlord = (app: ExtendedLandlordApp) => {
+    const handleRegisterLandlord = async (app: ExtendedLandlordApp) => {
+        try {
+            const { error } = await supabase.from('landlords').insert({
+                id: app.id,
+                created_by: agent.id,
+                name: app.name,
+                email: app.email,
+                phone: app.phone,
+                id_number: app.idNumber,
+                status: app.status,
+                date: app.date,
+                proposed_properties: app.proposedProperties || [],
+                notes: app.notes,
+                location: app.location,
+                property_ids: app.propertyIds || [],
+                payment_config: app.paymentConfig,
+            });
+            if (error) throw error;
+        } catch (e: any) {
+            console.warn('Insert into landlords failed, using app state only:', e?.message);
+        }
         addLandlordApplication(app as unknown as LandlordApplication);
         setModalOpen('none');
         alert("Landlord application submitted successfully.");
     };
 
-    const handleAddProperty = (prop: Property) => {
-        if (prop.id) updateProperty(prop.id, prop);
-        else addProperty({ ...prop, id: `prop-${Date.now()}`, units: [], assignedAgentId: agent.id });
+    const handleAddProperty = async (prop: Property) => {
+        const finalProp = prop.id ? prop : { ...prop, id: `prop-${Date.now()}`, units: [], assignedAgentId: agent.id };
+        if (prop.id) {
+            updateProperty(prop.id, prop);
+        } else {
+            try {
+                const { error } = await supabase.from('properties').insert({
+                    id: finalProp.id,
+                    created_by: agent.id,
+                    name: finalProp.name,
+                    type: finalProp.type,
+                    ownership: finalProp.ownership,
+                    branch: finalProp.branch,
+                    status: finalProp.status,
+                    landlord_id: finalProp.landlordId,
+                    assigned_agent_id: finalProp.assignedAgentId,
+                    location: finalProp.location,
+                    default_monthly_rent: finalProp.defaultMonthlyRent,
+                    floors: finalProp.floors,
+                    units: finalProp.units || [],
+                    assets: finalProp.assets || [],
+                    default_unit_type: finalProp.defaultUnitType,
+                    rent_is_uniform: finalProp.rentIsUniform,
+                    rent_type: finalProp.rentType,
+                    deposit: finalProp.deposit,
+                    placement_fee: finalProp.placementFee,
+                    bills: finalProp.bills,
+                    remittance_type: finalProp.remittanceType,
+                    remittance_cutoff_day: finalProp.remittanceCutoffDay,
+                    nearest_landmark: finalProp.nearestLandmark,
+                    county: finalProp.county,
+                    sub_county: finalProp.subCounty,
+                    zone: finalProp.zone,
+                    sub_location: finalProp.subLocation,
+                    profile_picture_url: finalProp.profilePictureUrl,
+                    rent_by_type: finalProp.rentByType,
+                    floorplan: finalProp.floorplan || [],
+                });
+                if (error) throw error;
+            } catch (e: any) {
+                console.warn('Insert into properties failed, using app state only:', e?.message);
+            }
+            addProperty(finalProp);
+        }
         setModalOpen('none');
         alert("Property added/updated successfully.");
     };
@@ -241,10 +332,10 @@ const AgentPortal: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <div className="flex items-center gap-4">
                     <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center text-xl font-bold text-blue-600 border-2 border-white shadow-sm">
-                        {agent.avatar || agent.name.charAt(0)}
+                        {agent.avatar || profileInitial}
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800">{agent.name}</h1>
+                        <h1 className="text-2xl font-bold text-gray-800">{profileDisplayName}</h1>
                         <p className="text-sm text-gray-500">{agent.role} • {agent.branch}</p>
                     </div>
                 </div>

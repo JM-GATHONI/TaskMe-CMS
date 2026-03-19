@@ -5,6 +5,7 @@ import { QuickStat, RecentActivity, UpcomingPayment, TaskStatus, TaskPriority } 
 import { QUICK_STATS_DATA } from '../constants';
 import { useData } from '../context/DataContext';
 import { useProfileFirstName } from '../hooks/useProfileFirstName';
+import { supabase } from '../utils/supabaseClient';
 
 interface KeyStat {
   title: string;
@@ -22,26 +23,6 @@ interface MyTask {
   title: string;
   priority: TaskPriority;
 }
-
-// New data for the chart
-const COLLECTIONS_VS_ARREARS_CHART_DATA = {
-    labels: ['June', 'July', 'Aug', 'Sep', 'Oct', 'Nov'],
-    datasets: [{
-        label: 'Collections (KES M)',
-        data: [4.1, 4.3, 4.0, 4.5, 4.8, 4.2],
-        borderColor: '#9D1F15', // primary
-        backgroundColor: 'rgba(157, 31, 21, 0.1)',
-        fill: true,
-        tension: 0.4
-    }, {
-        label: 'Arrears (KES M)',
-        data: [1.2, 1.1, 1.4, 1.3, 1.0, 1.5],
-        borderColor: '#F39C2A', // secondary
-        backgroundColor: 'rgba(243, 156, 42, 0.1)',
-        fill: true,
-        tension: 0.4
-    }]
-};
 
 const navigate = (url: string) => {
     window.location.hash = url;
@@ -306,6 +287,7 @@ const Dashboard: React.FC = () => {
     const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
     const { firstName, loading: profileLoading } = useProfileFirstName();
     const [searchQuery, setSearchQuery] = useState('');
+    const [collectionsVsArrears, setCollectionsVsArrears] = useState<{ labels: string[]; collectionsM: number[]; arrearsM: number[] }>({ labels: [], collectionsM: [], arrearsM: [] });
 
     const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
         <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-pulse ${className}`}>
@@ -496,6 +478,101 @@ const Dashboard: React.FC = () => {
         };
         return stat;
     });
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadCollections = async () => {
+            try {
+                const { data: authData } = await supabase.auth.getUser();
+                const userId = authData?.user?.id;
+                if (!userId) {
+                    if (!cancelled) setCollectionsVsArrears({ labels: [], collectionsM: [], arrearsM: [] });
+                    return;
+                }
+
+                const now = new Date();
+                const months: Array<{ y: number; m: number; key: string; label: string; start: string; end: string }> = [];
+                for (let i = 5; i >= 0; i--) {
+                    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+                    const y = d.getUTCFullYear();
+                    const m = d.getUTCMonth();
+                    const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+                    const label = d.toLocaleString(undefined, { month: 'short' });
+                    const start = new Date(Date.UTC(y, m, 1)).toISOString();
+                    const end = new Date(Date.UTC(y, m + 1, 1)).toISOString();
+                    months.push({ y, m, key, label, start, end });
+                }
+
+                const startAll = months[0]?.start;
+                const endAll = months[months.length - 1]?.end;
+                if (!startAll || !endAll) {
+                    if (!cancelled) setCollectionsVsArrears({ labels: [], collectionsM: [], arrearsM: [] });
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('payments')
+                    .select('amount, created_at')
+                    .eq('user_id', userId)
+                    .eq('status', 'completed')
+                    .gte('created_at', startAll)
+                    .lt('created_at', endAll);
+
+                if (error) throw error;
+
+                const sums: Record<string, number> = {};
+                (data || []).forEach((p: any) => {
+                    const iso = String(p.created_at || '');
+                    const ym = iso.slice(0, 7);
+                    sums[ym] = (sums[ym] || 0) + Number(p.amount ?? 0);
+                });
+
+                const labels = months.map(x => x.label);
+                const collectionsM = months.map(x => Number(((sums[x.key] || 0) / 1_000_000).toFixed(2)));
+
+                const arrearsNow = tenants.reduce((acc, t) => acc + (t.status === 'Overdue' ? (t.rentAmount || 0) : 0), 0);
+                const arrearsM = months.map((_x, idx) => {
+                    const factor = idx === months.length - 1 ? 1 : 0;
+                    return Number(((arrearsNow * factor) / 1_000_000).toFixed(2));
+                });
+
+                if (!cancelled) setCollectionsVsArrears({ labels, collectionsM, arrearsM });
+            } catch (e) {
+                console.warn('[Dashboard] Failed to load collections', e);
+                if (!cancelled) setCollectionsVsArrears({ labels: [], collectionsM: [], arrearsM: [] });
+            }
+        };
+
+        loadCollections();
+        return () => {
+            cancelled = true;
+        };
+    }, [tenants]);
+
+    const COLLECTIONS_VS_ARREARS_CHART_DATA = useMemo(() => {
+        const labels = collectionsVsArrears.labels.length > 0 ? collectionsVsArrears.labels : ['June', 'July', 'Aug', 'Sep', 'Oct', 'Nov'];
+        const collections = collectionsVsArrears.collectionsM.length > 0 ? collectionsVsArrears.collectionsM : [0, 0, 0, 0, 0, 0];
+        const arrears = collectionsVsArrears.arrearsM.length > 0 ? collectionsVsArrears.arrearsM : [0, 0, 0, 0, 0, 0];
+        return {
+            labels,
+            datasets: [{
+                label: 'Collections (KES M)',
+                data: collections,
+                borderColor: '#9D1F15', // primary
+                backgroundColor: 'rgba(157, 31, 21, 0.1)',
+                fill: true,
+                tension: 0.4
+            }, {
+                label: 'Arrears (KES M)',
+                data: arrears,
+                borderColor: '#F39C2A', // secondary
+                backgroundColor: 'rgba(243, 156, 42, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        };
+    }, [collectionsVsArrears]);
 
     const handleSearch = () => {
         if (searchQuery.trim()) {

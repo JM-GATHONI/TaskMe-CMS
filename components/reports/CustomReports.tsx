@@ -1,50 +1,82 @@
 
 import React, { useState } from 'react';
 import Icon from '../Icon';
+import { useData } from '../../context/DataContext';
+import { supabase } from '../../utils/supabaseClient';
 
 const CustomReports: React.FC = () => {
     const [reportType, setReportType] = useState('Tenancy');
     const [generatedData, setGeneratedData] = useState<any[] | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const { tenants, tasks } = useData();
     
     const handleGenerate = () => {
         setIsGenerating(true);
         setGeneratedData(null);
 
         // Simulate network request / heavy calculation
-        setTimeout(() => {
-            // Dynamic data generation based on Report Source
-            let mockData = [];
-            const count = 5;
-
-            if (reportType === 'Tenancy') {
-                mockData = Array.from({ length: count }).map((_, i) => ({
-                    id: i,
-                    col1: `Tenant ${i + 1}`,
-                    col2: `Unit A-${100 + i}`,
-                    col3: Math.random() > 0.2 ? 'Active' : 'Notice',
-                    col4: new Date().toLocaleDateString()
-                }));
-            } else if (reportType === 'Financial') {
-                mockData = Array.from({ length: count }).map((_, i) => ({
-                    id: i,
-                    col1: `Transaction TX-${1000 + i}`,
-                    col2: `KES ${(Math.floor(Math.random() * 50) + 10) * 1000}`,
-                    col3: Math.random() > 0.1 ? 'Paid' : 'Pending',
-                    col4: new Date().toLocaleDateString()
-                }));
-            } else {
-                mockData = Array.from({ length: count }).map((_, i) => ({
-                    id: i,
-                    col1: `Item ${i + 1}`,
-                    col2: `Value ${Math.floor(Math.random() * 100)}`,
-                    col3: 'Processing',
-                    col4: new Date().toLocaleDateString()
-                }));
+        setTimeout(async () => {
+            try {
+                const count = 5;
+                if (reportType === 'Tenancy') {
+                    const rows = tenants.slice(0, count).map((t, i) => ({
+                        id: t.id || i,
+                        col1: t.name,
+                        col2: t.unit,
+                        col3: t.status,
+                        col4: new Date(t.onboardingDate).toLocaleDateString()
+                    }));
+                    setGeneratedData(rows);
+                } else if (reportType === 'Financial') {
+                    const { data: authData } = await supabase.auth.getUser();
+                    const userId = authData?.user?.id;
+                    if (!userId) {
+                        setGeneratedData([]);
+                    } else {
+                        const { data, error } = await supabase
+                            .from('payments')
+                            .select('id, amount, status, created_at')
+                            .eq('user_id', userId)
+                            .order('created_at', { ascending: false })
+                            .limit(count);
+                        if (error) throw error;
+                        const rows = (data || []).map((p: any) => ({
+                            id: p.id,
+                            col1: `Transaction ${String(p.id).slice(0, 8)}`,
+                            col2: `KES ${Number(p.amount ?? 0).toLocaleString()}`,
+                            col3: p.status,
+                            col4: new Date(p.created_at).toLocaleDateString()
+                        }));
+                        setGeneratedData(rows);
+                    }
+                } else if (reportType === 'Operational') {
+                    const rows = tasks.slice(0, count).map((t, i) => ({
+                        id: t.id || i,
+                        col1: t.title,
+                        col2: t.property,
+                        col3: t.status,
+                        col4: new Date(t.dueDate).toLocaleDateString()
+                    }));
+                    setGeneratedData(rows);
+                } else {
+                    const rows = tasks
+                        .filter(t => t.title.toLowerCase().includes('maintenance'))
+                        .slice(0, count)
+                        .map((t, i) => ({
+                            id: t.id || i,
+                            col1: t.title,
+                            col2: t.property,
+                            col3: t.status,
+                            col4: new Date(t.dueDate).toLocaleDateString()
+                        }));
+                    setGeneratedData(rows);
+                }
+            } catch (e) {
+                console.warn('[CustomReports] Failed to generate report', e);
+                setGeneratedData([]);
+            } finally {
+                setIsGenerating(false);
             }
-
-            setGeneratedData(mockData);
-            setIsGenerating(false);
         }, 1500);
     };
 

@@ -1,6 +1,5 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { MOCK_LISTINGS, MOCK_USERS } from '../../constants';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
@@ -51,7 +50,7 @@ const KpiCard: React.FC<{ title: string; value: string | number; subtext: string
 );
 
 const PropertyReports: React.FC = () => {
-    const { properties, landlords } = useData();
+    const { properties, landlords, staff, marketplaceListings } = useData();
     const [activeTab, setActiveTab] = useState<'landlords' | 'branches' | 'vacancies' | 'forSale'>('landlords');
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -86,8 +85,11 @@ const PropertyReports: React.FC = () => {
         return landlords.map(l => {
             const props = properties.filter(p => p.landlordId === l.id);
             const units = props.reduce((acc, p) => acc + p.units.length, 0);
+            const landlordTenants = props.flatMap(p => (p.units || [])).length;
+            const overdueTenants = 0;
+            const collectionRateNum = landlordTenants > 0 ? Math.round(((landlordTenants - overdueTenants) / landlordTenants) * 100) : 0;
             return {
-                id: l.id, name: l.name, properties: props.map(p => p.name), units, collectionRate: '95%', phone: l.phone
+                id: l.id, name: l.name, properties: props.map(p => p.name), units, collectionRate: `${collectionRateNum}%`, phone: l.phone
             };
         }).filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [landlords, properties, searchQuery]);
@@ -98,11 +100,22 @@ const PropertyReports: React.FC = () => {
         ).filter(u => u.propertyName.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [properties, searchQuery]);
 
-    const forSaleListings = useMemo(() => MOCK_LISTINGS.filter(l => l.type === 'For Sale' && l.status === 'Available' && l.title.toLowerCase().includes(searchQuery.toLowerCase())), [searchQuery]);
+    const forSaleListings = useMemo(() => {
+        return marketplaceListings
+            .filter(l => l.type === 'Sale' && l.status === 'Published')
+            .map(l => ({
+                id: l.id,
+                title: l.title,
+                location: l.location,
+                price: typeof l.price === 'number' ? `KES ${Number(l.price ?? 0).toLocaleString()}` : l.price,
+                agent: { name: '—' }
+            }))
+            .filter(l => l.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    }, [marketplaceListings, searchQuery]);
     
     const branches = useMemo(() => {
         const branchData: Record<string, { properties: number, units: number, manager: string }> = {};
-        const managers = MOCK_USERS.filter(u => u.role === 'Branch Manager');
+        const managers = staff.filter(u => u.role === 'Branch Manager');
         properties.forEach(prop => {
             if (!branchData[prop.branch]) {
                 const manager = managers.find(m => m.branch === prop.branch);
@@ -112,7 +125,7 @@ const PropertyReports: React.FC = () => {
             branchData[prop.branch].units += prop.units.length;
         });
         return Object.entries(branchData).map(([name, data]) => ({ name, ...data })).filter(b => b.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    }, [properties, searchQuery]);
+    }, [properties, searchQuery, staff]);
 
     return (
         <div className="space-y-8 pb-10">

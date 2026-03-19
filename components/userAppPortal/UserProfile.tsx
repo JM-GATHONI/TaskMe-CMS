@@ -5,6 +5,8 @@ import Icon from '../Icon';
 import { User, TenantProfile, StaffProfile, RenovationInvestor, Vendor } from '../../types';
 import { hashPassword } from '../../utils/security';
 import { useProfileDisplay } from '../../hooks/useProfileDisplay';
+import { uploadToBucket } from '../../utils/supabaseStorage';
+import { supabase } from '../../utils/supabaseClient';
 
 const UserProfile: React.FC = () => {
     const { currentUser, updateTenant, updateStaff, updateLandlord, updateRenovationInvestor, updateVendor } = useData();
@@ -41,14 +43,27 @@ const UserProfile: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0] && currentUser) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setProfilePic(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const ext = file.name.split('.').pop() || 'jpg';
+                    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+                    const url = await uploadToBucket('profile-pictures', path, file);
+                    setProfilePic(url);
+                } else {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setProfilePic(reader.result as string);
+                    reader.readAsDataURL(file);
+                }
+            } catch (err) {
+                console.warn('Upload failed, using base64 fallback', err);
+                const reader = new FileReader();
+                reader.onloadend = () => setProfilePic(reader.result as string);
+                reader.readAsDataURL(file);
+            }
         }
     };
 

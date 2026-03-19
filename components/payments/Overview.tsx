@@ -1,7 +1,6 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
 import { PaymentKpi } from '../../types';
-import { INCOME_EXPENSE_CHART_DATA, PAYMENT_METHODS_CHART_DATA } from '../../constants';
 import { useData } from '../../context/DataContext';
 
 // --- Card Styles ---
@@ -62,7 +61,7 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie' | 'doughnut'; data: any; op
 };
 
 const PaymentsOverview: React.FC = () => {
-    const { tenants } = useData();
+    const { tenants, bills } = useData();
 
     // --- Live Calculations ---
     const kpis = useMemo(() => {
@@ -111,6 +110,52 @@ const PaymentsOverview: React.FC = () => {
         return allPayments.slice(0, 10); // Top 10
     }, [tenants]);
 
+    const incomeExpenseChartData = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const currentYear = new Date().getFullYear();
+        const incomeData = new Array(12).fill(0);
+        const expenseData = new Array(12).fill(0);
+        tenants.forEach(t => {
+            t.paymentHistory.forEach(p => {
+                const d = new Date(p.date);
+                if (d.getFullYear() === currentYear && p.status === 'Paid') {
+                    incomeData[d.getMonth()] += parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
+                }
+            });
+        });
+        (bills || []).forEach((b: any) => {
+            const d = new Date(b.invoiceDate || b.dueDate || 0);
+            if (d.getFullYear() === currentYear && b.status === 'Paid') {
+                expenseData[d.getMonth()] += b.amount || 0;
+            }
+        });
+        const idx = new Date().getMonth();
+        const start = Math.max(0, idx - 5);
+        return {
+            labels: months.slice(start, idx + 1),
+            datasets: [
+                { label: 'Income', data: incomeData.slice(start, idx + 1), borderColor: '#10b981' },
+                { label: 'Expense', data: expenseData.slice(start, idx + 1), borderColor: '#ef4444' }
+            ]
+        };
+    }, [tenants, bills]);
+
+    const paymentMethodsChartData = useMemo(() => {
+        const methods: Record<string, number> = { 'M-Pesa': 0, Bank: 0, Cash: 0 };
+        tenants.forEach(t => {
+            t.paymentHistory.filter(p => p.status === 'Paid').forEach(p => {
+                const m = (p.method || '').toLowerCase();
+                if (m.includes('mpesa') || m.includes('m-pesa')) methods['M-Pesa']++;
+                else if (m.includes('bank') || m.includes('transfer')) methods.Bank++;
+                else methods.Cash++;
+            });
+        });
+        return {
+            labels: ['M-Pesa', 'Bank', 'Cash'],
+            datasets: [{ data: [methods['M-Pesa'], methods.Bank, methods.Cash], backgroundColor: ['#10b981', '#3b82f6', '#9ca3af'] }]
+        };
+    }, [tenants]);
+
     const kpiLinks: Record<string, string> = {
         'Collected (Total)': '#/payments/inbound',
         'Outstanding Invoices': '#/payments/invoices',
@@ -135,13 +180,13 @@ const PaymentsOverview: React.FC = () => {
                 <div className={`lg:col-span-3 ${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4">Income vs. Expenses (Last 6 Months)</h3>
-                        <Chart type="line" data={INCOME_EXPENSE_CHART_DATA} />
+                        <Chart type="line" data={incomeExpenseChartData} />
                     </div>
                 </div>
                 <div className={`lg:col-span-2 ${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4">Payment Methods</h3>
-                        <Chart type="doughnut" data={PAYMENT_METHODS_CHART_DATA} />
+                        <Chart type="doughnut" data={paymentMethodsChartData} />
                     </div>
                 </div>
             </div>

@@ -4,6 +4,8 @@ import { MOCK_USERS } from '../../../constants';
 import { Task, TaskStatus, TaskPriority } from '../../../types';
 import Icon from '../../Icon';
 import { useData } from '../../../context/DataContext';
+import { uploadToBucket } from '../../../utils/supabaseStorage';
+import { supabase } from '../../../utils/supabaseClient';
 
 const RequestDetailModal: React.FC<{ 
     task: Task; 
@@ -146,16 +148,35 @@ const RequestIntake: React.FC = () => {
 
     const assignableUsers = useMemo(() => MOCK_USERS.filter(u => u.role !== 'Tenant'), []);
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files) as File[];
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setAttachments(prev => [...prev, reader.result as string]);
-                };
-                reader.readAsDataURL(file);
-            });
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const urls: string[] = [];
+                    for (const file of files) {
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `${user.id}/maint-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                        const url = await uploadToBucket('maintenance-photos', path, file);
+                        urls.push(url);
+                    }
+                    setAttachments(prev => [...prev, ...urls]);
+                } else {
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setAttachments(prev => [...prev, reader.result as string]);
+                        reader.readAsDataURL(file);
+                    });
+                }
+            } catch (err) {
+                console.warn('Upload failed, using base64', err);
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setAttachments(prev => [...prev, reader.result as string]);
+                    reader.readAsDataURL(file);
+                });
+            }
         }
     };
 

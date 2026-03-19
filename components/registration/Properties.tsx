@@ -4,6 +4,8 @@ import { MOCK_PROPERTIES, GEOSPATIAL_DATA } from '../../constants';
 import { Property, Unit, User, PropertyAsset, FloorPlan, UnitType, StaffProfile } from '../../types';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
+import { uploadToBucket } from '../../utils/supabaseStorage';
+import { supabase } from '../../utils/supabaseClient';
 
 const UNIT_TYPES: string[] = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
 
@@ -237,25 +239,49 @@ export const PropertyForm: React.FC<{
         });
     };
 
-    const handleProfilePicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setFormData(prev => ({ ...prev, profilePictureUrl: reader.result as string }));
-            };
-            reader.readAsDataURL(file);
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const ext = file.name.split('.').pop() || 'jpg';
+                    const path = `${user.id}/property-${Date.now()}.${ext}`;
+                    const url = await uploadToBucket('property-photos', path, file);
+                    setFormData(prev => ({ ...prev, profilePictureUrl: url }));
+                } else {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setFormData(prev => ({ ...prev, profilePictureUrl: reader.result as string }));
+                    reader.readAsDataURL(file);
+                }
+            } catch (err) {
+                console.warn('Upload failed, using base64', err);
+                const reader = new FileReader();
+                reader.onloadend = () => setFormData(prev => ({ ...prev, profilePictureUrl: reader.result as string }));
+                reader.readAsDataURL(file);
+            }
         }
     };
 
-    const handleDocsUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleDocsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
-            const newDocs = Array.from(e.target.files).map((file: File) => ({
-                name: file.name,
-                type: 'doc' as const,
-                category: 'Document' as const,
-                url: '#'
-            }));
+            const { data: { user } } = await supabase.auth.getUser();
+            const newDocs: PropertyAsset[] = [];
+            for (const file of Array.from(e.target.files)) {
+                try {
+                    if (user) {
+                        const ext = file.name.split('.').pop() || 'pdf';
+                        const path = `${user.id}/doc-${Date.now()}-${file.name}`;
+                        const url = await uploadToBucket('documents', path, file);
+                        newDocs.push({ name: file.name, type: 'doc' as const, category: 'Document' as const, url });
+                    } else {
+                        newDocs.push({ name: file.name, type: 'doc', category: 'Document', url: '#' });
+                    }
+                } catch (err) {
+                    console.warn('Upload failed', err);
+                    newDocs.push({ name: file.name, type: 'doc', category: 'Document', url: '#' });
+                }
+            }
             setFormData(prev => ({ ...prev, assets: [...(prev.assets || []), ...newDocs] }));
         }
     };

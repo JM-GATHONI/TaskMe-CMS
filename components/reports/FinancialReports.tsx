@@ -34,7 +34,7 @@ const Chart: React.FC<{ type: 'bar' | 'line' | 'doughnut'; data: any; options?: 
 type ReportView = 'revenue' | 'expenses' | 'arrears' | 'net';
 
 const FinancialReports: React.FC = () => {
-    const { tenants, tasks, staff } = useData();
+    const { tenants, tasks, staff, bills } = useData();
     const [activeView, setActiveView] = useState<ReportView>('revenue');
     const [agentFilter, setAgentFilter] = useState('All');
     const [propertyFilter, setPropertyFilter] = useState('All');
@@ -106,11 +106,15 @@ const FinancialReports: React.FC = () => {
 
     // 3. Expenses
     const expenseData = useMemo(() => {
-        // Mock expense generation based on live data
         const maintenanceCosts = tasks.reduce((acc, t) => acc + (t.costs?.labor || 0) + (t.costs?.materials || 0), 0);
         const salaries = staff.reduce((acc, s) => acc + (s.payrollInfo.baseSalary || 0), 0);
-        const utilities = 45000; // Mock constant for demo
-        const other = 15000; // Mock constant
+        const utilityKeys = new Set(['Water', 'Electricity', 'Garbage', 'Gas', 'Internet', 'Service Charge', 'Utilities']);
+        const utilities = bills
+            .filter(b => utilityKeys.has(b.category) || b.category.toLowerCase().includes('util'))
+            .reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
+        const other = bills
+            .filter(b => !(utilityKeys.has(b.category) || b.category.toLowerCase().includes('util')))
+            .reduce((acc, b) => acc + (Number(b.amount) || 0), 0);
 
         return {
             breakdown: {
@@ -121,7 +125,7 @@ const FinancialReports: React.FC = () => {
             },
             total: maintenanceCosts + salaries + utilities + other
         };
-    }, [tasks, staff]);
+    }, [tasks, staff, bills]);
 
     // --- CHARTS ---
 

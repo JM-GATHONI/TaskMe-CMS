@@ -3,6 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { TaskStatus, TaskPriority, Task, TenantProfile, Message, CollectionLog, FineItem, Notification } from '../../types';
 import Icon from '../Icon';
+import { uploadToBucket } from '../../utils/supabaseStorage';
+import { supabase } from '../../utils/supabaseClient';
 
 const CURRENT_USER = 'System Admin'; // Simulated logged-in user
 
@@ -29,16 +31,35 @@ const CreateTaskModal: React.FC<{ onClose: () => void; onSave: (task: Partial<Ta
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files) as File[];
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setAttachments(prev => [...prev, reader.result as string]);
-                };
-                reader.readAsDataURL(file);
-            });
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const urls: string[] = [];
+                    for (const file of files) {
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `${user.id}/maint-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                        const url = await uploadToBucket('maintenance-photos', path, file);
+                        urls.push(url);
+                    }
+                    setAttachments(prev => [...prev, ...urls]);
+                } else {
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setAttachments(prev => [...prev, reader.result as string]);
+                        reader.readAsDataURL(file);
+                    });
+                }
+            } catch (err) {
+                console.warn('Upload failed, using base64', err);
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setAttachments(prev => [...prev, reader.result as string]);
+                    reader.readAsDataURL(file);
+                });
+            }
         }
     };
 
@@ -126,16 +147,35 @@ const CompleteTaskModal: React.FC<{ task: Task; onClose: () => void; onComplete:
     const [notes, setNotes] = useState('');
     const [images, setImages] = useState<string[]>([]);
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files) as File[];
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setImages(prev => [...prev, reader.result as string]);
-                };
-                reader.readAsDataURL(file);
-            });
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const urls: string[] = [];
+                    for (const file of files) {
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const path = `${user.id}/complete-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                        const url = await uploadToBucket('maintenance-photos', path, file);
+                        urls.push(url);
+                    }
+                    setImages(prev => [...prev, ...urls]);
+                } else {
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setImages(prev => [...prev, reader.result as string]);
+                        reader.readAsDataURL(file);
+                    });
+                }
+            } catch (err) {
+                console.warn('Upload failed, using base64', err);
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setImages(prev => [...prev, reader.result as string]);
+                    reader.readAsDataURL(file);
+                });
+            }
         }
     };
 

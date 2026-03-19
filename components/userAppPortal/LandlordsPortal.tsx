@@ -1,9 +1,11 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
+import { useProfileDisplay } from '../../hooks/useProfileDisplay';
 import { Property, Unit, User, Task, Bill, Fund, Investment, TenantProfile, LandlordApplication } from '../../types';
 import Icon from '../Icon';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
+import { supabase } from '../../utils/supabaseClient';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, Filler } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
@@ -353,7 +355,8 @@ export const LandlordInvestModal: React.FC<{
 
 const LandlordsPortal: React.FC = () => {
     const { landlords, properties, tenants, tasks, deductionRules, bills, addInvestment, currentUser, funds, rfTransactions, investments, isDataLoading } = useData();
-    
+    const { displayName, initial: displayNameInitial } = useProfileDisplay();
+
     // Tab State
     const [activeTab, setActiveTab] = useState<'dashboard' | 'properties' | 'financials' | 'requests' | 'growth'>('dashboard');
     const [financialView, setFinancialView] = useState<'summary' | 'revenue'>('summary');
@@ -367,6 +370,10 @@ const LandlordsPortal: React.FC = () => {
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
     const [requestType, setRequestType] = useState<'General' | 'Maintenance' | 'Eviction'>('General');
 
+    const [monthPayments, setMonthPayments] = useState<Array<{ amount: number; date: string; created_at: string }>>([]);
+    const [monthPaymentsLoading, setMonthPaymentsLoading] = useState(false);
+    const [allTimeRevenueTotal, setAllTimeRevenueTotal] = useState(0);
+
     // 1. Identify Current Landlord (Use Logged In User)
     const currentLandlord = useMemo(() => {
         if (currentUser && (currentUser.role === 'Landlord' || currentUser.role === 'Landlord (Individual)' || currentUser.role === 'Landlord (Corporate)')) {
@@ -375,6 +382,90 @@ const LandlordsPortal: React.FC = () => {
         // Fallback for demo if no landlord logged in (safety)
         return landlords[0]; 
     }, [currentUser, landlords]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadPayments = async () => {
+            try {
+                setMonthPaymentsLoading(true);
+                const { data: authData } = await supabase.auth.getUser();
+                const userId = authData?.user?.id;
+                if (!userId) {
+                    if (!cancelled) setMonthPayments([]);
+                    return;
+                }
+
+                const start = `${financialPeriod}-01T00:00:00.000Z`;
+                const [y, m] = financialPeriod.split('-').map(Number);
+                const nextMonth = new Date(Date.UTC(y, (m ?? 1), 1));
+                const end = nextMonth.toISOString();
+
+                const { data, error } = await supabase
+                    .from('payments')
+                    .select('amount, created_at')
+                    .eq('user_id', userId)
+                    .eq('status', 'completed')
+                    .gte('created_at', start)
+                    .lt('created_at', end)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const normalized = (data || []).map(p => {
+                    const iso = p.created_at;
+                    const date = iso.slice(0, 10);
+                    return { amount: Number(p.amount ?? 0), created_at: iso, date };
+                });
+
+                if (!cancelled) setMonthPayments(normalized);
+            } catch (e) {
+                console.warn('[LandlordsPortal] Failed to load payments', e);
+                if (!cancelled) setMonthPayments([]);
+            } finally {
+                if (!cancelled) setMonthPaymentsLoading(false);
+            }
+        };
+
+        loadPayments();
+        return () => {
+            cancelled = true;
+        };
+    }, [financialPeriod]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadAllTimeRevenue = async () => {
+            try {
+                const { data: authData } = await supabase.auth.getUser();
+                const userId = authData?.user?.id;
+                if (!userId) {
+                    if (!cancelled) setAllTimeRevenueTotal(0);
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('payments')
+                    .select('amount')
+                    .eq('user_id', userId)
+                    .eq('status', 'completed');
+
+                if (error) throw error;
+
+                const total = (data || []).reduce((sum, row: any) => sum + Number(row.amount ?? 0), 0);
+                if (!cancelled) setAllTimeRevenueTotal(total);
+            } catch (e) {
+                console.warn('[LandlordsPortal] Failed to load all-time revenue', e);
+                if (!cancelled) setAllTimeRevenueTotal(0);
+            }
+        };
+
+        loadAllTimeRevenue();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // Handle Deep Linking / Routing based on Hash
     useEffect(() => {
@@ -407,10 +498,16 @@ const LandlordsPortal: React.FC = () => {
 
     const isPortfolioEmpty = !isDataLoading && myProperties.length === 0;
 
+    const landlordRequests = useMemo(() => {
+        return myTasks
+            .filter(t => t.title?.toLowerCase().includes('request'))
+            .slice(0, 3);
+    }, [myTasks]);
+
     // 3. Calculate Financials
     const financials = useMemo(() => {
         const grossRevenueMonth = myTenants.reduce((sum, t) => sum + (t.status !== 'Overdue' ? (t.rentAmount || 0) : 0), 0);
-        const allTimeRevenue = grossRevenueMonth * 12; // Mock projection
+        const allTimeRevenue = allTimeRevenueTotal;
         const unpaidRevenue = myTenants.reduce((sum, t) => sum + (t.status === 'Overdue' ? (t.rentAmount || 0) : 0), 0);
        
         const detailedDeductions: Array<{ category: string; description: string; amount: number }> = [];
@@ -483,7 +580,7 @@ const LandlordsPortal: React.FC = () => {
             activeRules,
             detailedDeductions
         };
-    }, [myTenants, myProperties, deductionRules, bills, myTasks, financialPeriod, currentLandlord]);
+    }, [myTenants, myProperties, deductionRules, bills, myTasks, financialPeriod, currentLandlord, allTimeRevenueTotal]);
 
     // Occupancy
     const totalUnits = myProperties.reduce((acc, p) => acc + p.units.length, 0);
@@ -512,28 +609,34 @@ const LandlordsPortal: React.FC = () => {
     // Payment Performance Graph Data Logic
     const paymentPerformanceLogic = useMemo(() => {
         const days = [1, 5, 10, 15, 20, 25, 30];
-        const currentMonthPayments = myTenants.flatMap(t => t.paymentHistory.filter(p => p.date.startsWith(financialPeriod)).map(p => ({
-             ...p,
-             tenantName: t.name,
-             unit: t.unit,
-             amountVal: parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0,
-             day: parseInt(p.date.split('-')[2])
-        }))).sort((a,b) => b.day - a.day);
+        const tenantDerivedPayments = myTenants.flatMap(t => t.paymentHistory.filter(p => p.date.startsWith(financialPeriod)).map(p => ({
+            ...p,
+            tenantName: t.name,
+            unit: t.unit,
+            amountVal: parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0,
+            day: parseInt(p.date.split('-')[2])
+        })));
 
-        // Fallback for demo graph visual
+        const supabasePayments = monthPayments.map(p => {
+            const d = new Date(p.created_at);
+            return {
+                tenantName: '—',
+                unit: '—',
+                amountVal: Number(p.amount ?? 0),
+                day: d.getUTCDate(),
+                date: p.date,
+                amount: `KES ${Number(p.amount ?? 0).toLocaleString()}`
+            };
+        });
+
+        const currentMonthPayments = (supabasePayments.length > 0 ? supabasePayments : tenantDerivedPayments)
+            .sort((a: any, b: any) => (b.day ?? 0) - (a.day ?? 0));
+
         const useMockData = currentMonthPayments.length === 0;
 
         const graphData = days.map(day => {
              if (useMockData) {
-                 let pct = 0;
-                 if (day === 1) pct = 5;
-                 else if (day === 5) pct = 30;
-                 else if (day === 10) pct = 55;
-                 else if (day === 15) pct = 70;
-                 else if (day === 20) pct = 80;
-                 else if (day === 25) pct = 85;
-                 else if (day === 30) pct = collectionStats.rate > 0 ? collectionStats.rate : 89;
-                 return { day, percentage: pct };
+                 return { day, percentage: 0 };
             } else {
                  const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
                  const percentage = collectionStats.expected > 0 ? Math.round((collectedUntilDay / collectionStats.expected) * 100) : 0;
@@ -541,16 +644,14 @@ const LandlordsPortal: React.FC = () => {
             }
         });
 
-        const tablePayments = useMockData 
-            ? myTenants.slice(0, 6).map(t => ({
-                tenantName: t.name, unit: t.unit, amount: `KES ${Number(t.rentAmount ?? 0).toLocaleString()}`, date: `${financialPeriod}-${selectedDayFilter < 10 ? '0'+selectedDayFilter : selectedDayFilter}`
-              }))
+        const tablePayments = useMockData
+            ? []
             : currentMonthPayments.filter(p => p.day <= selectedDayFilter);
 
         const currentBucket = graphData.find(d => d.day === selectedDayFilter) || graphData[graphData.length-1];
 
         return { graphData, tablePayments, currentPercentage: currentBucket.percentage };
-    }, [myTenants, financialPeriod, collectionStats, selectedDayFilter]);
+    }, [myTenants, financialPeriod, collectionStats, selectedDayFilter, monthPayments]);
 
     const paymentTrendData = {
         labels: paymentPerformanceLogic.graphData.map(d => `${d.day}${d.day === 1 ? 'st' : d.day === 2 ? 'nd' : 'th'}`),
@@ -709,10 +810,10 @@ const LandlordsPortal: React.FC = () => {
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white shadow-sm sticky top-0 z-40">
                 <div className="flex items-center gap-4">
                     <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-bold text-primary border-2 border-white shadow-sm">
-                        {currentLandlord.name.split(' ').map(n => n[0]).join('')}
+                        {displayNameInitial}
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">{currentLandlord.name}</h1>
+                        <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
                         <p className="text-sm text-gray-500 flex items-center gap-2">
                             <Icon name="mail" className="w-3 h-3" /> {currentLandlord.email}
                             <span className="text-gray-300">|</span>
@@ -1206,14 +1307,20 @@ const LandlordsPortal: React.FC = () => {
                                 </div>
                             </div>
                             <div className="space-y-3">
-                                {/* Mock requests for landlord view */}
-                                <div className="p-3 bg-gray-50 rounded border border-gray-100">
-                                    <div className="flex justify-between">
-                                        <span className="font-bold text-sm">Roof Repair Request</span>
-                                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Pending</span>
+                                {landlordRequests.map((req) => (
+                                    <div key={req.id} className="p-3 bg-gray-50 rounded border border-gray-100">
+                                        <div className="flex justify-between">
+                                            <span className="font-bold text-sm">{req.title}</span>
+                                            <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">{req.status}</span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 mt-1">Submitted on {new Date(req.dueDate).toISOString().slice(0, 10)} regarding {req.property}.</p>
                                     </div>
-                                    <p className="text-xs text-gray-600 mt-1">Submitted on 2025-11-10 regarding Block A.</p>
-                                </div>
+                                ))}
+                                {landlordRequests.length === 0 && (
+                                    <div className="p-3 bg-gray-50 rounded border border-gray-100 text-xs text-gray-500 italic">
+                                        No requests submitted yet.
+                                    </div>
+                                )}
                             </div>
                         </div>
 

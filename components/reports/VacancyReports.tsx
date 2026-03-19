@@ -61,7 +61,7 @@ interface VacancyData {
 }
 
 const VacancyReports: React.FC = () => {
-    const { properties, staff } = useData();
+    const { properties, staff, marketplaceListings } = useData();
     const [filter, setFilter] = useState<'All' | 'High Value' | 'Long Term'>('All');
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -74,8 +74,10 @@ const VacancyReports: React.FC = () => {
             
             p.units.forEach(u => {
                 if (u.status === 'Vacant') {
-                    // Mock duration: deterministically based on unit number char code to stay consistent across renders but vary per unit
-                    const mockDays = (u.unitNumber.charCodeAt(0) + u.unitNumber.length) % 60 + 1; 
+                    const listing = marketplaceListings.find(l => l.unitId === u.id);
+                    const created = listing?.dateCreated ? new Date(listing.dateCreated) : null;
+                    const diffMs = created ? (Date.now() - created.getTime()) : 0;
+                    const daysVacant = created ? Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24))) : 0;
 
                     list.push({
                         unitId: u.id,
@@ -85,14 +87,14 @@ const VacancyReports: React.FC = () => {
                         propertyBranch: p.branch,
                         agentName: agent ? agent.name : 'Unassigned',
                         rent: u.rent || p.defaultMonthlyRent || 0,
-                        daysVacant: mockDays
+                        daysVacant: daysVacant
                     });
                 }
             });
         });
 
         return list;
-    }, [properties, staff]);
+    }, [properties, staff, marketplaceListings]);
 
     // --- FILTERING ---
     const filteredList = useMemo(() => {

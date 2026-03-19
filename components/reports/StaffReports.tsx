@@ -1,9 +1,9 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { MOCK_STAFF_PROFILES } from '../../constants';
 import { StaffProfile, UserRole } from '../../types';
 import { exportToCSV } from '../../utils/exportHelper';
 import Icon from '../Icon';
+import { useData } from '../../context/DataContext';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 
@@ -52,7 +52,7 @@ const KpiCard: React.FC<{ title: string; value: string | number; subtext: string
 );
 
 const StaffReports: React.FC = () => {
-    const staff: StaffProfile[] = MOCK_STAFF_PROFILES;
+    const { staff } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState<UserRole | 'All'>('All');
 

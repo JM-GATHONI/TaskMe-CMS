@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { TenantApplication, RecurringBillSettings, TenantProfile, Unit, Property } from '../../types';
 import Icon from '../Icon';
+import { uploadToBucket } from '../../utils/supabaseStorage';
+import { supabase } from '../../utils/supabaseClient';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -185,19 +187,34 @@ export const ApplicationFormModal: React.FC<{
         }));
     };
 
-    const handleProfilePicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                // Handle different field names in types
-                if (record?.recordType === 'Tenant') {
-                    setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const ext = file.name.split('.').pop() || 'jpg';
+                    const path = `${user.id}/tenant-pic-${Date.now()}.${ext}`;
+                    const url = await uploadToBucket('profile-pictures', path, file);
+                    if (record?.recordType === 'Tenant') setFormData(prev => ({ ...prev, avatar: url }));
+                    else setFormData(prev => ({ ...prev, profilePicture: url }));
                 } else {
-                    setFormData(prev => ({ ...prev, profilePicture: reader.result as string }));
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        if (record?.recordType === 'Tenant') setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+                        else setFormData(prev => ({ ...prev, profilePicture: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
                 }
-            };
-            reader.readAsDataURL(file);
+            } catch (err) {
+                console.warn('Upload failed, using base64', err);
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    if (record?.recordType === 'Tenant') setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+                    else setFormData(prev => ({ ...prev, profilePicture: reader.result as string }));
+                };
+                reader.readAsDataURL(file);
+            }
         }
     };
 
