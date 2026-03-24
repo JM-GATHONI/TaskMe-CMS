@@ -1,5 +1,5 @@
 
-import { ReactNode } from 'react';
+import { Dispatch, ReactNode, SetStateAction } from 'react';
 
 export interface NavItem {
   name: string;
@@ -534,6 +534,8 @@ export interface SystemSettings {
   address?: string;
   phone?: string;
   shortcode?: string;
+  /** Arbitrary integration/API fields for Settings → Constants (persisted with system settings). */
+  softwareConstants?: Record<string, string>;
 }
 
 export interface PreventiveTask {
@@ -890,11 +892,6 @@ export interface DeveloperProject {
   totalUnits: number;
 }
 
-export interface ReitReferralDashboardData {
-  stats: { count: number; activeBalance: number; commission: number };
-  referrals: Array<{ name: string; activeBalance: number; monthlyCommission: number }>;
-}
-
 export interface KycRecord {
   id: string;
   investorName: string;
@@ -1023,8 +1020,17 @@ export interface ReportCardData {
 export interface PaymentKpi {
   title: string;
   value: string;
-  change: string;
-  changeType: 'increase' | 'decrease';
+  change?: string;
+  changeType?: 'increase' | 'decrease';
+}
+
+/** Marketing banner templates persisted in app_state (tm_marketing_banners_v11). */
+export interface MarketingBannerTemplate {
+  id: string;
+  title: string;
+  type: 'Rent' | 'Sale' | 'Investment' | 'General';
+  imageUrl: string;
+  description: string;
 }
 
 export interface LedgerEntry {
@@ -1081,6 +1087,8 @@ export interface DataContextType {
     marketplaceListings: MarketplaceListing[];
     leads: Lead[];
     fundiJobs: FundiJob[]; // Added fundiJobs
+    marketingBanners: MarketingBannerTemplate[];
+    setMarketingBanners: Dispatch<SetStateAction<MarketingBannerTemplate[]>>;
     users: User[]; // Unified list of all users
     updateUser: (id: string, data: Partial<User>) => void; // Unified update
 

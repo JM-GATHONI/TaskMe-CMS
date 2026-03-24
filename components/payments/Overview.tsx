@@ -1,22 +1,91 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
-import { PaymentKpi } from '../../types';
+import { PaymentKpi, Invoice, Bill, RenovationProjectBill, TenantProfile } from '../../types';
 import { useData } from '../../context/DataContext';
 
 // --- Card Styles ---
 const MAJOR_CARD_CLASSES = "relative bg-white rounded-2xl border-t-[8px] border-t-primary border-b-[4px] border-b-secondary border-x-[3px] border-x-secondary shadow-[inset_0_0_60px_-15px_rgba(162,53,74,0.15)] hover:shadow-lg transition-all duration-300 overflow-hidden";
 
-const KpiCard: React.FC<{ stat: PaymentKpi, href: string }> = ({ stat, href }) => (
+function parsePaymentAmount(raw: string | number | undefined): number {
+    if (raw == null) return 0;
+    if (typeof raw === 'number') return raw;
+    return parseFloat(String(raw).replace(/[^0-9.]/g, '')) || 0;
+}
+
+function monthBounds(year: number, month: number) {
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    return { start, end };
+}
+
+function formatKesCompact(n: number): string {
+    const v = Math.max(0, n);
+    if (v >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(2)}M`;
+    if (v >= 1_000) return `KES ${(v / 1_000).toFixed(1)}k`.replace('.0k', 'k');
+    return `KES ${v.toLocaleString()}`;
+}
+
+function pctVsPrev(cur: number, prev: number): { change: string; changeType: 'increase' | 'decrease' } {
+    if (prev <= 0 && cur <= 0) return { change: '0%', changeType: 'increase' };
+    if (prev <= 0) return { change: 'New', changeType: 'increase' };
+    const p = ((cur - prev) / prev) * 100;
+    const abs = Math.abs(p).toFixed(1);
+    return { change: `${abs}%`, changeType: p >= 0 ? 'increase' : 'decrease' };
+}
+
+function sumCollectionsInMonth(tenants: TenantProfile[], year: number, month: number): number {
+    const { start, end } = monthBounds(year, month);
+    let s = 0;
+    tenants.forEach(t => {
+        t.paymentHistory.forEach(p => {
+            if (p.status !== 'Paid') return;
+            const d = new Date(p.date);
+            if (isNaN(d.getTime()) || d < start || d > end) return;
+            s += parsePaymentAmount(p.amount);
+        });
+    });
+    return s;
+}
+
+function sumPaidExpensesInMonth(bills: Bill[], invoices: Invoice[], renovationProjectBills: RenovationProjectBill[], year: number, month: number): number {
+    const { start, end } = monthBounds(year, month);
+    let s = 0;
+    (bills || []).forEach(b => {
+        if (b.status !== 'Paid') return;
+        const raw = b.invoiceDate || b.dueDate;
+        if (!raw) return;
+        const d = new Date(raw);
+        if (isNaN(d.getTime()) || d < start || d > end) return;
+        s += b.amount || 0;
+    });
+    (invoices || []).forEach(inv => {
+        if (inv.category !== 'Outbound' || inv.status !== 'Paid') return;
+        const d = new Date(inv.dueDate);
+        if (isNaN(d.getTime()) || d < start || d > end) return;
+        s += inv.amount || 0;
+    });
+    (renovationProjectBills || []).forEach(rb => {
+        if (rb.status !== 'Paid') return;
+        const d = new Date(rb.date);
+        if (isNaN(d.getTime()) || d < start || d > end) return;
+        s += rb.amount || 0;
+    });
+    return s;
+}
+
+const KpiCard: React.FC<{ stat: PaymentKpi; href: string }> = ({ stat, href }) => (
     <a href={href} className={`${MAJOR_CARD_CLASSES} p-4 block`}>
         <div className="relative z-10">
             <p className="text-gray-500 font-medium text-sm">{stat.title}</p>
             <p className="text-3xl font-bold text-gray-800 my-1">{stat.value}</p>
-            <div className="flex items-center text-xs">
-                <span className={`font-semibold ${stat.changeType === 'increase' ? 'text-green-600' : 'text-red-600'}`}>
-                    {stat.changeType === 'increase' ? '▲' : '▼'} {stat.change}
-                </span>
-                <span className="text-gray-400 ml-1">vs last month</span>
-            </div>
+            {stat.change !== undefined && stat.changeType !== undefined && (
+                <div className="flex items-center text-xs">
+                    <span className={`font-semibold ${stat.changeType === 'increase' ? 'text-green-600' : 'text-red-600'}`}>
+                        {stat.changeType === 'increase' ? '▲' : '▼'} {stat.change}
+                    </span>
+                    <span className="text-gray-400 ml-1">vs last month</span>
+                </div>
+            )}
         </div>
     </a>
 );
@@ -61,53 +130,99 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie' | 'doughnut'; data: any; op
 };
 
 const PaymentsOverview: React.FC = () => {
-    const { tenants, bills } = useData();
+    const { tenants, bills, invoices, renovationProjectBills } = useData();
 
     // --- Live Calculations ---
-    const kpis = useMemo(() => {
+    const kpis = useMemo((): PaymentKpi[] => {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const prevMonth = m === 0 ? 11 : m - 1;
+        const prevYear = m === 0 ? y - 1 : y;
+
         let totalCollected = 0;
-        let outstandingCount = 0;
-        let overdueAmount = 0;
-
-        // Calculate based on real tenant data
         tenants.forEach(t => {
-            // 1. Collected (Sum of all paid history)
-            const tenantPaid = t.paymentHistory.reduce((sum, p) => {
-                const amount = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
-                return sum + amount;
+            totalCollected += t.paymentHistory.reduce((sum, p) => {
+                if (p.status !== 'Paid') return sum;
+                return sum + parsePaymentAmount(p.amount);
             }, 0);
-            totalCollected += tenantPaid;
-
-            // 2. Outstanding / Overdue
-            if (t.status === 'Overdue') {
-                outstandingCount++;
-                overdueAmount += t.rentAmount; 
-            }
         });
 
+        const colCur = sumCollectionsInMonth(tenants, y, m);
+        const colPrev = sumCollectionsInMonth(tenants, prevYear, prevMonth);
+        const colMom = pctVsPrev(colCur, colPrev);
+
+        const unpaidInvoices = (invoices || []).filter(i => i.status !== 'Paid');
+        const outstandingCount = unpaidInvoices.length;
+        const unpaidDueCur = unpaidInvoices.filter(i => {
+            const d = new Date(i.dueDate);
+            return !isNaN(d.getTime()) && d.getFullYear() === y && d.getMonth() === m;
+        }).length;
+        const unpaidDuePrev = unpaidInvoices.filter(i => {
+            const d = new Date(i.dueDate);
+            return !isNaN(d.getTime()) && d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+        }).length;
+        const outMom = pctVsPrev(unpaidDueCur, unpaidDuePrev);
+
+        const invoiceOverdueSum = (invoices || []).filter(i => i.status === 'Overdue').reduce((s, i) => s + (i.amount || 0), 0);
+        const tenantOverdueSum = tenants.filter(t => t.status === 'Overdue').reduce((s, t) => s + (t.rentAmount || 0), 0);
+        const overdueAmount = invoiceOverdueSum > 0 ? invoiceOverdueSum : tenantOverdueSum;
+
+        const overdueInvCur = (invoices || []).filter(i => {
+            if (i.status !== 'Overdue') return false;
+            const d = new Date(i.dueDate);
+            return !isNaN(d.getTime()) && d.getFullYear() === y && d.getMonth() === m;
+        }).reduce((s, i) => s + (i.amount || 0), 0);
+        const overdueInvPrev = (invoices || []).filter(i => {
+            if (i.status !== 'Overdue') return false;
+            const d = new Date(i.dueDate);
+            return !isNaN(d.getTime()) && d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+        }).reduce((s, i) => s + (i.amount || 0), 0);
+        const ovrMom = pctVsPrev(overdueInvCur, overdueInvPrev);
+
+        const expCur = sumPaidExpensesInMonth(bills || [], invoices || [], renovationProjectBills || [], y, m);
+        const expPrev = sumPaidExpensesInMonth(bills || [], invoices || [], renovationProjectBills || [], prevYear, prevMonth);
+        const expMom = pctVsPrev(expCur, expPrev);
+
         return [
-            { title: 'Collected (Total)', value: `KES ${(totalCollected / 1000000).toFixed(2)}M`, change: '12%', changeType: 'increase' },
-            { title: 'Outstanding Invoices', value: outstandingCount.toString(), change: '5%', changeType: 'decrease' },
-            { title: 'Overdue Amount', value: `KES ${Number(overdueAmount ?? 0).toLocaleString()}`, change: '2%', changeType: 'increase' },
-            { title: 'Total Expenses (MTD)', value: 'KES 1.8M', change: '8%', changeType: 'decrease' } 
+            {
+                title: 'Collected (Total)',
+                value: formatKesCompact(totalCollected),
+                ...colMom,
+            },
+            {
+                title: 'Outstanding Invoices',
+                value: String(outstandingCount),
+                ...outMom,
+            },
+            {
+                title: 'Overdue Amount',
+                value: `KES ${Number(overdueAmount ?? 0).toLocaleString()}`,
+                ...ovrMom,
+            },
+            {
+                title: 'Total Expenses (MTD)',
+                value: `KES ${Number(expCur).toLocaleString()}`,
+                ...expMom,
+            },
         ];
-    }, [tenants]);
+    }, [tenants, bills, invoices, renovationProjectBills]);
 
     const recentTransactions = useMemo(() => {
-        // Flatten all tenant payment histories into one list
-        const allPayments = tenants.flatMap(t => 
+        const allPayments = tenants.flatMap(t =>
             t.paymentHistory.map(p => ({
                 id: `${t.id}-${p.reference}`,
                 date: p.date,
                 tenantName: t.name,
-                amount: parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0,
+                amount: parsePaymentAmount(p.amount),
                 method: p.method,
                 status: p.status,
                 reference: p.reference
             }))
         );
-        
-        return allPayments.slice(0, 10); // Top 10
+        return allPayments
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 10);
     }, [tenants]);
 
     const incomeExpenseChartData = useMemo(() => {
@@ -119,7 +234,7 @@ const PaymentsOverview: React.FC = () => {
             t.paymentHistory.forEach(p => {
                 const d = new Date(p.date);
                 if (d.getFullYear() === currentYear && p.status === 'Paid') {
-                    incomeData[d.getMonth()] += parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
+                    incomeData[d.getMonth()] += parsePaymentAmount(p.amount);
                 }
             });
         });

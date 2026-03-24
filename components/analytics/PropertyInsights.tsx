@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useData } from '../../context/DataContext';
 
 const PropertyInsights: React.FC = () => {
-    const { properties, tenants } = useData();
+    const { properties, tenants, bills } = useData();
     const [sortField, setSortField] = useState('revenue');
 
     const matrixData = useMemo(() => {
@@ -14,8 +14,9 @@ const PropertyInsights: React.FC = () => {
                 .filter(t => t.propertyId === p.id && t.status !== 'Overdue')
                 .reduce((s, t) => s + t.rentAmount, 0);
             
-            // Mock expense
-            const expense = revenue * (0.2 + Math.random() * 0.1); 
+            const expense = bills
+                .filter(b => b.propertyId === p.id && b.status === 'Paid')
+                .reduce((sum, b) => sum + (b.amount || 0), 0);
             const net = revenue - expense;
 
             return {
@@ -28,7 +29,7 @@ const PropertyInsights: React.FC = () => {
                 net
             };
         }).sort((a,b) => (b as any)[sortField] - (a as any)[sortField]);
-    }, [properties, tenants, sortField]);
+    }, [properties, tenants, bills, sortField]);
 
     return (
         <div className="space-y-8 pb-10">
@@ -59,7 +60,7 @@ const PropertyInsights: React.FC = () => {
                                 <th className="px-4 py-3 text-center">Units</th>
                                 <th className="px-4 py-3 text-center">Occupancy</th>
                                 <th className="px-4 py-3 text-right">Revenue</th>
-                                <th className="px-4 py-3 text-right">Expenses (Est)</th>
+                                <th className="px-4 py-3 text-right">Expenses</th>
                                 <th className="px-4 py-3 text-right">Net Income</th>
                                 <th className="px-4 py-3 text-center">Status</th>
                             </tr>

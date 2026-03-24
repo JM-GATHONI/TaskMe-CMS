@@ -2,7 +2,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { Fund, Investment, WithdrawalRequest, RFTransaction } from '../../types';
-import { MOCK_REFERRAL_DATA } from '../../constants';
 import Icon from '../Icon';
 import { ProjectDetailModal } from './InvestmentPlans'; 
 
@@ -245,8 +244,7 @@ const AddCapitalModal: React.FC<{
         }
         setMpesaStep('processing');
         setTimeout(() => {
-            const randomCode = `LGR${Math.floor(Math.random()*10000).toString().padStart(4, '0')}QT${Math.floor(Math.random()*9)}M`;
-            setTxCode(randomCode);
+            setTxCode(`LGR${Date.now().toString().slice(-10)}QT`);
             setMpesaStep('success');
         }, 3000);
     };
@@ -571,7 +569,28 @@ const KpiDetailModal: React.FC<{
     data: any; 
     onClose: () => void 
 }> = ({ type, data, onClose }) => {
-    const { investments, rfTransactions, funds } = data;
+    const { investments, rfTransactions, funds, referralNetworkRows = [] } = data;
+
+    const earningsByMonth = useMemo(() => {
+        const now = new Date();
+        const labels: string[] = [];
+        const amounts: number[] = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            labels.push(d.toLocaleString('default', { month: 'short' }));
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            const sum = (rfTransactions || [])
+                .filter((t: RFTransaction) => {
+                    if (t.type !== 'Interest Payout' && t.type !== 'Referral Commission') return false;
+                    const td = new Date(t.date);
+                    return !isNaN(td.getTime()) && td.getFullYear() === y && td.getMonth() === m;
+                })
+                .reduce((s: number, t: RFTransaction) => s + (t.amount || 0), 0);
+            amounts.push(sum);
+        }
+        return { labels, amounts };
+    }, [rfTransactions]);
 
     const getTitle = () => {
         switch(type) {
@@ -653,10 +672,10 @@ const KpiDetailModal: React.FC<{
                                      <Chart 
                                         type="bar" 
                                         data={{
-                                            labels: ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                                            labels: earningsByMonth.labels,
                                             datasets: [{
                                                 label: 'Earnings (KES)',
-                                                data: [2500, 2800, 3000, 3500, 4000, 4200], // Mock trend
+                                                data: earningsByMonth.amounts,
                                                 backgroundColor: '#3b82f6',
                                                 borderRadius: 4
                                             }]
@@ -706,17 +725,18 @@ const KpiDetailModal: React.FC<{
                              <h3 className="text-lg font-bold text-gray-800 mb-4">Projected Payouts (This Month)</h3>
                              <div className="space-y-4">
                                 {investments.filter((i: any) => i.status === 'Active').map((inv: any, idx: number) => {
-                                    // Mock calculation based on 2.5% monthly
-                                    const monthlyReturn = inv.amount * 0.025; 
+                                    const fund = (funds || []).find((f: Fund) => f.id === inv.fundId);
+                                    const m = parseMonthlyRateFromFund(fund);
+                                    const monthlyReturn = inv.amount * m;
                                     return (
                                         <div key={idx} className="flex justify-between items-center p-4 border rounded-lg hover:shadow-sm transition-shadow">
                                             <div>
                                                 <p className="font-bold text-gray-800">{inv.fundName}</p>
-                                                <p className="text-xs text-gray-500">Capital: KES {inv.amount.toLocaleString()} • Rate: 2.5% / mo</p>
+                                                <p className="text-xs text-gray-500">Capital: KES {inv.amount.toLocaleString()} • Rate: {(m * 100).toFixed(2)}% / mo (from fund target)</p>
                                             </div>
                                             <div className="text-right">
                                                 <p className="font-extrabold text-lg text-green-600">KES {monthlyReturn.toLocaleString()}</p>
-                                                <p className="text-xs text-gray-400">Due: 15th Dec</p>
+                                                <p className="text-xs text-gray-400">Due: 15th</p>
                                             </div>
                                         </div>
                                     );
@@ -754,13 +774,16 @@ const KpiDetailModal: React.FC<{
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {MOCK_REFERRAL_DATA.referrals.map((ref, idx) => (
+                                            {referralNetworkRows.map((ref: { name: string; activeBalance: number; monthlyCommission: number }, idx: number) => (
                                                 <tr key={idx} className="hover:bg-gray-50">
                                                     <td className="px-4 py-3 font-medium text-gray-900">{ref.name}</td>
                                                     <td className="px-4 py-3 text-right text-gray-600">KES {ref.activeBalance.toLocaleString()}</td>
                                                     <td className="px-4 py-3 text-right font-bold text-green-600">KES {ref.monthlyCommission.toLocaleString()}</td>
                                                 </tr>
                                             ))}
+                                            {referralNetworkRows.length === 0 && (
+                                                <tr><td colSpan={3} className="p-4 text-center text-gray-400">No referred investors in network yet.</td></tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -774,8 +797,16 @@ const KpiDetailModal: React.FC<{
     );
 };
 
+function parseMonthlyRateFromFund(fund: Fund | undefined): number {
+    if (!fund?.targetApy) return 0.025;
+    const match = fund.targetApy.match(/(\d+(\.\d+)?)/);
+    if (!match) return 0.025;
+    const apy = parseFloat(match[0]) / 100;
+    return apy / 12;
+}
+
 const InvestorDashboard: React.FC = () => {
-    const { funds, investments, addInvestment, withdrawals, addWithdrawal, rfTransactions, updateFund } = useData();
+    const { funds, investments, addInvestment, withdrawals, addWithdrawal, rfTransactions, updateFund, renovationInvestors } = useData();
     const [selectedProject, setSelectedProject] = useState<Fund | null>(null);
     const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
     const [isInvestOpen, setIsInvestOpen] = useState(false);
@@ -806,22 +837,107 @@ const InvestorDashboard: React.FC = () => {
 
     // Pending Payout Estimation
     const pendingPayout = investments.filter(i => i.status === 'Active').reduce((sum, i) => {
-        // Simple assumption: 2.5% monthly if not specified in detail
-        return sum + (i.amount * 0.025); 
+        const fund = funds.find(f => f.id === i.fundId);
+        const m = parseMonthlyRateFromFund(fund);
+        return sum + i.amount * m;
     }, 0);
 
-    // Referral Commission (Mock)
-    const referralEarnings = MOCK_REFERRAL_DATA.stats.commission || 0;
+    const referralEarnings = rfTransactions
+        .filter(t => t.type === 'Referral Commission' && t.status === 'Completed')
+        .reduce((s, t) => s + (t.amount || 0), 0);
 
-    // Mock Wallet Balance (Simulated)
-    const walletBalance = 5000; 
+    const walletBalance = investments.reduce((s, i) => s + (i.accruedInterest || 0), 0);
 
-    // Mock Holdings with Duration for Tier Calculation
-    const holdings = [
-        { name: 'Renovation Fund I', invested: 150000, currentVal: 162000, duration: 24 }, 
-        { name: 'Stable Income Trust', invested: 50000, currentVal: 51500, duration: 12 }, 
-        { name: 'High Yield Growth', invested: 200000, currentVal: 210000, duration: 6 },
-    ];
+    const holdings = useMemo(() => {
+        return investments
+            .filter(i => i.status === 'Active')
+            .map(inv => {
+                const fund = funds.find(f => f.id === inv.fundId);
+                const monthly = parseMonthlyRateFromFund(fund);
+                const invested = inv.amount;
+                const currentVal = invested + (inv.accruedInterest || 0) + invested * monthly;
+                const monthsHeld = (() => {
+                    const d = new Date(inv.date);
+                    if (isNaN(d.getTime())) return 12;
+                    const diff = (Date.now() - d.getTime()) / (86400000 * 30);
+                    return Math.max(6, Math.min(24, Math.round(diff) || 12));
+                })();
+                return { name: inv.fundName, invested, currentVal, duration: monthsHeld };
+            });
+    }, [investments, funds]);
+
+    const portfolioReturnPct = useMemo(() => {
+        const cost = holdings.reduce((s, h) => s + h.invested, 0);
+        const val = holdings.reduce((s, h) => s + h.currentVal, 0);
+        if (cost <= 0) return 0;
+        return ((val - cost) / cost) * 100;
+    }, [holdings]);
+
+    const referralNetworkRows = useMemo(() => {
+        return (renovationInvestors || [])
+            .filter(i => !!i.referrerId)
+            .map(referee => {
+                const activeBalance = investments
+                    .filter(inv => inv.investorId === referee.id && inv.status === 'Active')
+                    .reduce((s, inv) => s + inv.amount, 0);
+                const now = new Date();
+                const monthlyCommission = rfTransactions
+                    .filter(t => {
+                        if (t.type !== 'Referral Commission' || t.status !== 'Completed') return false;
+                        const d = new Date(t.date);
+                        if (isNaN(d.getTime()) || d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) return false;
+                        const blob = `${t.description || ''} ${t.partyName || ''}`.toLowerCase();
+                        const token = String(referee.name || '').toLowerCase().split(/\s+/)[0];
+                        return token ? blob.includes(token) : false;
+                    })
+                    .reduce((s, t) => s + (t.amount || 0), 0);
+                return { name: referee.name, activeBalance, monthlyCommission };
+            });
+    }, [renovationInvestors, investments, rfTransactions]);
+
+    const performanceData = useMemo(() => {
+        const now = new Date();
+        const labels: string[] = [];
+        const data: number[] = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            labels.push(d.toLocaleString('default', { month: 'short' }));
+            const cutoffEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+            let invTotal = 0;
+            let accrued = 0;
+            investments.forEach(inv => {
+                const id = new Date(inv.date);
+                if (!isNaN(id.getTime()) && id <= cutoffEnd) {
+                    invTotal += inv.amount;
+                    accrued += inv.accruedInterest || 0;
+                }
+            });
+            data.push(invTotal + accrued);
+        }
+        if (data.every(v => v === 0) && totalInvestment > 0) {
+            data[data.length - 1] = totalInvestment + walletBalance;
+        }
+        return {
+            labels,
+            datasets: [{
+                label: 'Portfolio Value (KES)',
+                data,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        };
+    }, [investments, totalInvestment, walletBalance]);
+
+    const allocationData = useMemo(() => ({
+        labels: ['Active Capital', 'Accrued / Wallet'],
+        datasets: [{
+            data: [activeCapital, Math.max(0, walletBalance)],
+            backgroundColor: ['#3b82f6', '#e5e7eb'],
+            borderWidth: 0
+        }]
+    }), [activeCapital, walletBalance]);
 
     const handleNewInvestment = (invData: Partial<Investment>) => {
         const newInv: Investment = {
@@ -886,27 +1002,6 @@ const InvestorDashboard: React.FC = () => {
         return [...invs, ...wds].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [investments, withdrawals]);
 
-    const performanceData = {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-        datasets: [{
-            label: 'Portfolio Value (KES)',
-            data: [100000, 102000, 155000, 158000, 210000, totalInvestment + walletBalance],
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            fill: true,
-            tension: 0.4
-        }]
-    };
-
-    const allocationData = {
-        labels: ['Active Capital', 'Cash Balance'],
-        datasets: [{
-            data: [activeCapital, walletBalance],
-            backgroundColor: ['#3b82f6', '#e5e7eb'],
-            borderWidth: 0
-        }]
-    };
-
     return (
         <div className="space-y-8 pb-12">
             {/* Header & Actions */}
@@ -933,7 +1028,7 @@ const InvestorDashboard: React.FC = () => {
                 <KpiCard 
                     title="Total Portfolio Value" 
                     value={totalInvestment + walletBalance} 
-                    subtext="+12.5% all-time return" 
+                    subtext={`${portfolioReturnPct >= 0 ? '+' : ''}${portfolioReturnPct.toFixed(1)}% modelled return on holdings`} 
                     icon="reits" 
                     color="#10b981"
                     onClick={() => setActiveKpiModal('portfolio')}
@@ -982,7 +1077,7 @@ const InvestorDashboard: React.FC = () => {
                             <p className="text-2xl font-bold text-green-400">KES {interestWithdrawals.toLocaleString()}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Wallet Balance</p>
+                            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Accrued on book</p>
                             <p className="text-2xl font-bold">KES {walletBalance.toLocaleString()}</p>
                         </div>
                     </div>
@@ -1074,6 +1169,9 @@ const InvestorDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
+                            {holdings.length === 0 && (
+                                <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-400">No active holdings yet.</td></tr>
+                            )}
                             {holdings.map((h, i) => {
                                 const rates = getTierRates(h.duration);
                                 return (
@@ -1147,7 +1245,7 @@ const InvestorDashboard: React.FC = () => {
             {activeKpiModal && (
                 <KpiDetailModal 
                     type={activeKpiModal} 
-                    data={{ investments, rfTransactions, funds }} 
+                    data={{ investments, rfTransactions, funds, referralNetworkRows }} 
                     onClose={() => setActiveKpiModal(null)} 
                 />
             )}

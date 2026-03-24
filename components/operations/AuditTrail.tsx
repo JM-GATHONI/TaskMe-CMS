@@ -19,75 +19,21 @@ interface DetailedLog {
     metadata?: any;
 }
 
-// --- Mock Data for Demonstration ---
-const MOCK_LOGS: DetailedLog[] = [
-    { 
-        id: 'log-1', 
-        user: 'Admin Alice', 
-        role: 'Super Admin', 
-        action: 'System Configuration Change', 
-        module: 'Settings', 
-        details: 'Changed global VAT rate from 16% to 14%', 
-        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString().replace('T', ' ').slice(0, 19), 
-        ip: '192.168.1.10', 
-        device: 'Chrome / MacOS', 
-        severity: 'Critical', 
-        status: 'Success',
-        metadata: { oldValue: '16%', newValue: '14%' }
-    },
-    { 
-        id: 'log-2', 
-        user: 'Manager Mike', 
-        role: 'Branch Manager', 
-        action: 'Tenant Eviction Process Initiated', 
-        module: 'Tenants', 
-        details: 'Initiated eviction for Tenant John Doe (Unit B-202)', 
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString().replace('T', ' ').slice(0, 19), 
-        ip: '10.0.0.45', 
-        device: 'Firefox / Windows', 
-        severity: 'Warning', 
-        status: 'Success' 
-    },
-    { 
-        id: 'log-3', 
-        user: 'System', 
-        role: 'Automated Bot', 
-        action: 'Failed Login Attempt', 
-        module: 'Security', 
-        details: 'Multiple failed login attempts detected for account: admin@taskme.re', 
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString().replace('T', ' ').slice(0, 19), 
-        ip: '45.22.19.112', 
-        device: 'Unknown', 
-        severity: 'Critical', 
-        status: 'Failed' 
-    },
-    { 
-        id: 'log-4', 
-        user: 'Agent Ann', 
-        role: 'Field Agent', 
-        action: 'Lease Agreement Generated', 
-        module: 'Leasing', 
-        details: 'Generated standard residential lease for Unit A-101', 
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString().replace('T', ' ').slice(0, 19), 
-        ip: '192.168.1.12', 
-        device: 'Safari / iPhone', 
-        severity: 'Normal', 
-        status: 'Success' 
-    },
-    { 
-        id: 'log-5', 
-        user: 'Accountant Alex', 
-        role: 'Accountant', 
-        action: 'Bulk Invoice Generation', 
-        module: 'Finance', 
-        details: 'Generated 150 monthly rent invoices for November', 
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString().replace('T', ' ').slice(0, 19), 
-        ip: '192.168.1.15', 
-        device: 'Edge / Windows', 
-        severity: 'Normal', 
-        status: 'Success' 
-    }
-];
+function moduleFromAction(action: string): DetailedLog['module'] {
+    const a = action.toLowerCase();
+    if (a.includes('login') || a.includes('password') || a.includes('auth')) return 'Security';
+    if (a.includes('invoice') || a.includes('payment') || a.includes('payout') || a.includes('bill')) return 'Finance';
+    if (a.includes('lease')) return 'Leasing';
+    if (a.includes('tenant')) return 'Tenants';
+    if (a.includes('setting') || a.includes('config')) return 'Settings';
+    return 'Operations';
+}
+
+function formatTs(iso: string): string {
+    const s = String(iso || '');
+    if (!s) return '—';
+    return s.includes('T') ? s.replace('T', ' ').slice(0, 19) : s.slice(0, 19);
+}
 
 const SeverityBadge: React.FC<{ severity: DetailedLog['severity'] }> = ({ severity }) => {
     const styles = {
@@ -183,19 +129,36 @@ const LogDetailModal: React.FC<{ log: DetailedLog; onClose: () => void }> = ({ l
 );
 
 const OperationsAuditTrail: React.FC = () => {
+    const { auditLogs } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [severityFilter, setSeverityFilter] = useState('All');
     const [selectedLog, setSelectedLog] = useState<DetailedLog | null>(null);
 
+    const allLogs = useMemo((): DetailedLog[] => {
+        return auditLogs.map((e) => ({
+            id: e.id,
+            user: e.user,
+            role: '—',
+            action: e.action,
+            module: moduleFromAction(e.action),
+            details: e.action,
+            timestamp: formatTs(e.timestamp),
+            ip: '—',
+            device: '—',
+            severity: 'Normal',
+            status: 'Success',
+        })).sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+    }, [auditLogs]);
+
     const filteredLogs = useMemo(() => {
-        return MOCK_LOGS.filter(log => {
+        return allLogs.filter(log => {
             const matchesSearch = log.action.toLowerCase().includes(searchQuery.toLowerCase()) || 
                                   log.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                   log.details.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesSeverity = severityFilter === 'All' || log.severity === severityFilter;
             return matchesSearch && matchesSeverity;
         });
-    }, [searchQuery, severityFilter]);
+    }, [allLogs, searchQuery, severityFilter]);
 
     return (
         <div className="space-y-6">
@@ -211,11 +174,11 @@ const OperationsAuditTrail: React.FC = () => {
                 <div className="flex gap-2">
                      <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 text-center">
                         <p className="text-[10px] text-gray-400 uppercase font-bold">Threat Level</p>
-                        <p className="text-green-600 font-bold">Low</p>
+                        <p className="text-green-600 font-bold">{auditLogs.length ? 'Low' : '—'}</p>
                      </div>
                      <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 text-center">
-                        <p className="text-[10px] text-gray-400 uppercase font-bold">Active Sessions</p>
-                        <p className="text-blue-600 font-bold">14</p>
+                        <p className="text-[10px] text-gray-400 uppercase font-bold">Events</p>
+                        <p className="text-blue-600 font-bold">{auditLogs.length}</p>
                      </div>
                 </div>
             </div>

@@ -284,15 +284,24 @@ const PayrollProcessing: React.FC = () => {
                 };
             }
 
-            // Simplified Statutory Calculations (Kenya Context)
-            const nssf = 1080; // Tier II cap approx
-            const nhif = 1500; // Simplified average
-            const housingLevy = gross * 0.015;
-            const taxable = gross - nssf;
-            const tax = taxable * 0.30 - 2400; // Simplified PAYE (30% minus relief)
-            const paye = Math.max(0, tax);
+            const hasSalaryAllocation =
+                (s.salaryConfig?.amount ?? 0) > 0 || (s.payrollInfo?.baseSalary ?? 0) > 0;
 
             const otherDeductions = (s.deductions || []).reduce((sum, d) => sum + d.amount, 0);
+
+            // Statutory (NHIF/NSSF/PAYE/Housing) only when a salary amount has been allocated to the employee
+            let nssf = 0;
+            let nhif = 0;
+            let housingLevy = 0;
+            let paye = 0;
+            if (hasSalaryAllocation && gross > 0) {
+                nssf = 1080; // Tier II cap approx
+                nhif = 1500; // Simplified average
+                housingLevy = gross * 0.015;
+                const taxable = gross - nssf;
+                const tax = taxable * 0.30 - 2400; // Simplified PAYE (30% minus relief)
+                paye = Math.max(0, tax);
+            }
 
             const totalDeductions = paye + nhif + nssf + housingLevy + otherDeductions;
             const net = gross - totalDeductions;

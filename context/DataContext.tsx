@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob } from '../types';
+import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob, MarketingBannerTemplate } from '../types';
 import { GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA } from '../constants';
 import { websiteApi } from '../utils/websiteApi';
 import { supabase } from '../utils/supabaseClient';
@@ -124,6 +124,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11');
     const [leads, setLeads, leadsStatus] = useSupabaseBackedState<Lead[]>([], 'tm_leads_v11');
     const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
+    const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
 
     const isDataLoading =
       tenantsStatus.loading ||
@@ -530,15 +531,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateFundiJob = (id: string, d: Partial<FundiJob>) => setFundiJobs(prev => prev.map(j => j.id === id ? { ...j, ...d } : j));
     
     const syncFundiJobs = async () => {
+        // Production safety: do NOT call websiteApi.fetchFundiJobs() (it generates mock/random jobs).
+        // fundiJobs should come from the Supabase-backed app_state (tm_fundi_jobs_v11).
         try {
-             const newJobs = await websiteApi.fetchFundiJobs();
-             setFundiJobs(prev => {
-                 const existingIds = new Set(prev.map(j => j.id));
-                 const filteredNew = newJobs.filter(j => !existingIds.has(j.id));
-                 return [...filteredNew, ...prev];
-             });
+            // Force re-fetch of the app_state value so the UI reflects any real updates.
+            queryClient.invalidateQueries({ queryKey: ['app_state', 'tm_fundi_jobs_v11'] });
         } catch (e) {
-            console.error("Failed to sync fundi jobs", e);
+            console.error("Failed to refresh fundi jobs", e);
         }
     };
 
@@ -573,7 +572,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bills, invoices, vendors, messages, notifications, templates, workflows, automationRules, auditLogs, escalationRules,
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
-            roles, scheduledReports, taxRecords, marketplaceListings, leads, fundiJobs,
+            roles, scheduledReports, taxRecords, marketplaceListings, leads, fundiJobs, marketingBanners, setMarketingBanners,
             users, updateUser,
             isSupabaseEnabled,
             isDataLoading,

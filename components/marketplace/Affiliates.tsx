@@ -121,22 +121,21 @@ const InviteAffiliateModal: React.FC<{ onClose: () => void; onInvite: (data: any
 };
 
 const AffiliatePerformanceModal: React.FC<{ affiliate: LiveAffiliate; onClose: () => void }> = ({ affiliate, onClose }) => {
-    // Mock Chart Data for trend (simulated as we don't have historical snapshots)
-    const chartData = {
+    const chartData = useMemo(() => ({
         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
         datasets: [
             {
                 label: 'Leads',
-                data: [Math.floor(Math.random()*10), Math.floor(Math.random()*15), Math.floor(Math.random()*20), 5, 8, affiliate.stats.leadsReferred],
+                data: [0, 0, 0, 0, 0, affiliate.stats.leadsReferred],
                 backgroundColor: 'rgba(54, 162, 235, 0.5)',
             },
             {
                 label: 'Conversions',
-                data: [Math.floor(Math.random()*5), Math.floor(Math.random()*5), Math.floor(Math.random()*8), 1, 2, affiliate.stats.leasesSigned],
+                data: [0, 0, 0, 0, 0, affiliate.stats.leasesSigned],
                 backgroundColor: 'rgba(75, 192, 192, 0.5)',
             },
         ],
-    };
+    }), [affiliate.stats.leadsReferred, affiliate.stats.leasesSigned]);
 
     return (
         <div className="fixed inset-0 bg-black/50 z-[1500] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -400,14 +399,20 @@ const Affiliates: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                             {/* Mock pending payout for UI completeness, in real app derive from transaction status */}
-                            <tr>
-                                <td className="px-4 py-3 font-medium">John Mark</td>
-                                <td className="px-4 py-3 text-gray-500 text-xs uppercase font-bold">Freelancer</td>
-                                <td className="px-4 py-3 text-gray-600">Tom Riddle (Lease Signed)</td>
-                                <td className="px-4 py-3 text-right font-bold text-green-600">KES 3,000</td>
-                                <td className="px-4 py-3 text-right"><button className="text-blue-600 hover:underline text-xs font-bold">Approve</button></td>
-                            </tr>
+                            {pendingReferralPayouts.map((t) => (
+                                <tr key={t.id}>
+                                    <td className="px-4 py-3 font-medium">{t.partyName}</td>
+                                    <td className="px-4 py-3 text-gray-500 text-xs uppercase font-bold">Referral</td>
+                                    <td className="px-4 py-3 text-gray-600">{t.description || t.reference}</td>
+                                    <td className="px-4 py-3 text-right font-bold text-green-600">KES {Number(t.amount ?? 0).toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right"><button type="button" className="text-blue-600 hover:underline text-xs font-bold">Review</button></td>
+                                </tr>
+                            ))}
+                            {pendingReferralPayouts.length === 0 && (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-400">No pending referral commissions.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

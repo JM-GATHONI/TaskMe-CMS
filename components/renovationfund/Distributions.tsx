@@ -1,15 +1,25 @@
 
-import React, { useState } from 'react';
-import { MOCK_DISTRIBUTIONS } from '../../constants';
+import React, { useState, useMemo } from 'react';
 import Icon from '../Icon';
 import { Distribution } from '../../types';
 import { printSection } from '../../utils/exportHelper';
+import { useData } from '../../context/DataContext';
+import { interestPayoutsAsDistributions } from '../../utils/rfDistributions';
 
 const Distributions: React.FC = () => {
-    const [yearFilter, setYearFilter] = useState('2025');
+    const y = new Date().getFullYear();
+    const [yearFilter, setYearFilter] = useState(String(y));
     const [selectedReceipt, setSelectedReceipt] = useState<Distribution | null>(null);
+    const { rfTransactions } = useData();
 
-    const totalDistributed = MOCK_DISTRIBUTIONS.reduce((sum, d) => sum + d.amount, 0);
+    const allDist = useMemo(() => interestPayoutsAsDistributions(rfTransactions), [rfTransactions]);
+    const rows = useMemo(
+        () => allDist.filter((d) => String(d.date).startsWith(yearFilter)),
+        [allDist, yearFilter]
+    );
+
+    const totalDistributed = useMemo(() => rows.reduce((sum, d) => sum + d.amount, 0), [rows]);
+    const lastPayout = rows[0];
 
     const handlePrintReceipt = (dist: Distribution) => {
         setSelectedReceipt(dist);
@@ -31,17 +41,17 @@ const Distributions: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-green-500">
                     <p className="text-gray-500 font-medium text-sm uppercase">Total Earned</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {totalDistributed.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {Number(totalDistributed ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-blue-500">
                     <p className="text-gray-500 font-medium text-sm uppercase">Last Payout</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {MOCK_DISTRIBUTIONS[0]?.amount.toLocaleString() || 0}</p>
-                    <p className="text-xs text-gray-400 mt-1">{MOCK_DISTRIBUTIONS[0]?.date}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {Number(lastPayout?.amount ?? 0).toLocaleString()}</p>
+                    <p className="text-xs text-gray-400 mt-1">{lastPayout?.date || '—'}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-yellow-500">
                     <p className="text-gray-500 font-medium text-sm uppercase">Next Payout Est.</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES 3,500</p>
-                    <p className="text-xs text-gray-400 mt-1">Dec 15, 2025</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">—</p>
+                    <p className="text-xs text-gray-400 mt-1">—</p>
                 </div>
             </div>
 
@@ -49,8 +59,9 @@ const Distributions: React.FC = () => {
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-gray-800">Distribution History</h2>
                     <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="p-2 border rounded-md bg-gray-50">
-                        <option value="2025">2025</option>
-                        <option value="2024">2024</option>
+                        <option value={String(y)}>{y}</option>
+                        <option value={String(y - 1)}>{y - 1}</option>
+                        <option value={String(y - 2)}>{y - 2}</option>
                     </select>
                 </div>
                 
@@ -67,11 +78,11 @@ const Distributions: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-100">
-                            {MOCK_DISTRIBUTIONS.map((dist, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50">
+                            {rows.map((dist, idx) => (
+                                <tr key={`${dist.id}-${idx}`} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{dist.date}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{dist.investorName}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">KES {dist.amount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-green-600">KES {Number(dist.amount ?? 0).toLocaleString()}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">{dist.method}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-center">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${dist.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
@@ -88,6 +99,9 @@ const Distributions: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
+                            {rows.length === 0 && (
+                                <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400">No distributions for this year.</td></tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -123,7 +137,7 @@ const Distributions: React.FC = () => {
                             </div>
                             <div className="border-t border-dashed pt-3 mt-3 flex justify-between items-center">
                                 <span className="text-gray-800 font-bold">Amount Paid:</span>
-                                <span className="text-xl font-bold text-green-600">KES {selectedReceipt.amount.toLocaleString()}</span>
+                                <span className="text-xl font-bold text-green-600">KES {Number(selectedReceipt.amount ?? 0).toLocaleString()}</span>
                             </div>
                         </div>
                         <div className="mt-8 pt-4 border-t text-xs text-gray-400">

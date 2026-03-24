@@ -1,31 +1,65 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Icon from '../Icon';
+import { useData } from '../../context/DataContext';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
 const AcquisitionInsights: React.FC = () => {
-    // Mock Data
+    const { leads } = useData();
+
+    const funnelCounts = useMemo(() => {
+        const total = leads.length;
+        const siteVisits = leads.filter(l => l.status !== 'New').length;
+        const inquiries = leads.filter(l => ['Contacted', 'Viewing', 'Negotiation', 'Closed'].includes(l.status)).length;
+        const tours = leads.filter(l => ['Viewing', 'Negotiation', 'Closed'].includes(l.status)).length;
+        const applications = leads.filter(l => ['Negotiation', 'Closed'].includes(l.status)).length;
+        const signed = leads.filter(l => l.status === 'Closed').length;
+        return { total, siteVisits, inquiries, tours, applications, signed };
+    }, [leads]);
+
     const funnelData = {
         labels: ['Impressions', 'Site Visits', 'Inquiries', 'Tours', 'Applications', 'Leases Signed'],
         datasets: [{
             label: 'Conversion Count',
-            data: [15000, 4500, 800, 250, 120, 85],
+            data: [
+                funnelCounts.total,
+                funnelCounts.siteVisits,
+                funnelCounts.inquiries,
+                funnelCounts.tours,
+                funnelCounts.applications,
+                funnelCounts.signed
+            ],
             backgroundColor: '#3b82f6',
             borderRadius: 4
         }]
     };
 
+    const sourceBreakdown = useMemo(() => {
+        const map: Record<string, number> = {};
+        leads.forEach(l => {
+            const s = l.source || 'Direct';
+            map[s] = (map[s] || 0) + 1;
+        });
+        return map;
+    }, [leads]);
+
     const sourceData = {
-        labels: ['Facebook Ads', 'Google Search', 'Referrals', 'Property Portals', 'Walk-ins'],
+        labels: Object.keys(sourceBreakdown).length ? Object.keys(sourceBreakdown) : ['No sources yet'],
         datasets: [{
-            data: [35, 25, 20, 15, 5],
+            data: Object.values(sourceBreakdown).length ? Object.values(sourceBreakdown) : [1],
             backgroundColor: ['#1877F2', '#DB4437', '#10b981', '#f59e0b', '#6b7280'],
             borderWidth: 0
         }]
     };
+
+    const leadsMtd = useMemo(() => {
+        const ym = new Date().toISOString().slice(0, 7);
+        return leads.filter(l => (l.date || '').startsWith(ym)).length;
+    }, [leads]);
+    const conversionRate = funnelCounts.total > 0 ? (funnelCounts.signed / funnelCounts.total) * 100 : 0;
 
     return (
         <div className="space-y-8 pb-10">
@@ -37,22 +71,22 @@ const AcquisitionInsights: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Leads (MTD)</p>
-                    <p className="text-2xl font-bold text-gray-800 mt-1">214</p>
-                    <p className="text-xs text-green-600 mt-1 font-bold">▲ 12%</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">{leadsMtd}</p>
+                    <p className="text-xs text-gray-600 mt-1 font-bold">Live this month</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Cost Per Lead</p>
-                    <p className="text-2xl font-bold text-gray-800 mt-1">KES 450</p>
-                    <p className="text-xs text-red-600 mt-1 font-bold">▼ 5% (Better)</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">KES —</p>
+                    <p className="text-xs text-gray-600 mt-1 font-bold">Connect spend feed to compute CPL</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Conv. Rate</p>
-                    <p className="text-2xl font-bold text-gray-800 mt-1">10.6%</p>
-                    <p className="text-xs text-green-600 mt-1 font-bold">▲ 1.2%</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">{conversionRate.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-600 mt-1 font-bold">Lead to lease</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-orange-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Avg. Time to Lease</p>
-                    <p className="text-2xl font-bold text-gray-800 mt-1">14 Days</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">—</p>
                 </div>
             </div>
 
@@ -101,30 +135,16 @@ const AcquisitionInsights: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            <tr className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium text-gray-800">Facebook Ads</td>
-                                <td className="px-4 py-3 text-right text-red-600">KES 15,000</td>
-                                <td className="px-4 py-3 text-right">120</td>
-                                <td className="px-4 py-3 text-right">8</td>
-                                <td className="px-4 py-3 text-right font-bold">KES 1,875</td>
-                                <td className="px-4 py-3 text-right text-green-600">4.5x</td>
-                            </tr>
-                            <tr className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium text-gray-800">Google Ads</td>
-                                <td className="px-4 py-3 text-right text-red-600">KES 25,000</td>
-                                <td className="px-4 py-3 text-right">80</td>
-                                <td className="px-4 py-3 text-right">12</td>
-                                <td className="px-4 py-3 text-right font-bold">KES 2,083</td>
-                                <td className="px-4 py-3 text-right text-green-600">5.2x</td>
-                            </tr>
-                            <tr className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium text-gray-800">Referrals</td>
-                                <td className="px-4 py-3 text-right text-red-600">KES 5,000</td>
-                                <td className="px-4 py-3 text-right">45</td>
-                                <td className="px-4 py-3 text-right">15</td>
-                                <td className="px-4 py-3 text-right font-bold">KES 333</td>
-                                <td className="px-4 py-3 text-right text-green-600">18.0x</td>
-                            </tr>
+                            {Object.entries(sourceBreakdown).map(([channel, count]) => (
+                                <tr key={channel} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium text-gray-800">{channel}</td>
+                                    <td className="px-4 py-3 text-right text-gray-400">—</td>
+                                    <td className="px-4 py-3 text-right">{count}</td>
+                                    <td className="px-4 py-3 text-right">{leads.filter(l => (l.source || 'Direct') === channel && l.status === 'Closed').length}</td>
+                                    <td className="px-4 py-3 text-right font-bold text-gray-400">—</td>
+                                    <td className="px-4 py-3 text-right text-gray-400">—</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>

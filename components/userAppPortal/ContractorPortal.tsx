@@ -141,10 +141,21 @@ const InvoiceModal: React.FC<{
 };
 
 const ContractorPortal: React.FC = () => {
-    const { vendors, tasks, updateTask, quotations, addQuotation, updateQuotation, addBill } = useData();
-    
-    // Simulate logged-in vendor (first one)
-    const vendor = vendors[0]; 
+    const { vendors, tasks, updateTask, quotations, addQuotation, updateQuotation, addBill, currentUser } = useData();
+
+    const vendor = useMemo(() => {
+        if (!vendors.length) return undefined;
+        if (currentUser) {
+            const byId = vendors.find(v => v.id === currentUser.id);
+            if (byId) return byId;
+            const em = (currentUser.email || '').toLowerCase();
+            if (em) {
+                const byEmail = vendors.find(v => (v.email || '').toLowerCase() === em);
+                if (byEmail) return byEmail;
+            }
+        }
+        return vendors[0];
+    }, [vendors, currentUser]);
 
     // Tabs
     const [activeTab, setActiveTab] = useState<'Jobs' | 'Quotations' | 'Invoices'>('Jobs');
@@ -252,7 +263,15 @@ const ContractorPortal: React.FC = () => {
         alert("Invoice raised successfully! Sent to Finance.");
     };
 
-    if (!vendor) return <div className="p-8 text-center">Loading Contractor Profile...</div>;
+    if (!vendor) {
+        return (
+            <div className="p-8 text-center text-gray-600">
+                {vendors.length === 0
+                    ? 'No contractor profile found. Ask an admin to register your vendor account.'
+                    : 'Loading contractor profile...'}
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 pb-20">

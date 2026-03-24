@@ -1,12 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { MOCK_USERS, MOCK_TASKS } from '../../constants';
 import { Task, TaskStatus, TaskPriority } from '../../types';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 
 const RequestIntake: React.FC = () => {
-    const { addTask, tasks } = useData();
+    const { addTask, tasks, users } = useData();
     // Form State
     const [requestType, setRequestType] = useState('Maintenance Request');
     const [title, setTitle] = useState('');
@@ -24,7 +23,7 @@ const RequestIntake: React.FC = () => {
             .slice(0, 10);
     }, [tasks]);
 
-    const assignableUsers = useMemo(() => MOCK_USERS.filter(u => u.role !== 'Tenant'), []);
+    const assignableUsers = useMemo(() => users.filter(u => u.role !== 'Tenant'), [users]);
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {

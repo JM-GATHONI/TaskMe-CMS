@@ -1,23 +1,14 @@
 
 import React, { useState } from 'react';
 import Icon from '../Icon';
-
-interface BannerTemplate {
-    id: string;
-    title: string;
-    type: 'Rent' | 'Sale' | 'Investment' | 'General';
-    imageUrl: string;
-    description: string;
-}
+import { useData } from '../../context/DataContext';
+import { MarketingBannerTemplate } from '../../types';
 
 const MarketingBanners: React.FC = () => {
-    const [templates, setTemplates] = useState<BannerTemplate[]>([
-        { id: 't1', title: 'Vacant Unit Template', type: 'Rent', imageUrl: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=400&q=80', description: 'Standard template for vacant apartments.' },
-        { id: 't2', title: 'R-REIT Investment', type: 'Investment', imageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=400&q=80', description: 'Promotional banner for new funds.' }
-    ]);
+    const { marketingBanners, setMarketingBanners } = useData();
     
     const [isUploadOpen, setIsUploadOpen] = useState(false);
-    const [newTemplate, setNewTemplate] = useState<Partial<BannerTemplate>>({ title: '', type: 'Rent', description: '', imageUrl: '' });
+    const [newTemplate, setNewTemplate] = useState<Partial<MarketingBannerTemplate>>({ title: '', type: 'Rent', description: '', imageUrl: '' });
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -32,14 +23,15 @@ const MarketingBanners: React.FC = () => {
 
     const handleSave = () => {
         if (!newTemplate.title || !newTemplate.imageUrl) return alert("Title and Image required.");
-        setTemplates([...templates, { ...newTemplate, id: `tpl-${Date.now()}` } as BannerTemplate]);
+        const row: MarketingBannerTemplate = { ...newTemplate, id: `tpl-${Date.now()}` } as MarketingBannerTemplate;
+        setMarketingBanners(prev => [...prev, row]);
         setIsUploadOpen(false);
         setNewTemplate({ title: '', type: 'Rent', description: '', imageUrl: '' });
     };
 
     const handleDelete = (id: string) => {
         if (confirm("Delete this template?")) {
-            setTemplates(templates.filter(t => t.id !== id));
+            setMarketingBanners(prev => prev.filter(t => t.id !== id));
         }
     };
 
@@ -48,7 +40,7 @@ const MarketingBanners: React.FC = () => {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Marketing Banners</h1>
-                    <p className="text-lg text-gray-500 mt-1">Manage templates available for download in user portals.</p>
+                    <p className="text-lg text-gray-500 mt-1">Manage templates available for download in user portals. Banners persist to your workspace.</p>
                 </div>
                 <button 
                     onClick={() => setIsUploadOpen(true)}
@@ -59,7 +51,13 @@ const MarketingBanners: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {templates.map(tpl => (
+                {marketingBanners.length === 0 && (
+                    <div className="col-span-full py-16 text-center text-gray-500 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                        <p className="font-medium text-gray-700">No banner templates yet.</p>
+                        <p className="text-sm mt-1">Upload images to add real marketing creatives.</p>
+                    </div>
+                )}
+                {marketingBanners.map(tpl => (
                     <div key={tpl.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group">
                         <div className="h-48 relative">
                             <img src={tpl.imageUrl} alt={tpl.title} className="w-full h-full object-cover" />
@@ -95,7 +93,7 @@ const MarketingBanners: React.FC = () => {
                             <select 
                                 className="w-full p-2 border rounded bg-white"
                                 value={newTemplate.type} 
-                                onChange={e => setNewTemplate({...newTemplate, type: e.target.value as any})}
+                                onChange={e => setNewTemplate({...newTemplate, type: e.target.value as MarketingBannerTemplate['type']})}
                             >
                                 <option value="Rent">For Rent</option>
                                 <option value="Sale">For Sale</option>

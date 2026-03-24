@@ -119,10 +119,11 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                 const { data: staffRows } = await supabase
                     .schema('app')
                     .from('staff_profiles')
-                    .select('id,name,role,email,phone,branch,status,salaryConfig,bankDetails,payrollInfo,leaveBalance,commissions,deductions,attendanceRecord')
+                    .select('id,name,role,email,phone,branch,status')
                     .eq('id', user.id)
                     .limit(1);
                 const staffRow = staffRows?.[0] ?? null;
+                const persistedStaff = staff.find(s => s.id === user.id);
 
                 // Resolve display name from public.profiles (populated by handle_new_user), then staff, then form fullName
                 let displayName: string = (staffRow?.name ?? fullName ?? user.email ?? 'User') as string;
@@ -147,13 +148,13 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                     branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
                     status: (staffRow?.status ?? 'Active') as any,
                     avatar: displayName.split(' ').map((n: string) => n[0]).join('') || 'U',
-                    salaryConfig: staffRow?.salaryConfig ?? { type: 'Monthly', amount: 0 },
-                    bankDetails: staffRow?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
-                    payrollInfo: staffRow?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
-                    leaveBalance: staffRow?.leaveBalance ?? { annual: 0 },
-                    commissions: staffRow?.commissions ?? [],
-                    deductions: staffRow?.deductions ?? [],
-                    attendanceRecord: staffRow?.attendanceRecord ?? {},
+                    salaryConfig: persistedStaff?.salaryConfig ?? { type: 'Monthly', amount: 0 },
+                    bankDetails: persistedStaff?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
+                    payrollInfo: persistedStaff?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
+                    leaveBalance: persistedStaff?.leaveBalance ?? { annual: 0 },
+                    commissions: persistedStaff?.commissions ?? [],
+                    deductions: persistedStaff?.deductions ?? [],
+                    attendanceRecord: persistedStaff?.attendanceRecord ?? {},
                     passwordHash: '',
                 };
 

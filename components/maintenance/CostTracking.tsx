@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
-import { MOCK_WORK_ORDERS, MOCK_TASKS } from '../../constants';
 import Icon from '../Icon';
+import { useData } from '../../context/DataContext';
 
 const Chart: React.FC<{ type: 'bar' | 'doughnut'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,17 +30,16 @@ const Chart: React.FC<{ type: 'bar' | 'doughnut'; data: any; options?: any; heig
 };
 
 const CostTracking: React.FC = () => {
-    const budget = 100000; // Mock Monthly Budget
-    
+    const budget = 100000;
+    const { tasks } = useData();
+
     const costData = useMemo(() => {
-        // Use Mock Tasks for richer data if MOCK_WORK_ORDERS is empty
-        const source = MOCK_TASKS.length > 0 ? MOCK_TASKS : [];
         let total = 0;
         let labor = 0;
         let materials = 0;
         let travel = 0;
 
-        source.forEach(t => {
+        tasks.forEach(t => {
             if (t.costs) {
                 total += (t.costs.labor + t.costs.materials + t.costs.travel);
                 labor += t.costs.labor;
@@ -48,14 +47,9 @@ const CostTracking: React.FC = () => {
                 travel += t.costs.travel;
             }
         });
-        
-        // If data is too low for demo visualization, pad it
-        if (total === 0) {
-            labor = 15000; materials = 25000; travel = 5000; total = 45000;
-        }
 
         return { total, labor, materials, travel };
-    }, []);
+    }, [tasks]);
 
     const percentageSpent = Math.min(100, Math.round((costData.total / budget) * 100));
 
@@ -132,7 +126,7 @@ const CostTracking: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {MOCK_TASKS.filter(t => t.costs && (t.costs.labor + t.costs.materials) > 2000).slice(0, 5).map((t, i) => (
+                            {tasks.filter(t => t.costs && (t.costs.labor + t.costs.materials) > 2000).slice(0, 5).map((t, i) => (
                                 <tr key={i} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 font-medium text-gray-800">{t.title}</td>
                                     <td className="px-4 py-3 text-gray-600">{Number(t.costs?.labor ?? 0).toLocaleString()}</td>
@@ -142,7 +136,7 @@ const CostTracking: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                            {MOCK_TASKS.filter(t => t.costs && (t.costs.labor + t.costs.materials) > 2000).length === 0 && (
+                            {tasks.filter(t => t.costs && (t.costs.labor + t.costs.materials) > 2000).length === 0 && (
                                 <tr><td colSpan={4} className="p-8 text-center text-gray-400">No high-cost items found.</td></tr>
                             )}
                         </tbody>

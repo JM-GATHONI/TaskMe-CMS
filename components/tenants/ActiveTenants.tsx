@@ -190,7 +190,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
 
         setStep('processing');
         setTimeout(() => {
-            const randomCode = `LGR${Math.floor(Math.random()*10000).toString().padStart(4, '0')}QT${Math.floor(Math.random()*9)}M`;
+            const randomCode = `LGR${Date.now().toString().slice(-10)}QT`;
             setTxCode(randomCode);
             
             // --- SAVE PAYMENT TO CONTEXT ---

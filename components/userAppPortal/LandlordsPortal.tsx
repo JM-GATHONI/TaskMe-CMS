@@ -355,7 +355,6 @@ export const LandlordInvestModal: React.FC<{
 
 const LandlordsPortal: React.FC = () => {
     const { landlords, properties, tenants, tasks, deductionRules, bills, addInvestment, currentUser, funds, rfTransactions, investments, isDataLoading } = useData();
-    const { displayName, initial: displayNameInitial } = useProfileDisplay({ nameFallback: currentLandlord?.name });
 
     // Tab State
     const [activeTab, setActiveTab] = useState<'dashboard' | 'properties' | 'financials' | 'requests' | 'growth'>('dashboard');
@@ -382,6 +381,8 @@ const LandlordsPortal: React.FC = () => {
         // Fallback for demo if no landlord logged in (safety)
         return landlords[0]; 
     }, [currentUser, landlords]);
+
+    const { displayName, initial: displayNameInitial } = useProfileDisplay({ nameFallback: currentLandlord?.name });
 
     useEffect(() => {
         let cancelled = false;
@@ -632,21 +633,13 @@ const LandlordsPortal: React.FC = () => {
         const currentMonthPayments = (supabasePayments.length > 0 ? supabasePayments : tenantDerivedPayments)
             .sort((a: any, b: any) => (b.day ?? 0) - (a.day ?? 0));
 
-        const useMockData = currentMonthPayments.length === 0;
-
         const graphData = days.map(day => {
-             if (useMockData) {
-                 return { day, percentage: 0 };
-            } else {
-                 const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
-                 const percentage = collectionStats.expected > 0 ? Math.round((collectedUntilDay / collectionStats.expected) * 100) : 0;
-                 return { day, percentage };
-            }
+            const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
+            const percentage = collectionStats.expected > 0 ? Math.round((collectedUntilDay / collectionStats.expected) * 100) : 0;
+            return { day, percentage };
         });
 
-        const tablePayments = useMockData
-            ? []
-            : currentMonthPayments.filter(p => p.day <= selectedDayFilter);
+        const tablePayments = currentMonthPayments.filter(p => p.day <= selectedDayFilter);
 
         const currentBucket = graphData.find(d => d.day === selectedDayFilter) || graphData[graphData.length-1];
 

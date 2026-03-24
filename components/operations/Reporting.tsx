@@ -54,6 +54,18 @@ const KpiCard: React.FC<{ title: string; value: string | number; change?: string
 const OperationsReporting: React.FC = () => {
     const { tasks, staff } = useData();
     const [period, setPeriod] = useState('Last 30 Days');
+    const currentYm = new Date().toISOString().slice(0, 7);
+
+    const completedMtdForStaff = (name: string) =>
+        tasks.filter(
+            (t) =>
+                t.assignedTo === name &&
+                (t.status === TaskStatus.Completed || t.status === TaskStatus.Closed) &&
+                (String(t.dueDate).startsWith(currentYm) ||
+                    (t.history || []).some(
+                        (h) => String(h.timestamp).slice(0, 7) === currentYm && /completed|closed/i.test(h.event)
+                    ))
+        ).length;
 
     // --- Metrics Calculation ---
     const metrics = useMemo(() => {
@@ -101,7 +113,7 @@ const OperationsReporting: React.FC = () => {
             },
             {
                 label: 'Completed (MTD)',
-                data: staff.slice(0, 5).map(s => Math.floor(Math.random() * 10) + 1), // Mock completed count
+                data: staff.slice(0, 5).map((s) => completedMtdForStaff(s.name)),
                 backgroundColor: '#cbd5e1',
                 borderRadius: 4
             }

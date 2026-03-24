@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { MOCK_PROPERTIES, GEOSPATIAL_DATA } from '../../constants';
+import { GEOSPATIAL_DATA } from '../../constants';
 import { Property, Unit, User, PropertyAsset, FloorPlan, UnitType, StaffProfile } from '../../types';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';

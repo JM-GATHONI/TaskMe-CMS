@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { MOCK_REFERRAL_DATA } from '../../constants';
 import Icon from '../Icon';
+import { useData } from '../../context/DataContext';
 
 const Referrals: React.FC = () => {
+    const { renovationInvestors, investments, rfTransactions, currentUser } = useData();
     const [activeTab, setActiveTab] = useState<'Investor' | 'Landlord'>('Investor');
     const [copied, setCopied] = useState(false);
     
@@ -11,9 +12,50 @@ const Referrals: React.FC = () => {
     const [calcInvestment, setCalcInvestment] = useState(500000);
     const [calcRentRoll, setCalcRentRoll] = useState(200000);
 
-    const investorLink = "https://taskme.re/invest/ref/USER2025";
-    const landlordLink = "https://taskme.re/list/ref/USER2025";
+    const referralCode = useMemo(() => {
+        const u = currentUser as { id?: string; email?: string } | null;
+        if (u?.id) return String(u.id).replace(/-/g, '').slice(0, 12).toUpperCase();
+        if (u?.email) return u.email.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'TASKME';
+        return 'TASKME';
+    }, [currentUser]);
+
+    const investorLink = `https://taskme.re/invest/ref/${referralCode}`;
+    const landlordLink = `https://taskme.re/list/ref/${referralCode}`;
     const currentLink = activeTab === 'Investor' ? investorLink : landlordLink;
+
+    const liveStats = useMemo(() => {
+        const referred = (renovationInvestors || []).filter(i => !!i.referrerId);
+        const totalCommission = (rfTransactions || [])
+            .filter(t => t.type === 'Referral Commission' && t.status === 'Completed')
+            .reduce((s, t) => s + (t.amount || 0), 0);
+        return { count: referred.length, commission: totalCommission };
+    }, [renovationInvestors, rfTransactions]);
+
+    const referralRows = useMemo(() => {
+        const referred = (renovationInvestors || []).filter(i => !!i.referrerId);
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        return referred.map(referee => {
+            const activeBalance = (investments || [])
+                .filter(i => i.investorId === referee.id && i.status === 'Active')
+                .reduce((s, i) => s + i.amount, 0);
+            const monthlyCommission = (rfTransactions || [])
+                .filter(t => {
+                    if (t.type !== 'Referral Commission' || t.status !== 'Completed') return false;
+                    const d = new Date(t.date);
+                    if (isNaN(d.getTime()) || d.getFullYear() !== y || d.getMonth() !== m) return false;
+                    const blob = `${t.description || ''} ${t.partyName || ''}`.toLowerCase();
+                    return blob.includes(String(referee.name || '').toLowerCase().split(/\s+/)[0] || '_');
+                })
+                .reduce((s, t) => s + (t.amount || 0), 0);
+            return {
+                name: referee.name,
+                activeBalance,
+                monthlyCommission,
+            };
+        });
+    }, [renovationInvestors, investments, rfTransactions]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(currentLink);
@@ -65,12 +107,12 @@ const Referrals: React.FC = () => {
                         <div className="flex gap-6">
                             <div>
                                 <p className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Total Earned</p>
-                                <p className="text-3xl font-bold text-white">KES {Number(MOCK_REFERRAL_DATA.stats?.commission ?? 0).toLocaleString()}</p>
+                                <p className="text-3xl font-bold text-white">KES {Number(liveStats.commission).toLocaleString()}</p>
                             </div>
                             <div className="w-px bg-gray-700"></div>
                             <div>
-                                <p className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Active Referrals</p>
-                                <p className="text-3xl font-bold text-white">{MOCK_REFERRAL_DATA.stats.count}</p>
+                                <p className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Referred investors</p>
+                                <p className="text-3xl font-bold text-white">{liveStats.count}</p>
                             </div>
                         </div>
                     </div>
@@ -166,7 +208,7 @@ const Referrals: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {MOCK_REFERRAL_DATA.referrals.map((ref, idx) => (
+                                    {referralRows.map((ref, idx) => (
                                         <tr key={idx} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-6 py-4 font-medium text-gray-900">{ref.name}</td>
                                             <td className="px-6 py-4 text-right text-gray-500">KES {Number(ref.activeBalance ?? 0).toLocaleString()}</td>
@@ -176,7 +218,7 @@ const Referrals: React.FC = () => {
                                             </td>
                                         </tr>
                                     ))}
-                                    {MOCK_REFERRAL_DATA.referrals.length === 0 && (
+                                    {referralRows.length === 0 && (
                                         <tr><td colSpan={4} className="p-8 text-center text-gray-400">No referrals yet.</td></tr>
                                     )}
                                 </tbody>

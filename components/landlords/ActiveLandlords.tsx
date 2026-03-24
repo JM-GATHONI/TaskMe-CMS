@@ -6,6 +6,7 @@ import { useData } from '../../context/DataContext';
 import { User, Property, TenantProfile, Task, Unit, TaskStatus, TaskPriority, Bill, Fund, Investment } from '../../types';
 import Icon from '../Icon';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
+import { isAgencyFeeOnRentRule } from '../../utils/landlordPeriodFinancials';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, Filler } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
 
@@ -490,6 +491,9 @@ export const LandlordDetailView: React.FC<{
             (r.applicability === 'Specific Property' && myProperties.some(p => p.id === r.targetId)))
         );
 
+        const baseForAgencyGlobal =
+            placementFeeDeduction > 0 ? Math.max(0, grossRevenueMonth - placementFeeDeduction) : grossRevenueMonth;
+
         activeRules.forEach(r => {
             let amount = 0;
             if (r.type === 'Fixed') {
@@ -498,11 +502,20 @@ export const LandlordDetailView: React.FC<{
                 if (r.applicability === 'Specific Property') {
                     const prop = myProperties.find(p => p.id === r.targetId);
                     if (prop) {
-                        const propRevenue = myTenants.filter(t => t.propertyId === prop.id && t.status !== 'Overdue').reduce((s, t) => s + (t.rentAmount || 0), 0);
-                        amount = (propRevenue * (r.value / 100));
+                        let propRevenue = myTenants
+                            .filter(t => t.propertyId === prop.id && t.status !== 'Overdue')
+                            .reduce((s, t) => s + (t.rentAmount || 0), 0);
+                        if (isAgencyFeeOnRentRule(r.name) && placementFeeDeduction > 0) {
+                            const placementOnProp = newTenants
+                                .filter(t => t.propertyId === prop.id && prop.placementFee !== false)
+                                .reduce((s, t) => s + (t.rentAmount || 0), 0);
+                            propRevenue = Math.max(0, propRevenue - placementOnProp);
+                        }
+                        amount = propRevenue * (r.value / 100);
                     }
                 } else {
-                    amount = (grossRevenueMonth * (r.value / 100));
+                    const base = isAgencyFeeOnRentRule(r.name) ? baseForAgencyGlobal : grossRevenueMonth;
+                    amount = base * (r.value / 100);
                 }
             }
             ruleDeductionsTotal += amount;
@@ -570,12 +583,24 @@ export const LandlordDetailView: React.FC<{
     const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
     const vacantCount = totalUnits - occupiedUnits;
 
-    // Collection Rate (Added)
+    // Collection Rate — expected = monthly rent + outstanding deposit (when required); bar caps at 100% width; label can exceed 100% if overpaid
     const collectionStats = useMemo(() => {
-        const expected = myTenants
+        const expectedRentOnly = myTenants
             .filter(t => t.status !== 'Vacated' && t.status !== 'Evicted')
             .reduce((sum, t) => sum + (t.rentAmount || 0), 0);
-        
+
+        const depositOutstanding = myTenants
+            .filter(t => t.status !== 'Vacated' && t.status !== 'Evicted')
+            .reduce((sum, t) => {
+                const prop = properties.find(p => p.id === t.propertyId);
+                if (!prop?.deposit?.required) return sum;
+                const months = prop.deposit.months ?? 1;
+                const full = (t.rentAmount || 0) * months;
+                return sum + Math.max(0, full - (t.depositPaid || 0));
+            }, 0);
+
+        const expected = expectedRentOnly + depositOutstanding;
+
         const collected = myTenants.reduce((sum, t) => {
             return sum + t.paymentHistory
                 .filter(p => p.date.startsWith(financialPeriod))
@@ -583,10 +608,11 @@ export const LandlordDetailView: React.FC<{
         }, 0);
 
         const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+        const barWidth = Math.min(rate, 100);
         const health = Math.round((occupancyRate * 0.5) + (rate * 0.5));
-        
-        return { expected, collected, rate, health };
-    }, [myTenants, financialPeriod, occupancyRate]);
+
+        return { expected, collected, rate, health, barWidth };
+    }, [myTenants, financialPeriod, occupancyRate, properties]);
 
 
     // Payment Performance Graph Data Logic
@@ -600,33 +626,13 @@ export const LandlordDetailView: React.FC<{
              day: parseInt(p.date.split('-')[2])
         }))).sort((a,b) => b.day - a.day);
 
-        // Fallback for demo graph visual
-        const useMockData = currentMonthPayments.length === 0;
-
         const graphData = days.map(day => {
-             if (useMockData) {
-                 let pct = 0;
-                 if (day === 1) pct = 5;
-                 else if (day === 5) pct = 30;
-                 else if (day === 10) pct = 55;
-                 else if (day === 15) pct = 70;
-                 else if (day === 20) pct = 80;
-                 else if (day === 25) pct = 85;
-                 else if (day === 30) pct = collectionStats.rate > 0 ? collectionStats.rate : 89;
-                 return { day, percentage: pct };
-            } else {
-                 const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
-                 const percentage = collectionStats.expected > 0 ? Math.round((collectedUntilDay / collectionStats.expected) * 100) : 0;
-                 return { day, percentage };
-            }
+            const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
+            const percentage = collectionStats.expected > 0 ? Math.round((collectedUntilDay / collectionStats.expected) * 100) : 0;
+            return { day, percentage };
         });
 
-        // Table Data
-        const tablePayments = useMockData 
-            ? myTenants.slice(0, 6).map(t => ({
-                tenantName: t.name, unit: t.unit, amount: `KES ${t.rentAmount.toLocaleString()}`, date: `${financialPeriod}-${selectedDayFilter < 10 ? '0'+selectedDayFilter : selectedDayFilter}`
-              }))
-            : currentMonthPayments.filter(p => p.day <= selectedDayFilter);
+        const tablePayments = currentMonthPayments.filter(p => p.day <= selectedDayFilter);
 
         const currentBucket = graphData.find(d => d.day === selectedDayFilter) || graphData[graphData.length-1];
 
@@ -957,10 +963,10 @@ export const LandlordDetailView: React.FC<{
                                                 <span className="text-sm font-medium text-gray-600">Collection Efficiency</span>
                                                 <span className="text-sm font-bold text-gray-900">{collectionStats.rate}%</span>
                                             </div>
-                                            <div className="w-full bg-gray-100 rounded-full h-2">
+                                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                                                 <div
-                                                    className={`h-2 rounded-full transition-all duration-500 ${collectionStats.rate < 80 ? 'bg-orange-500' : 'bg-green-500'}`}
-                                                    style={{ width: `${collectionStats.rate}%` }}
+                                                    className={`h-2 rounded-full transition-all duration-500 max-w-full ${collectionStats.rate < 80 ? 'bg-orange-500' : 'bg-green-500'}`}
+                                                    style={{ width: `${collectionStats.barWidth}%` }}
                                                 ></div>
                                             </div>
                                         </div>
@@ -1336,15 +1342,25 @@ const LandlordCard: React.FC<{ landlord: User; onClick: () => void }> = ({ landl
     const occupiedUnits = myProps.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Occupied').length, 0);
     const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
    
-    // Collection MTD
+    // Collection MTD — expected includes monthly rent plus any security deposit still owed (when property requires deposit)
     const myTenants = tenants.filter(t => propertyIds.includes(t.propertyId || ''));
     
-    // Expected Collection (Sum of rentAmount for active/overdue/notice tenants)
     const expectedRent = myTenants
         .filter(t => t.status !== 'Vacated' && t.status !== 'Evicted')
         .reduce((sum, t) => sum + (t.rentAmount || 0), 0);
 
-    // Actual Collection (Sum of payments in current month)
+    const depositOutstanding = myTenants
+        .filter(t => t.status !== 'Vacated' && t.status !== 'Evicted')
+        .reduce((sum, t) => {
+            const prop = myProps.find(p => p.id === t.propertyId);
+            if (!prop?.deposit?.required) return sum;
+            const months = prop.deposit.months ?? 1;
+            const full = (t.rentAmount || 0) * months;
+            return sum + Math.max(0, full - (t.depositPaid || 0));
+        }, 0);
+
+    const expectedTotal = expectedRent + depositOutstanding;
+
     const collectedRent = myTenants.reduce((sum, t) => {
          const paid = t.paymentHistory
             .filter(p => p.date.startsWith(currentMonth))
@@ -1352,7 +1368,8 @@ const LandlordCard: React.FC<{ landlord: User; onClick: () => void }> = ({ landl
          return sum + paid;
     }, 0);
 
-    const collectionRate = expectedRent > 0 ? Math.round((collectedRent / expectedRent) * 100) : 0;
+    const collectionRate = expectedTotal > 0 ? Math.round((collectedRent / expectedTotal) * 100) : 0;
+    const collectionBarWidth = Math.min(collectionRate, 100);
 
     return (
         <div
@@ -1403,8 +1420,8 @@ const LandlordCard: React.FC<{ landlord: User; onClick: () => void }> = ({ landl
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-2">
                         <div
-                            className={`h-2 rounded-full transition-all duration-500 ${collectionRate < 80 ? 'bg-orange-500' : 'bg-blue-600'}`}
-                            style={{ width: `${collectionRate}%` }}
+                            className={`h-2 rounded-full transition-all duration-500 max-w-full ${collectionRate < 80 ? 'bg-orange-500' : 'bg-blue-600'}`}
+                            style={{ width: `${collectionBarWidth}%` }}
                         ></div>
                     </div>
                 </div>

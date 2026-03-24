@@ -22,10 +22,36 @@ const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: strin
 const TaxCompliance: React.FC = () => {
     const { tenants, taxRecords, updateTaxRecord } = useData();
 
+    const today = new Date();
+    const currentMonth = today.toISOString().slice(0, 7);
+
     // --- Live Estimations ---
-    const estGrossRevenue = tenants.reduce((acc, t) => acc + (t.status !== 'Overdue' ? t.rentAmount : 0), 0);
-    const estMRI = estGrossRevenue * 0.075; // 7.5% MRI Tax in Kenya (Example)
-    const estVAT = estGrossRevenue * 0.16; // 16% VAT if applicable
+    const estGrossRevenue = tenants.reduce((acc, t) => {
+        const paidThisMonth = t.paymentHistory.reduce((sum, p) => {
+            if (p.status !== 'Paid' || !p.date.startsWith(currentMonth)) return sum;
+            return sum + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0);
+        }, 0);
+        return acc + paidThisMonth;
+    }, 0);
+    const estMRI = estGrossRevenue * 0.075;
+    const estVAT = estGrossRevenue * 0.16;
+
+    const whtArrears = useMemo(
+        () => taxRecords
+            .filter(r => r.status === 'Due' && /wht|withholding/i.test(`${r.type} ${r.description}`))
+            .reduce((sum, r) => sum + (r.amount || 0), 0),
+        [taxRecords]
+    );
+
+    const complianceCalendar = useMemo(() => {
+        const upcoming = taxRecords
+            .filter(r => r.status === 'Due')
+            .map(r => ({ ...r, due: new Date(r.date) }))
+            .filter(r => !isNaN(r.due.getTime()))
+            .sort((a, b) => a.due.getTime() - b.due.getTime())
+            .slice(0, 3);
+        return upcoming;
+    }, [taxRecords]);
 
     const handleMarkAsPaid = (recordId: string) => {
         updateTaxRecord(recordId, { status: 'Paid' });
@@ -65,7 +91,7 @@ const TaxCompliance: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <TaxLiabilityCard title="Est. MRI (Current Month)" amount={estMRI} dueDate="20th Next Month" />
                 <TaxLiabilityCard title="Pending VAT Liability" amount={estVAT} dueDate="20th Next Month" />
-                <TaxLiabilityCard title="WHT Arrears" amount={12000} dueDate="Overdue" isOverdue />
+                <TaxLiabilityCard title="WHT Arrears" amount={whtArrears} dueDate={whtArrears > 0 ? "Overdue" : "Up to date"} isOverdue={whtArrears > 0} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -73,36 +99,21 @@ const TaxCompliance: React.FC = () => {
                 <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-800 mb-4">Compliance Calendar</h3>
                     <div className="space-y-4">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-blue-50 rounded-lg flex flex-col items-center justify-center border border-blue-100">
-                                <span className="text-[10px] font-bold text-blue-400 uppercase">Nov</span>
-                                <span className="text-lg font-bold text-blue-700">20</span>
+                        {complianceCalendar.map(item => (
+                            <div key={item.id} className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-blue-50 rounded-lg flex flex-col items-center justify-center border border-blue-100">
+                                    <span className="text-[10px] font-bold text-blue-400 uppercase">{item.due.toLocaleString('default', { month: 'short' })}</span>
+                                    <span className="text-lg font-bold text-blue-700">{item.due.getDate()}</span>
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-800 text-sm">{item.type} Due</p>
+                                    <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="font-bold text-gray-800 text-sm">VAT & MRI Returns Due</p>
-                                <p className="text-xs text-gray-500">KRA iTax Portal</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 bg-gray-50 rounded-lg flex flex-col items-center justify-center border border-gray-200">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">Dec</span>
-                                <span className="text-lg font-bold text-gray-700">09</span>
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800 text-sm">PAYE Remittance Due</p>
-                                <p className="text-xs text-gray-500">Staff Payroll Taxes</p>
-                            </div>
-                        </div>
-                         <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 bg-gray-50 rounded-lg flex flex-col items-center justify-center border border-gray-200">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">Dec</span>
-                                <span className="text-lg font-bold text-gray-700">15</span>
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800 text-sm">Housing Levy Due</p>
-                                <p className="text-xs text-gray-500">1.5% Gross Salary Match</p>
-                            </div>
-                        </div>
+                        ))}
+                        {complianceCalendar.length === 0 && (
+                            <p className="text-sm text-gray-400">No pending due records.</p>
+                        )}
                     </div>
                 </div>
 

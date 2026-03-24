@@ -8,23 +8,41 @@ import { Bar, Line, Doughnut } from 'react-chartjs-2';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
 
 const FinancialPerformance: React.FC = () => {
-    const { tenants, bills, tasks } = useData();
+    const { tenants, bills, tasks, properties } = useData();
     const [period, setPeriod] = useState('6 Months');
 
     // --- Live Data Calculations ---
-    const revenueData = useMemo(() => {
-        // Mocking monthly trend for demo, but scaling with real totals
-        const totalRevenue = tenants.reduce((acc, t) => acc + t.rentAmount, 0);
-        return [totalRevenue * 0.85, totalRevenue * 0.9, totalRevenue * 0.88, totalRevenue * 0.95, totalRevenue * 0.92, totalRevenue];
-    }, [tenants]);
+    const monthSeries = useMemo(() => {
+        const now = new Date();
+        const points = Array.from({ length: 6 }).map((_, i) => {
+            const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+            const ym = d.toISOString().slice(0, 7);
+            const revenue = tenants.reduce((acc, t) => {
+                const paid = t.paymentHistory.reduce((sum, p) => {
+                    if (p.status !== 'Paid' || !p.date.startsWith(ym)) return sum;
+                    return sum + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0);
+                }, 0);
+                return acc + paid;
+            }, 0);
+            const billExpense = bills.reduce((acc, b) => {
+                const stamp = (b.invoiceDate || b.dueDate || '').slice(0, 7);
+                if (b.status !== 'Paid' || stamp !== ym) return acc;
+                return acc + (b.amount || 0);
+            }, 0);
+            const taskExpense = tasks.reduce((acc, t) => {
+                if (!t.dueDate || !t.dueDate.startsWith(ym)) return acc;
+                return acc + (t.costs?.labor || 0) + (t.costs?.materials || 0) + (t.costs?.travel || 0);
+            }, 0);
+            return { label: d.toLocaleString('default', { month: 'short' }), revenue, expenses: billExpense + taskExpense };
+        });
+        return points;
+    }, [tenants, bills, tasks]);
+
+    const revenueData = useMemo(() => monthSeries.map(m => m.revenue), [monthSeries]);
 
     const expensesData = useMemo(() => {
-        const billTotal = bills.reduce((acc, b) => acc + b.amount, 0);
-        const taskTotal = tasks.reduce((acc, t) => acc + ((t.costs?.labor || 0) + (t.costs?.materials || 0)), 0);
-        const total = billTotal + taskTotal;
-        // Mock trend
-        return [total * 0.8, total * 0.85, total * 0.9, total * 0.7, total * 0.8, total];
-    }, [bills, tasks]);
+        return monthSeries.map(m => m.expenses);
+    }, [monthSeries]);
 
     const netIncomeData = revenueData.map((rev, i) => rev - expensesData[i]);
 
@@ -36,7 +54,7 @@ const FinancialPerformance: React.FC = () => {
 
     // --- Chart Configs ---
     const cashFlowChart = {
-        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
+        labels: monthSeries.map(m => m.label),
         datasets: [
             { label: 'Revenue', data: revenueData, backgroundColor: '#10b981' },
             { label: 'Expenses', data: expensesData, backgroundColor: '#ef4444' }
@@ -44,7 +62,7 @@ const FinancialPerformance: React.FC = () => {
     };
 
     const profitTrendChart = {
-        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
+        labels: monthSeries.map(m => m.label),
         datasets: [{
             label: 'Net Profit',
             data: netIncomeData,
@@ -55,14 +73,42 @@ const FinancialPerformance: React.FC = () => {
         }]
     };
 
+    const expenseLabels = Object.keys(expenseCategories);
+    const expenseValues = Object.values(expenseCategories);
     const expenseDoughnut = {
-        labels: Object.keys(expenseCategories),
+        labels: expenseLabels.length ? expenseLabels : ['No paid bills'],
         datasets: [{
-            data: Object.values(expenseCategories),
+            data: expenseValues.length ? expenseValues : [1],
             backgroundColor: ['#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#10b981'],
             borderWidth: 0
         }]
     };
+
+    const previousRevenue = revenueData[4] || 0;
+    const currentRevenue = revenueData[5] || 0;
+    const revenueDelta = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+    const previousExpense = expensesData[4] || 0;
+    const currentExpense = expensesData[5] || 0;
+    const expenseDelta = previousExpense > 0 ? ((currentExpense - previousExpense) / previousExpense) * 100 : 0;
+    const overdueRent = tenants.filter(t => t.status === 'Overdue').reduce((s, t) => s + (t.rentAmount || 0), 0);
+    const arrearsRatio = currentRevenue > 0 ? (overdueRent / currentRevenue) * 100 : 0;
+    const propertyRows = useMemo(() => {
+        return properties.map(p => {
+            const propTenants = tenants.filter(t => t.propertyId === p.id);
+            const revenue = propTenants.reduce((sum, t) => {
+                return sum + t.paymentHistory.reduce((s, pay) => {
+                    if (pay.status !== 'Paid') return s;
+                    return s + (parseFloat(String(pay.amount).replace(/[^0-9.]/g, '')) || 0);
+                }, 0);
+            }, 0);
+            const expenses = bills
+                .filter(b => b.propertyId === p.id)
+                .reduce((sum, b) => sum + (b.amount || 0), 0);
+            const noi = revenue - expenses;
+            const margin = revenue > 0 ? Math.round((noi / revenue) * 100) : 0;
+            return { id: p.id, name: p.name, revenue, expenses, noi, margin };
+        }).sort((a, b) => b.noi - a.noi);
+    }, [properties, tenants, bills]);
 
     return (
         <div className="space-y-8 pb-10">
@@ -88,12 +134,12 @@ const FinancialPerformance: React.FC = () => {
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Gross Revenue</p>
                     <p className="text-2xl font-bold text-gray-800 mt-1">KES {(revenueData[5]/1000).toFixed(1)}k</p>
-                    <p className="text-xs text-green-600 mt-1 font-bold">▲ 8% vs last month</p>
+                    <p className={`text-xs mt-1 font-bold ${revenueDelta >= 0 ? 'text-green-600' : 'text-red-600'}`}>{revenueDelta >= 0 ? '▲' : '▼'} {Math.abs(revenueDelta).toFixed(1)}% vs last month</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Total Expenses</p>
                     <p className="text-2xl font-bold text-gray-800 mt-1">KES {(expensesData[5]/1000).toFixed(1)}k</p>
-                    <p className="text-xs text-red-600 mt-1 font-bold">▼ 2% (Improvement)</p>
+                    <p className={`text-xs mt-1 font-bold ${expenseDelta <= 0 ? 'text-green-600' : 'text-red-600'}`}>{expenseDelta >= 0 ? '▲' : '▼'} {Math.abs(expenseDelta).toFixed(1)}% vs last month</p>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Net Operating Income</p>
@@ -102,7 +148,7 @@ const FinancialPerformance: React.FC = () => {
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
                     <p className="text-xs font-bold text-gray-400 uppercase">Arrears Ratio</p>
-                    <p className="text-2xl font-bold text-gray-800 mt-1">4.2%</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">{arrearsRatio.toFixed(1)}%</p>
                     <p className="text-xs text-gray-500 mt-1">Acceptable Range</p>
                 </div>
             </div>
@@ -148,21 +194,18 @@ const FinancialPerformance: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {['Riverside Apts', 'Green Valley', 'Sunset Plaza'].map((prop, i) => {
-                                    const rev = 450000 + (i * 50000);
-                                    const exp = 120000 + (i * 10000);
-                                    const noi = rev - exp;
-                                    const margin = Math.round((noi / rev) * 100);
-                                    return (
-                                        <tr key={prop} className="hover:bg-gray-50">
-                                            <td className="px-4 py-3 font-medium text-gray-800">{prop}</td>
-                                            <td className="px-4 py-3 text-right text-green-600">KES {rev.toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right text-red-500">KES {exp.toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right font-bold text-blue-700">KES {noi.toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right font-bold">{margin}%</td>
-                                        </tr>
-                                    );
-                                })}
+                                {propertyRows.map((row) => (
+                                    <tr key={row.id} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 font-medium text-gray-800">{row.name}</td>
+                                        <td className="px-4 py-3 text-right text-green-600">KES {row.revenue.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right text-red-500">KES {row.expenses.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right font-bold text-blue-700">KES {row.noi.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right font-bold">{row.margin}%</td>
+                                    </tr>
+                                ))}
+                                {propertyRows.length === 0 && (
+                                    <tr><td colSpan={5} className="p-6 text-center text-gray-400">No property performance data yet.</td></tr>
+                                )}
                             </tbody>
                         </table>
                     </div>

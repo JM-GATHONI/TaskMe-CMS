@@ -40,7 +40,7 @@ const CreateTaskModal: React.FC<{ onClose: () => void; onSave: (task: Partial<Ta
                     const urls: string[] = [];
                     for (const file of files) {
                         const ext = file.name.split('.').pop() || 'jpg';
-                        const path = `${user.id}/maint-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                        const path = `${user.id}/maint-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()}.${ext}`;
                         const url = await uploadToBucket('maintenance-photos', path, file);
                         urls.push(url);
                     }
@@ -156,7 +156,7 @@ const CompleteTaskModal: React.FC<{ task: Task; onClose: () => void; onComplete:
                     const urls: string[] = [];
                     for (const file of files) {
                         const ext = file.name.split('.').pop() || 'jpg';
-                        const path = `${user.id}/complete-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                        const path = `${user.id}/complete-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()}.${ext}`;
                         const url = await uploadToBucket('maintenance-photos', path, file);
                         urls.push(url);
                     }
@@ -463,7 +463,7 @@ export const CollectionManagerModal: React.FC<{
 
         const applyFine = (type: string, amount: number, description: string) => {
              const fine: FineItem = {
-                id: `fine-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                id: `fine-${Date.now()}-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : '0'}`,
                 type: type,
                 amount: amount,
                 date: new Date().toISOString().split('T')[0],

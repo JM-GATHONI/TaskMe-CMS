@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo } from 'react';
-import { MOCK_USERS } from '../../../constants';
 import { Task, TaskStatus, TaskPriority } from '../../../types';
 import Icon from '../../Icon';
 import { useData } from '../../../context/DataContext';
@@ -125,7 +124,7 @@ const RequestDetailModal: React.FC<{
 };
 
 const RequestIntake: React.FC = () => {
-    const { addTask, updateTask, tasks } = useData();
+    const { addTask, updateTask, tasks, users } = useData();
     
     // Form State
     const [requestType, setRequestType] = useState('Maintenance Request');
@@ -146,7 +145,7 @@ const RequestIntake: React.FC = () => {
             .sort((a,b) => new Date(b.history[0]?.timestamp || b.dueDate).getTime() - new Date(a.history[0]?.timestamp || a.dueDate).getTime());
     }, [tasks]);
 
-    const assignableUsers = useMemo(() => MOCK_USERS.filter(u => u.role !== 'Tenant'), []);
+    const assignableUsers = useMemo(() => users.filter(u => u.role !== 'Tenant'), [users]);
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -157,7 +156,7 @@ const RequestIntake: React.FC = () => {
                     const urls: string[] = [];
                     for (const file of files) {
                         const ext = file.name.split('.').pop() || 'jpg';
-                        const path = `${user.id}/maint-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                        const path = `${user.id}/maint-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()}.${ext}`;
                         const url = await uploadToBucket('maintenance-photos', path, file);
                         urls.push(url);
                     }

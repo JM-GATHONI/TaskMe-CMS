@@ -1,12 +1,26 @@
 
-import React, { useState } from 'react';
-import { MOCK_WITHDRAWALS } from '../../constants';
+import React, { useState, useMemo } from 'react';
 import { WithdrawalRequest } from '../../types';
+import { useData } from '../../context/DataContext';
 
 const Withdrawals: React.FC = () => {
-    const [requests, setRequests] = useState<WithdrawalRequest[]>(MOCK_WITHDRAWALS);
+    const { withdrawals, addWithdrawal, currentUser, investments } = useData();
     const [amount, setAmount] = useState('');
-    
+
+    const requests = useMemo(
+        () => [...withdrawals].sort((a, b) => String(b.requestDate).localeCompare(String(a.requestDate))),
+        [withdrawals]
+    );
+
+    const displayName = (currentUser as { name?: string } | null)?.name || 'Investor';
+    const availableBalance = useMemo(() => {
+        const uid = (currentUser as { id?: string } | null)?.id;
+        if (!uid) return 0;
+        return investments
+            .filter((i) => i.investorId === uid && i.status === 'Active')
+            .reduce((s, i) => s + (Number(i.accruedInterest) || 0), 0);
+    }, [currentUser, investments]);
+
     const handleRequestWithdrawal = (e: React.FormEvent) => {
         e.preventDefault();
         const val = parseFloat(amount);
@@ -17,7 +31,7 @@ const Withdrawals: React.FC = () => {
         
         const newRequest: WithdrawalRequest = {
             id: `wr-${Date.now()}`,
-            investorName: 'Current User',
+            investorName: displayName,
             amount: val,
             requestDate: new Date().toLocaleDateString(),
             type: 'Interest',
@@ -25,7 +39,7 @@ const Withdrawals: React.FC = () => {
             status: 'Pending Approval'
         };
         
-        setRequests([newRequest, ...requests]);
+        addWithdrawal(newRequest);
         setAmount('');
         alert("Withdrawal request submitted. Processing typically takes 24-48 hours.");
     };
@@ -46,7 +60,7 @@ const Withdrawals: React.FC = () => {
                     <div className="bg-white p-6 rounded-xl shadow-sm">
                         <h2 className="text-xl font-bold text-gray-800 mb-4">Request Withdrawal</h2>
                         <div className="bg-blue-50 p-4 rounded-lg mb-6 text-sm text-blue-800">
-                            <p>Available Balance: <strong>KES 5,000</strong></p>
+                            <p>Available Balance: <strong>KES {Number(availableBalance ?? 0).toLocaleString()}</strong></p>
                             <p className="mt-1 text-xs">Funds are transferred to your registered M-Pesa or Bank account.</p>
                         </div>
                         <form onSubmit={handleRequestWithdrawal} className="space-y-4">

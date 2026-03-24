@@ -166,7 +166,7 @@ const Automation: React.FC = () => {
     const rules: EnhancedRule[] = useMemo(() => automationRules.map(r => ({
         ...r,
         category: r.name.toLowerCase().includes('fine') || r.name.toLowerCase().includes('rent') ? 'Finance' : 'Communication',
-        executions: Math.floor(Math.random() * 500),
+        executions: 0,
         lastRun: '2 mins ago'
     })), [automationRules]);
 

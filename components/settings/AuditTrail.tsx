@@ -23,41 +23,15 @@ interface AuditLog {
     status: 'Success' | 'Failed' | 'Warning';
 }
 
-// --- Mock Data Generator ---
-const generateMockLogs = (users: any[]): AuditLog[] => {
-    const actions = ['Login', 'Logout', 'Update Profile', 'Generate Report', 'Add Tenant', 'Record Payment', 'Delete User', 'Change Password'];
-    const modules = ['Auth', 'Tenants', 'Finance', 'Settings', 'Properties', 'Reports'] as const;
-    const statuses = ['Success', 'Success', 'Success', 'Success', 'Warning', 'Failed'];
-    const devices = ['Chrome / Windows', 'Safari / iPhone', 'Firefox / Mac', 'Android App'];
-    const locations = ['Nairobi, KE', 'Mombasa, KE', 'Kisumu, KE', 'Nakuru, KE'];
-
-    const logs: AuditLog[] = [];
-    const now = new Date();
-
-    // Generate 200 logs over the last 7 days
-    for (let i = 0; i < 200; i++) {
-        const user = users[Math.floor(Math.random() * users.length)];
-        const timeOffset = Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000); // Random time in last 7 days
-        const logDate = new Date(now.getTime() - timeOffset);
-        const action = actions[Math.floor(Math.random() * actions.length)];
-        
-        logs.push({
-            id: `log-${Date.now()}-${i}`,
-            userId: user?.id || 'unknown',
-            userName: user?.name || 'Unknown User',
-            userRole: user?.role || 'User',
-            action: action,
-            module: action === 'Login' || action === 'Logout' ? 'Auth' : modules[Math.floor(Math.random() * modules.length)],
-            details: `${action} performed on ${logDate.toLocaleTimeString()}`,
-            timestamp: logDate,
-            ip: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-            location: locations[Math.floor(Math.random() * locations.length)],
-            device: devices[Math.floor(Math.random() * devices.length)],
-            status: statuses[Math.floor(Math.random() * statuses.length)] as any
-        });
-    }
-    return logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-};
+function inferModuleFromAction(action: string): AuditLog['module'] {
+    const a = action.toLowerCase();
+    if (a.includes('tenant') || a.includes('lease')) return 'Tenants';
+    if (a.includes('payment') || a.includes('invoice') || a.includes('payout') || a.includes('bill')) return 'Finance';
+    if (a.includes('property') || a.includes('unit')) return 'Properties';
+    if (a.includes('report')) return 'Reports';
+    if (a.includes('login') || a.includes('logout') || a.includes('password') || a.includes('auth')) return 'Auth';
+    return 'Settings';
+}
 
 const StatCard: React.FC<{ title: string; value: string | number; subtext: string; icon: string; color: string }> = ({ title, value, subtext, icon, color }) => (
     <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all group">
@@ -75,26 +49,42 @@ const StatCard: React.FC<{ title: string; value: string | number; subtext: strin
 );
 
 const AuditTrail: React.FC = () => {
-    const { currentUser, staff, landlords, tenants } = useData();
+    const { currentUser, auditLogs } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [moduleFilter, setModuleFilter] = useState('All');
     const [statusFilter, setStatusFilter] = useState('All');
 
-    // 1. Prepare Data
-    // Combine all potential users to generate realistic mock logs for the demo
-    const allSystemUsers = useMemo(() => [...staff, ...landlords, ...tenants], [staff, landlords, tenants]);
-    
-    // Generate logs (Memoized to prevent regeneration on render)
-    const allLogs = useMemo(() => generateMockLogs(allSystemUsers), [allSystemUsers]);
+    const allLogs = useMemo((): AuditLog[] => {
+        return (auditLogs || [])
+            .map(e => {
+                const ts = new Date(e.timestamp);
+                return {
+                    id: e.id,
+                    userId: e.user,
+                    userName: e.user,
+                    userRole: 'User',
+                    action: e.action,
+                    module: inferModuleFromAction(e.action),
+                    details: e.action,
+                    timestamp: isNaN(ts.getTime()) ? new Date() : ts,
+                    ip: '—',
+                    location: '—',
+                    device: '—',
+                    status: 'Success',
+                };
+            })
+            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    }, [auditLogs]);
 
     // 2. Filter based on Role
     const isSuperAdmin = currentUser?.role === 'Super Admin';
     
     const userLogs = useMemo(() => {
-        if (!currentUser) return [];
+        if (!currentUser) return allLogs;
         if (isSuperAdmin) return allLogs;
-        // Regular users only see their own logs
-        return allLogs.filter(log => log.userId === currentUser.id);
+        const uid = (currentUser as { id?: string }).id;
+        const uname = (currentUser as { name?: string }).name;
+        return allLogs.filter(log => (uid && log.userId === uid) || (uname && log.userName === uname));
     }, [allLogs, currentUser, isSuperAdmin]);
 
     // 3. Apply Search and UI Filters
@@ -114,7 +104,7 @@ const AuditTrail: React.FC = () => {
     const stats = useMemo(() => {
         const today = new Date().toDateString();
         const loginsToday = userLogs.filter(l => l.action === 'Login' && l.timestamp.toDateString() === today).length;
-        const failedActions = userLogs.filter(l => l.status === 'Failed').length;
+        const failedActions = userLogs.filter(l => l.action.toLowerCase().includes('fail') || l.action.toLowerCase().includes('error')).length;
         const totalActions = userLogs.length;
         const distinctLocations = new Set(userLogs.map(l => l.location)).size;
 

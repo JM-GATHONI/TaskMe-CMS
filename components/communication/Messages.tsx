@@ -72,21 +72,18 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
             return rawList.map(t => ({ id: t.id, name: t.name, phone: t.phone, label: `${t.unit} • ${t.status}` }));
         } 
         else if (category === 'Investors') {
-            rawList = renovationInvestors.filter(inv => {
-                // Mock filtering logic for demo
-                const durationOptions = [6, 12, 18, 24];
-                const mockDuration = durationOptions[Math.floor(Math.random() * durationOptions.length)];
-                const mockAmount = Math.random() * 100000;
-
+            rawList = renovationInvestors.filter((inv) => {
                 if (filter === 'All') return true;
-                if (filter === '6 Month Term') return mockDuration === 6;
-                if (filter === '12 Month Term') return mockDuration === 12;
-                if (filter === '18 Month Term') return mockDuration === 18;
-                if (filter === 'Below 5k') return mockAmount < 5000;
-                if (filter === '5k - 10k') return mockAmount >= 5000 && mockAmount < 10000;
-                if (filter === '10k - 50k') return mockAmount >= 10000 && mockAmount < 50000;
-                if (filter === '50k - 100k') return mockAmount >= 50000 && mockAmount < 100000;
-                if (filter === 'Above 100k') return mockAmount >= 100000;
+                const invInvestments = investments.filter((i) => i.investorId === inv.id);
+                const total = invInvestments.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+                if (filter === 'Below 5k') return total < 5000;
+                if (filter === '5k - 10k') return total >= 5000 && total < 10000;
+                if (filter === '10k - 50k') return total >= 10000 && total < 50000;
+                if (filter === '50k - 100k') return total >= 50000 && total < 100000;
+                if (filter === 'Above 100k') return total >= 100000;
+                if (filter === '6 Month Term' || filter === '12 Month Term' || filter === '18 Month Term') {
+                    return false;
+                }
                 return true;
             });
             return rawList.map(i => ({ id: i.id, name: i.name, phone: i.phone, label: i.investorType || 'Individual' }));

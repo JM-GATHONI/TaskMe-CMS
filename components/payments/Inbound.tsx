@@ -151,7 +151,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; tenant: TenantProfile; onSu
         
         setStep('processing');
         setTimeout(() => {
-            const randomCode = `QHS${Math.floor(Math.random()*10000).toString().padStart(4, '0')}XT`;
+            const randomCode = `QHS${Date.now().toString().slice(-10)}XT`;
             setTxCode(randomCode);
             setStep('success');
         }, 3000);

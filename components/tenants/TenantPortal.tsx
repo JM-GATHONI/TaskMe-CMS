@@ -11,7 +11,7 @@ const PayRentModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const handlePay = () => {
         setStep('processing');
         setTimeout(() => {
-            const randomCode = `LGR${Math.floor(Math.random()*10000).toString().padStart(4, '0')}QT${Math.floor(Math.random()*9)}M`;
+            const randomCode = `LGR${Date.now().toString().slice(-10)}QT`;
             setTxCode(randomCode);
             setStep('success');
         }, 3000);
@@ -107,7 +107,7 @@ const TenantPortal: React.FC = () => {
             alert('Please enter a description for your request.');
             return;
         }
-        const trackingId = `WRK-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100}`;
+        const trackingId = `WRK-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
         alert(`Your ${requestType} has been submitted successfully!\n\nYour tracking ID is: ${trackingId}\n\nYou will receive updates via SMS.`);
         setDescription('');
     };

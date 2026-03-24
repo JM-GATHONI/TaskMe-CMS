@@ -2,6 +2,14 @@
 import React, { useState, useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
+import {
+    sumTenantPaymentsInPeriod,
+    computePlacementFeeDeduction,
+    filterActiveRulesForLandlord,
+    computeCollectedRuleDeductions,
+    computeBillDeductionsForPeriod,
+    computeMaintenanceFromTasksForPeriod,
+} from '../../utils/landlordPeriodFinancials';
 
 interface DetailedStatement {
     id: string;
@@ -147,7 +155,7 @@ const StatementDetailModal: React.FC<{ statement: DetailedStatement, onClose: ()
 };
 
 const LandlordPayouts: React.FC = () => {
-    const { landlords, properties, tenants } = useData();
+    const { landlords, properties, tenants, deductionRules, bills, tasks } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedStatement, setSelectedStatement] = useState<DetailedStatement | null>(null);
     const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -155,40 +163,67 @@ const LandlordPayouts: React.FC = () => {
     const [payoutStatuses, setPayoutStatuses] = useState<Record<string, 'Paid' | 'Pending' | 'Disputed'>>({});
 
     const statements: DetailedStatement[] = useMemo(() => {
+        const period = new Date().toISOString().slice(0, 7);
+        const periodLabel = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+
         return landlords.map(landlord => {
             const myProperties = properties.filter(p => p.landlordId === landlord.id);
-            let grossRent = 0;
+            const myTenants = tenants.filter(
+                t => t.propertyId && myProperties.some(p => p.id === t.propertyId)
+            );
+
             let totalUnits = 0;
             let occupiedUnits = 0;
             const propertyBreakdown: DetailedStatement['breakdown']['properties'] = [];
 
             myProperties.forEach(prop => {
                 totalUnits += prop.units.length;
-                const propOccupied = prop.units.filter(u => u.status === 'Occupied').length;
-                occupiedUnits += propOccupied;
-                const rentPerUnit = prop.defaultMonthlyRent || 25000; 
-                const collected = propOccupied * rentPerUnit; 
-                grossRent += collected;
+                occupiedUnits += prop.units.filter(u => u.status === 'Occupied').length;
+                const propTenants = myTenants.filter(t => t.propertyId === prop.id);
+                const collected = propTenants.reduce(
+                    (s, t) => s + sumTenantPaymentsInPeriod(t, period),
+                    0
+                );
                 propertyBreakdown.push({
                     name: prop.name,
                     unitCount: prop.units.length,
-                    collected
+                    collected,
                 });
             });
 
-            const deductions = [];
-            const mgmtFee = grossRent * 0.08;
-            deductions.push({ item: 'Management Commission (8%)', amount: mgmtFee });
-            const mri = grossRent * 0.075;
-            deductions.push({ item: 'Monthly Rental Income Tax (7.5%)', amount: mri });
-            const maintenance = myProperties.length * 5000;
-            deductions.push({ item: 'General Maintenance & Repairs', amount: maintenance });
-            const security = myProperties.length * 10000;
-            deductions.push({ item: 'Security Services', amount: security });
-            const welfare = 500;
-            deductions.push({ item: 'Welfare Contribution', amount: welfare });
-            const sacco = 3000;
-            deductions.push({ item: 'Sacco Savings', amount: sacco });
+            const grossRent = myTenants.reduce(
+                (s, t) => s + sumTenantPaymentsInPeriod(t, period),
+                0
+            );
+
+            const { placementFeeDeduction, placementLines } = computePlacementFeeDeduction(
+                myTenants,
+                properties,
+                period
+            );
+
+            const activeRules = filterActiveRulesForLandlord(deductionRules, landlord.id, myProperties);
+            const { lines: ruleLines } = computeCollectedRuleDeductions(
+                activeRules,
+                myProperties,
+                myTenants,
+                period,
+                grossRent,
+                placementFeeDeduction
+            );
+
+            const { lines: billLines } = computeBillDeductionsForPeriod(bills, myProperties, period);
+            const { lines: maintLines } = computeMaintenanceFromTasksForPeriod(
+                tasks,
+                myProperties,
+                period
+            );
+
+            const deductions: Array<{ item: string; amount: number }> = [];
+            placementLines.forEach(l => deductions.push({ item: l.description, amount: l.amount }));
+            ruleLines.filter(l => l.amount > 0).forEach(l => deductions.push({ item: l.description, amount: l.amount }));
+            billLines.filter(l => l.amount > 0).forEach(l => deductions.push({ item: l.description, amount: l.amount }));
+            maintLines.filter(l => l.amount > 0).forEach(l => deductions.push({ item: l.description, amount: l.amount }));
 
             const totalDeductions = deductions.reduce((acc, d) => acc + d.amount, 0);
 
@@ -196,7 +231,7 @@ const LandlordPayouts: React.FC = () => {
                 id: `stmt-${landlord.id}`,
                 landlordId: landlord.id,
                 landlordName: landlord.name,
-                period: 'November 2025',
+                period: periodLabel,
                 status: payoutStatuses[landlord.id] || 'Pending',
                 totalProperties: myProperties.length,
                 totalUnits,
@@ -204,13 +239,13 @@ const LandlordPayouts: React.FC = () => {
                 grossRent,
                 breakdown: {
                     properties: propertyBreakdown,
-                    deductions
+                    deductions,
                 },
                 totalDeductions,
-                netPayout: grossRent - totalDeductions
+                netPayout: grossRent - totalDeductions,
             };
         }).filter(stmt => stmt.totalProperties > 0);
-    }, [landlords, properties, payoutStatuses, tenants]);
+    }, [landlords, properties, tenants, deductionRules, bills, tasks, payoutStatuses]);
 
     const filteredStatements = useMemo(() => {
         if (!searchQuery) return statements;

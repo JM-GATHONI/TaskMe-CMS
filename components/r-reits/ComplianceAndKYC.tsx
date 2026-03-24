@@ -1,15 +1,41 @@
 
-import React, { useState } from 'react';
-import { MOCK_KYC_RECORDS } from '../../constants';
+import React, { useMemo, useState } from 'react';
 import { KycRecord } from '../../types';
+import { useData } from '../../context/DataContext';
+
+function mapInvestorToKyc(inv: {
+    id: string;
+    name: string;
+    idNumber: string;
+    phone: string;
+    joinDate: string;
+    status: string;
+}): KycRecord {
+    let st: KycRecord['status'] = 'Pending';
+    if (inv.status === 'Verified' || inv.status === 'Active') st = 'Verified';
+    else if (inv.status === 'Rejected') st = 'Rejected';
+    return {
+        id: inv.id,
+        investorName: inv.name,
+        idNumber: inv.idNumber || '—',
+        phone: inv.phone || '—',
+        joinDate: inv.joinDate || '—',
+        status: st,
+    };
+}
 
 const ComplianceAndKYC: React.FC = () => {
-    const [records, setRecords] = useState<KycRecord[]>(MOCK_KYC_RECORDS);
+    const { renovationInvestors, updateRenovationInvestor } = useData();
     const [viewMode, setViewMode] = useState<'Pending' | 'Verified' | 'Rejected'>('Pending');
+
+    const records = useMemo(
+        () => (renovationInvestors || []).map(mapInvestorToKyc),
+        [renovationInvestors]
+    );
 
     const handleVerify = (id: string) => {
         if (confirm("Are you sure you want to verify this investor?")) {
-            setRecords(prev => prev.map(r => r.id === id ? { ...r, status: 'Verified' } : r));
+            updateRenovationInvestor(id, { status: 'Verified' });
         }
     };
 
@@ -19,15 +45,15 @@ const ComplianceAndKYC: React.FC = () => {
         <div className="space-y-8">
             <div>
                 <h1 className="text-3xl font-bold text-gray-800">Compliance & KYC</h1>
-                <p className="text-lg text-gray-500 mt-1">Verify investor identities and manage regulatory records.</p>
+                <p className="text-lg text-gray-500 mt-1">Verify investor identities from renovation fund registrations.</p>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="flex space-x-4 mb-6 border-b">
-                    {['Pending', 'Verified', 'Rejected'].map((mode) => (
+                    {(['Pending', 'Verified', 'Rejected'] as const).map((mode) => (
                         <button
                             key={mode}
-                            onClick={() => setViewMode(mode as any)}
+                            onClick={() => setViewMode(mode)}
                             className={`pb-2 px-1 text-sm font-medium transition-colors ${viewMode === mode ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             {mode} ({records.filter(r => r.status === mode).length})
@@ -54,9 +80,10 @@ const ComplianceAndKYC: React.FC = () => {
                                     <td className="px-6 py-4 text-gray-600">{rec.phone}</td>
                                     <td className="px-6 py-4 text-gray-600">{rec.joinDate}</td>
                                     <td className="px-6 py-4 text-right space-x-2">
-                                        <button className="text-blue-600 hover:underline text-sm">View Docs</button>
+                                        <button type="button" className="text-blue-600 hover:underline text-sm">View Docs</button>
                                         {rec.status === 'Pending' && (
-                                            <button 
+                                            <button
+                                                type="button"
                                                 onClick={() => handleVerify(rec.id)}
                                                 className="bg-green-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-green-600"
                                             >

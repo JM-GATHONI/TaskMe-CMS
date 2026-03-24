@@ -1,35 +1,41 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '../Icon';
+import { useData } from '../../context/DataContext';
+
+const EMPTY_FORM = {
+    software: '',
+    platform: '',
+    supportTel: '',
+    senderEmail: '',
+    replyEmail: '',
+    emailPassword: '',
+    botKey: '',
+    firebaseKey: '',
+    companyWebsite: '',
+    currencySymbol: '',
+    shortcode: '',
+    consumerKey: '',
+    secretKey: '',
+    passkey: '',
+    initiator: '',
+    securityCredential: '',
+    ziraPayApiKey: '',
+    cloudRunApiKey: '',
+    repossessionPeriod: '',
+    whatsappBusinessId: '',
+    whatsappApiKey: '',
+    smsGatewayUrl: '',
+};
 
 const Constants: React.FC = () => {
-    // Initial state matching the screenshot context
-    const [formData, setFormData] = useState({
-        software: 'Sella',
-        platform: 'IzzyLipa',
-        supportTel: '742200790',
-        senderEmail: 'noreply@izzylipa.com',
-        replyEmail: 'noreply@izzylipa.com',
-        emailPassword: '................',
-        botKey: 'U4saZ0mFwuLXdE1JzxeS',
-        firebaseKey: 'AAAA5i0EUvo:APA91bE1X39KhEivx5BAS07QRrMsLefr2RqOgGDp_V9cNzOBe3RrNLEF_CZT-y_JWoS9lB1dW3ytpT0j5siqMjaVdKNO9MdT1CDVYLYaiANLHUW4c',
-        companyWebsite: 'https://www.izzylipa.com/',
-        currencySymbol: 'Kshs.',
-        shortcode: '854921',
-        consumerKey: 'SGxGmO0vlH45T2zlZROJDHHlMZL4PAq7',
-        secretKey: 'xr4lAj1YA1XAhf4k',
-        passkey: '7ba3d2c636f36b9362a7ad45cfea9d2e14f2e38c324fa404462e6ea2f26738c',
-        initiator: 'MATHENGE JOSEPH',
-        securityCredential: 'PYLJVE8UdHRoP/fIPmXHi8TwcMfX/HzEhhGWeQwB6wza8XA3XfDOLo/EW',
-        ziraPayApiKey: 'aG1Zb5M24SLtzwKUq9AuDhWF8DJk7Hjr', // Replaces Paytrigger
-        cloudRunApiKey: 'f42ada7ef3fd456d8935ba547432f678', // Replaces Nouvopay
-        repossessionPeriod: '7',
-        
-        // --- NEW COMMUNICATION FIELDS ---
-        whatsappBusinessId: '1092837465',
-        whatsappApiKey: 'EAABw...',
-        smsGatewayUrl: 'https://api.africastalking.com/version1/messaging'
-    });
+    const { systemSettings, updateSystemSettings } = useData();
+    const [formData, setFormData] = useState(EMPTY_FORM);
+
+    useEffect(() => {
+        const saved = systemSettings.softwareConstants || {};
+        setFormData({ ...EMPTY_FORM, ...saved });
+    }, [systemSettings.softwareConstants]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -37,7 +43,8 @@ const Constants: React.FC = () => {
     };
 
     const handleUpdate = () => {
-        alert("Software constants updated successfully!");
+        updateSystemSettings({ softwareConstants: { ...formData } });
+        alert("Software constants saved to system settings.");
     };
 
     const handleBack = () => {

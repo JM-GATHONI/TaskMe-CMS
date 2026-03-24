@@ -279,33 +279,13 @@ const PropertyDetailView: React.FC<{ property: Property; onClose: () => void }> 
              day: parseInt(p.date.split('-')[2])
         }))).sort((a,b) => b.day - a.day);
 
-        // Fallback for demo graph visual
-        const useMockData = currentMonthPayments.length === 0;
-
         const graphData = days.map(day => {
-             if (useMockData) {
-                 let pct = 0;
-                 if (day === 1) pct = 5;
-                 else if (day === 5) pct = 30;
-                 else if (day === 10) pct = 55;
-                 else if (day === 15) pct = 70;
-                 else if (day === 20) pct = 80;
-                 else if (day === 25) pct = 85;
-                 else if (day === 30) pct = collectionRate > 0 ? collectionRate : 89;
-                 return { day, percentage: pct };
-            } else {
-                 const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
-                 const percentage = expectedRent > 0 ? Math.round((collectedUntilDay / expectedRent) * 100) : 0;
-                 return { day, percentage };
-            }
+            const collectedUntilDay = currentMonthPayments.filter(p => p.day <= day).reduce((sum, p) => sum + p.amountVal, 0);
+            const percentage = expectedRent > 0 ? Math.round((collectedUntilDay / expectedRent) * 100) : 0;
+            return { day, percentage };
         });
 
-        // Table Data
-        const tablePayments = useMockData 
-            ? propTenants.slice(0, 6).map(t => ({
-                tenantName: t.name, unit: t.unit, amount: `KES ${t.rentAmount.toLocaleString()}`, date: `${period}-${selectedDayFilter < 10 ? '0'+selectedDayFilter : selectedDayFilter}`
-              }))
-            : currentMonthPayments.filter(p => p.day <= selectedDayFilter);
+        const tablePayments = currentMonthPayments.filter(p => p.day <= selectedDayFilter);
 
         const currentBucket = graphData.find(d => d.day === selectedDayFilter) || graphData[graphData.length-1];
 

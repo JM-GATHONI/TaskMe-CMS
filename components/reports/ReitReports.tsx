@@ -1,6 +1,5 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
-import { REIT_BALANCE_GROWTH_DATA } from '../../constants';
 import Icon from '../Icon';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
@@ -85,6 +84,44 @@ const ReitReports: React.FC = () => {
         ];
     }, [funds, investments, rfTransactions]);
 
+    const balanceGrowthData = useMemo(() => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const currentYear = new Date().getFullYear();
+        const navData = new Array(12).fill(0);
+        let cumulative = 0;
+        const sorted = [...rfTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        sorted.forEach((tx) => {
+            const d = new Date(tx.date);
+            if (d.getFullYear() !== currentYear) return;
+            const mIdx = d.getMonth();
+            if (tx.type === 'Investment' && tx.status === 'Completed') {
+                cumulative += tx.amount;
+                for (let i = mIdx; i < 12; i++) navData[i] = cumulative;
+            }
+            if (tx.type === 'Withdrawal' && tx.status === 'Completed') {
+                cumulative -= tx.amount;
+                for (let i = mIdx; i < 12; i++) navData[i] = cumulative;
+            }
+        });
+        if (cumulative === 0 && funds.length > 0) {
+            const total = funds.reduce((s, f) => s + f.capitalRaised, 0);
+            navData.fill(total);
+        }
+        const end = new Date().getMonth();
+        const start = Math.max(0, end - 5);
+        return {
+            labels: months.slice(start, end + 1),
+            datasets: [
+                {
+                    label: 'Fund Value (KES)',
+                    data: navData.slice(start, end + 1),
+                    borderColor: '#8b5cf6',
+                    tension: 0.3,
+                },
+            ],
+        };
+    }, [rfTransactions, funds]);
+
     return (
         <div className="space-y-8 pb-10">
             <button onClick={() => window.location.hash = '#/reports-analytics/reports'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors mb-4">
@@ -104,7 +141,7 @@ const ReitReports: React.FC = () => {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                  <h2 className="text-xl font-bold text-gray-800 mb-6">Investor Capital Growth Trend</h2>
                  <div className="h-80">
-                    <Chart type="line" data={REIT_BALANCE_GROWTH_DATA} options={{ responsive: true, maintainAspectRatio: false }} />
+                    <Chart type="line" data={balanceGrowthData} options={{ responsive: true, maintainAspectRatio: false }} />
                  </div>
                  <p className="text-center text-gray-400 text-xs mt-4">
                     Tracks the cumulative growth of investor capital over the last 6 months.

@@ -50,32 +50,85 @@ const DashboardView: React.FC = () => {
     }, [tenants, properties, tasks]);
 
     // --- Charts Data ---
-    const revenueTrendData = {
-        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
-        datasets: [{
-            label: 'Revenue (KES)',
-            data: [2.8, 3.1, 3.0, 3.4, 3.6, metrics.collectedRent/1000000],
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            fill: true,
-            tension: 0.4
-        }]
-    };
+    const revenueTrendData = useMemo(() => {
+        const now = new Date();
+        const labels: string[] = [];
+        const data: number[] = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            labels.push(d.toLocaleString('default', { month: 'short' }));
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            const paid = tenants.reduce((acc, t) => {
+                const monthSum = t.paymentHistory.reduce((sum, p) => {
+                    if (p.status !== 'Paid') return sum;
+                    const pd = new Date(p.date);
+                    if (isNaN(pd.getTime()) || pd.getFullYear() !== y || pd.getMonth() !== m) return sum;
+                    return sum + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0);
+                }, 0);
+                return acc + monthSum;
+            }, 0);
+            data.push(paid / 1_000_000);
+        }
+        return {
+            labels,
+            datasets: [{
+                label: 'Revenue (M KES)',
+                data,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        };
+    }, [tenants]);
 
-    const expenseBreakdownData = {
-        labels: ['Maintenance', 'Utilities', 'Staff', 'Marketing', 'Taxes'],
-        datasets: [{
-            data: [35, 20, 30, 5, 10],
-            backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#64748b'],
-            borderWidth: 0
-        }]
-    };
+    const expenseBreakdownData = useMemo(() => {
+        const catMap: Record<string, number> = {};
+        bills.forEach(b => {
+            if (b.status !== 'Paid') return;
+            const c = (b.category || 'Other').trim() || 'Other';
+            catMap[c] = (catMap[c] || 0) + (b.amount || 0);
+        });
+        const labels = Object.keys(catMap);
+        const vals = Object.values(catMap);
+        if (labels.length === 0) {
+            return {
+                labels: ['No paid bills'],
+                datasets: [{ data: [1], backgroundColor: ['#e5e7eb'], borderWidth: 0 }]
+            };
+        }
+        const palette = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#64748b', '#10b981', '#14b8a6', '#f97316'];
+        return {
+            labels,
+            datasets: [{
+                data: vals,
+                backgroundColor: labels.map((_, i) => palette[i % palette.length]),
+                borderWidth: 0
+            }]
+        };
+    }, [bills]);
 
-    const alerts = [
-        { id: 1, type: 'critical', text: 'Occupancy dropped below 85% in Kisii Branch' },
-        { id: 2, type: 'warning', text: '3 High priority tasks overdue > 48hrs' },
-        { id: 3, type: 'success', text: 'Revenue target for Nov exceeded by 5%' }
-    ];
+    const alerts = useMemo(() => {
+        const rows: { id: string; type: 'critical' | 'warning' | 'success'; text: string }[] = [];
+        if (metrics.occupancyRate > 0 && metrics.occupancyRate < 85) {
+            rows.push({ id: 'occ', type: 'critical', text: `Occupancy is ${metrics.occupancyRate}% (below 85%).` });
+        }
+        const hotTasks = tasks.filter(t =>
+            (t.priority === 'High' || t.priority === 'Very High') &&
+            t.status !== 'Completed' && t.status !== 'Closed'
+        ).length;
+        if (hotTasks > 0) {
+            rows.push({ id: 'tasks', type: 'warning', text: `${hotTasks} high-priority tasks are still open.` });
+        }
+        if (metrics.collectionRate >= 90) {
+            rows.push({ id: 'col', type: 'success', text: `Rent collection is ${metrics.collectionRate}% MTD.` });
+        }
+        if (rows.length === 0) {
+            rows.push({ id: 'ok', type: 'success', text: 'No critical flags from current portfolio metrics.' });
+        }
+        return rows;
+    }, [metrics, tasks]);
 
     return (
         <div className="space-y-8 animate-fade-in">

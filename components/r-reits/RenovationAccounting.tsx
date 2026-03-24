@@ -1,9 +1,65 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import Icon from '../Icon';
-import { MOCK_JOURNAL_ENTRIES } from '../../constants';
-import { RenovationProjectBill, Fund } from '../../types';
+import { RenovationProjectBill, Fund, Investment, RFTransaction } from '../../types';
 import { useData } from '../../context/DataContext';
+
+type LedgerRow = { id: string; date: string; account: string; description: string; debit: number; credit: number };
+
+function fundMatchesTx(fund: Fund, tx: RFTransaction): boolean {
+    const blob = `${tx.description || ''} ${tx.reference || ''} ${tx.partyName || ''}`.toLowerCase();
+    const name = (fund.name || '').toLowerCase();
+    return blob.includes(fund.id.toLowerCase()) || (!!name && blob.includes(name));
+}
+
+function rfToDoubleEntry(tx: RFTransaction): LedgerRow[] {
+    const cashIn = 'Cash (Bank)';
+    const cashOut = 'Cash (M-Pesa)';
+    if (tx.category === 'Inbound') {
+        const creditAcct = tx.type === 'Investment' ? 'Investor Capital' : 'Revenue';
+        return [
+            { id: `${tx.id}-dr`, date: tx.date, account: cashIn, description: `${tx.type} — ${tx.partyName}`, debit: tx.amount, credit: 0 },
+            { id: `${tx.id}-cr`, date: tx.date, account: creditAcct, description: tx.description || tx.type, debit: 0, credit: tx.amount },
+        ];
+    }
+    const debitAcct =
+        tx.type === 'Expense' || tx.type === 'Invoice'
+            ? 'Project Expense'
+            : tx.type === 'Interest Payout'
+                ? 'Interest Expense'
+                : tx.type === 'Referral Commission'
+                    ? 'Referral Expense'
+                    : 'Investor Capital';
+    return [
+        { id: `${tx.id}-dr`, date: tx.date, account: debitAcct, description: `${tx.type} — ${tx.description || tx.partyName}`, debit: tx.amount, credit: 0 },
+        { id: `${tx.id}-cr`, date: tx.date, account: cashOut, description: `Payment — ${tx.partyName}`, debit: 0, credit: tx.amount },
+    ];
+}
+
+function investmentsToLedger(inv: Investment[]): LedgerRow[] {
+    const rows: LedgerRow[] = [];
+    inv.forEach(i => {
+        rows.push({ id: `inv-${i.id}-d`, date: i.date, account: 'Cash (Bank)', description: `Capital contribution — ${i.fundName}`, debit: i.amount, credit: 0 });
+        rows.push({ id: `inv-${i.id}-c`, date: i.date, account: 'Investor Capital', description: `Investor capital — ${i.fundName}`, debit: 0, credit: i.amount });
+    });
+    return rows;
+}
+
+function billsToLedger(bills: RenovationProjectBill[]): LedgerRow[] {
+    const rows: LedgerRow[] = [];
+    bills.forEach(b => {
+        rows.push({
+            id: `bill-${b.id}-d`,
+            date: b.date,
+            account: 'Project Expense',
+            description: b.description || `${b.category} — ${b.vendor}`,
+            debit: b.amount,
+            credit: 0,
+        });
+        rows.push({ id: `bill-${b.id}-c`, date: b.date, account: 'Cash (M-Pesa)', description: `Payment — ${b.vendor}`, debit: 0, credit: b.amount });
+    });
+    return rows;
+}
 
 const FundProfitabilityModal: React.FC<{ project: Fund; onClose: () => void }> = ({ project, onClose }) => {
     
@@ -148,7 +204,7 @@ const FundProfitabilityModal: React.FC<{ project: Fund; onClose: () => void }> =
 };
 
 const RenovationAccounting: React.FC = () => {
-    const { funds, renovationProjectBills, addRenovationProjectBill, updateRenovationProjectBill } = useData();
+    const { funds, renovationProjectBills, addRenovationProjectBill, updateRenovationProjectBill, rfTransactions, investments } = useData();
     
     // Use projects from context funds
     const projects = funds;
@@ -166,7 +222,7 @@ const RenovationAccounting: React.FC = () => {
     const [filterAccount, setFilterAccount] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const accounts = ['All', 'Cash (M-Pesa)', 'Cash (Bank)', 'Investor Capital', 'Project Expense', 'Revenue'];
+    const accounts = ['All', 'Cash (M-Pesa)', 'Cash (Bank)', 'Investor Capital', 'Project Expense', 'Revenue', 'Interest Expense', 'Referral Expense'];
 
     // Ensure we have a selected project, default to first if available
     useEffect(() => {
@@ -175,14 +231,31 @@ const RenovationAccounting: React.FC = () => {
         }
     }, [projects, selectedProjectId]);
 
-    // --- Ledger Logic ---
+    // --- General ledger: RF activity matched to fund + paid project bills; fallback to investments + bills ---
+    const fundLedgerEntries = useMemo(() => {
+        const fund = projects.find(p => p.id === selectedProjectId);
+        if (!fund) return [] as LedgerRow[];
+        const matchedRf = (rfTransactions || []).filter(tx => tx.status === 'Completed' && fundMatchesTx(fund, tx));
+        const paidBills = renovationProjectBills.filter(b => b.projectId === selectedProjectId && b.status === 'Paid');
+        let rows: LedgerRow[] = [];
+        matchedRf.forEach(tx => {
+            rows.push(...rfToDoubleEntry(tx));
+        });
+        rows.push(...billsToLedger(paidBills));
+        if (rows.length === 0) {
+            const invs = (investments || []).filter(i => i.fundId === selectedProjectId);
+            rows = [...investmentsToLedger(invs), ...billsToLedger(paidBills)];
+        }
+        return rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }, [selectedProjectId, projects, rfTransactions, renovationProjectBills, investments]);
+
     const filteredEntries = useMemo(() => {
-        return MOCK_JOURNAL_ENTRIES.filter(e => {
+        return fundLedgerEntries.filter(e => {
             const matchesAccount = filterAccount === 'All' || e.account === filterAccount;
             const matchesSearch = e.description.toLowerCase().includes(searchQuery.toLowerCase());
             return matchesAccount && matchesSearch;
         });
-    }, [filterAccount, searchQuery]);
+    }, [fundLedgerEntries, filterAccount, searchQuery]);
 
     const totals = useMemo(() => {
         return filteredEntries.reduce((acc, curr) => ({

@@ -60,78 +60,82 @@ const KpiCard: React.FC<{ title: string; value: string; subtext: string; color: 
 );
 
 const MarketplaceReporting: React.FC = () => {
-    const { leads, marketplaceListings, properties } = useData();
+    const { leads, marketplaceListings } = useData();
     const [timeRange, setTimeRange] = useState('All Time');
 
     // --- ANALYTICS CALCULATIONS ---
 
+    const filteredLeads = useMemo(() => {
+        const now = new Date();
+        const startAll = new Date(2000, 0, 1);
+        let start = startAll;
+        if (timeRange === 'Last 30 Days') {
+            start = new Date(now);
+            start.setDate(start.getDate() - 30);
+        } else if (timeRange === 'This Quarter') {
+            const q = Math.floor(now.getMonth() / 3);
+            start = new Date(now.getFullYear(), q * 3, 1);
+        }
+        return (leads || []).filter(l => {
+            if (!l.date) return timeRange === 'All Time';
+            const d = new Date(l.date);
+            return !isNaN(d.getTime()) && d >= start;
+        });
+    }, [leads, timeRange]);
+
     const stats = useMemo(() => {
-        // 1. Funnel Metrics
-        const totalLeads = leads.length;
-        const contacted = leads.filter(l => l.status !== 'New').length;
-        const viewings = leads.filter(l => ['Viewing', 'Negotiation', 'Closed'].includes(l.status)).length;
-        const negotiations = leads.filter(l => ['Negotiation', 'Closed'].includes(l.status)).length;
-        const closed = leads.filter(l => l.status === 'Closed').length;
+        const totalLeads = filteredLeads.length;
+        const contacted = filteredLeads.filter(l => l.status !== 'New').length;
+        const viewings = filteredLeads.filter(l => ['Viewing', 'Negotiation', 'Closed'].includes(l.status)).length;
+        const negotiations = filteredLeads.filter(l => ['Negotiation', 'Closed'].includes(l.status)).length;
+        const closed = filteredLeads.filter(l => l.status === 'Closed').length;
 
-        // Mock Impressions/Clicks based on Leads (Assumed 2% conversion from click to lead, 5% CTR)
-        const clicks = totalLeads * 50; 
-        const impressions = clicks * 20;
-
-        // 2. Conversion Rates
         const leadToViewRate = totalLeads > 0 ? Math.round((viewings / totalLeads) * 100) : 0;
         const viewToCloseRate = viewings > 0 ? Math.round((closed / viewings) * 100) : 0;
         const globalConversion = totalLeads > 0 ? Math.round((closed / totalLeads) * 100) : 0;
 
-        // 3. Financials (Estimated)
-        // Match closed leads to listings to get price, otherwise default avg
-        const revenue = leads.filter(l => l.status === 'Closed').reduce((sum, lead) => {
-            // Try to find matching listing by title or loose match
-            const listing = marketplaceListings.find(l => l.title === lead.listingTitle) 
-                         || marketplaceListings.find(l => lead.listingTitle.includes(l.propertyName));
-            
-            // Default rent if not found (e.g. 25k) or use listing price
-            const val = listing ? listing.price : 25000;
+        const revenue = filteredLeads.filter(l => l.status === 'Closed').reduce((sum, lead) => {
+            const listing = marketplaceListings.find(l => l.title === lead.listingTitle)
+                || marketplaceListings.find(l => lead.listingTitle?.includes(l.propertyName));
+            const val = listing ? listing.price : 0;
             return sum + val;
         }, 0);
 
-        // 4. Source Breakdown
         const sources: Record<string, number> = {};
-        leads.forEach(l => {
+        filteredLeads.forEach(l => {
             const src = l.source || 'Direct';
             sources[src] = (sources[src] || 0) + 1;
         });
 
-        // 5. Listing Performance
-        const listingStats: Record<string, { leads: number, closed: number, title: string }> = {};
-        leads.forEach(l => {
+        const listingStats: Record<string, { leads: number; closed: number; title: string }> = {};
+        filteredLeads.forEach(l => {
             const title = l.listingTitle || 'General Inquiry';
             if (!listingStats[title]) listingStats[title] = { leads: 0, closed: 0, title };
             listingStats[title].leads++;
             if (l.status === 'Closed') listingStats[title].closed++;
         });
-        const topListings = Object.values(listingStats).sort((a,b) => b.leads - a.leads).slice(0, 5);
+        const topListings = Object.values(listingStats).sort((a, b) => b.leads - a.leads).slice(0, 5);
 
         return {
-            impressions, clicks, totalLeads, viewings, negotiations, closed,
+            totalLeads, contacted, viewings, negotiations, closed,
             leadToViewRate, viewToCloseRate, globalConversion,
             revenue, sources, topListings
         };
-    }, [leads, marketplaceListings]);
+    }, [filteredLeads, marketplaceListings]);
 
     // --- CHART DATA ---
 
     const funnelChartData = {
-        labels: ['Impressions', 'Clicks', 'Leads', 'Viewings', 'Negotiations', 'Closed'],
+        labels: ['All Leads', 'Contacted+', 'Viewing+', 'Negotiation', 'Closed'],
         datasets: [{
             label: 'Volume',
-            data: [stats.impressions, stats.clicks, stats.totalLeads, stats.viewings, stats.negotiations, stats.closed],
+            data: [stats.totalLeads, stats.contacted, stats.viewings, stats.negotiations, stats.closed],
             backgroundColor: [
-                '#e0e7ff', // Impressions (Lightest)
-                '#c7d2fe', // Clicks
-                '#818cf8', // Leads
-                '#6366f1', // Viewings
-                '#4f46e5', // Negotiations
-                '#10b981'  // Closed (Green)
+                '#818cf8',
+                '#a5b4fc',
+                '#6366f1',
+                '#4f46e5',
+                '#10b981'
             ],
             borderRadius: 4,
             barPercentage: 0.6,
@@ -147,28 +151,49 @@ const MarketplaceReporting: React.FC = () => {
         }]
     };
 
-    // Trend Data (Mocked over last 6 months for demo visualization structure)
-    const trendChartData = {
-        labels: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
-        datasets: [
-            {
-                label: 'Leads Generated',
-                data: [12, 19, 15, 25, 22, stats.totalLeads], // Ending with current total for context
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                fill: true,
-                tension: 0.4
-            },
-            {
-                label: 'Deals Closed',
-                data: [2, 4, 3, 6, 5, stats.closed],
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                fill: true,
-                tension: 0.4
-            }
-        ]
-    };
+    const trendChartData = useMemo(() => {
+        const now = new Date();
+        const labels: string[] = [];
+        const leadSeries: number[] = [];
+        const closedSeries: number[] = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            labels.push(d.toLocaleString('default', { month: 'short' }));
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            leadSeries.push((leads || []).filter(l => {
+                if (!l.date) return false;
+                const ld = new Date(l.date);
+                return !isNaN(ld.getTime()) && ld.getFullYear() === y && ld.getMonth() === m;
+            }).length);
+            closedSeries.push((leads || []).filter(l => {
+                if (l.status !== 'Closed' || !l.date) return false;
+                const ld = new Date(l.date);
+                return !isNaN(ld.getTime()) && ld.getFullYear() === y && ld.getMonth() === m;
+            }).length);
+        }
+        return {
+            labels,
+            datasets: [
+                {
+                    label: 'Leads Generated',
+                    data: leadSeries,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: 'Deals Closed',
+                    data: closedSeries,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }
+            ]
+        };
+    }, [leads]);
 
     const handleExport = () => {
         const data = leads.map(l => ({
@@ -220,8 +245,8 @@ const MarketplaceReporting: React.FC = () => {
                 />
                 <KpiCard 
                     title="Est. Revenue Generated" 
-                    value={`KES ${(stats.revenue/1000).toFixed(1)}k`} 
-                    subtext="Annualized Value" 
+                    value={stats.revenue > 0 ? `KES ${(stats.revenue/1000).toFixed(1)}k` : 'KES 0'} 
+                    subtext="Closed leads × listing price" 
                     color="#8b5cf6" 
                     icon="revenue" 
                     trend="up"
@@ -264,7 +289,9 @@ const MarketplaceReporting: React.FC = () => {
                         />
                     </div>
                     <div className="mt-4 text-center">
-                        <p className="text-sm text-gray-500">Top Channel: <strong>{Object.keys(stats.sources).reduce((a, b) => stats.sources[a] > stats.sources[b] ? a : b, 'Direct')}</strong></p>
+                        <p className="text-sm text-gray-500">Top Channel: <strong>{Object.keys(stats.sources).length
+                            ? Object.keys(stats.sources).reduce((a, b) => stats.sources[a] > stats.sources[b] ? a : b)
+                            : '—'}</strong></p>
                     </div>
                 </div>
             </div>

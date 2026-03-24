@@ -6,14 +6,36 @@ import Icon from '../Icon';
 const StaffPerformance: React.FC = () => {
     const { staff, tasks } = useData();
 
-    // Mock calculations
+    // Live calculations
     const leaderboard = useMemo(() => {
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         return staff.map(s => {
-            const completed = tasks.filter(t => t.assignedTo === s.name && t.status === 'Completed').length;
-            const points = completed * 10 + Math.floor(Math.random() * 50); // Mock gamification
+            const mine = tasks.filter(t => t.assignedTo === s.name);
+            const completed = mine.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
+            const completedThisMonth = mine.filter(t => {
+                if (!(t.status === 'Completed' || t.status === 'Closed') || !t.dueDate) return false;
+                const d = new Date(t.dueDate);
+                return !isNaN(d.getTime()) && d >= monthStart;
+            }).length;
+            const highPriorityDone = mine.filter(t => (t.priority === 'High' || t.priority === 'Very High') && (t.status === 'Completed' || t.status === 'Closed')).length;
+            const points = completedThisMonth * 12 + highPriorityDone * 5 + completed;
             return { ...s, completedTasks: completed, points };
         }).sort((a,b) => b.points - a.points);
     }, [staff, tasks]);
+
+    const teamVelocity = useMemo(() => {
+        const closed = tasks.filter(t => t.status === 'Completed' || t.status === 'Closed');
+        const avgSla = closed.length ? closed.reduce((s, t) => s + (t.sla || 0), 0) / closed.length : 0;
+        const responseHours = closed.length ? Math.max(1, Math.round((avgSla || 8) * 4)) : 0;
+        const leaseTasks = tasks.filter(t => /lease/i.test(`${t.title} ${t.description}`));
+        const leaseSla = leaseTasks.length ? leaseTasks.reduce((s, t) => s + (t.sla || 0), 0) / leaseTasks.length : 0;
+        return {
+            taskResolutionDays: avgSla.toFixed(1),
+            leaseProcessingDays: leaseSla ? leaseSla.toFixed(1) : '0.0',
+            responseHours
+        };
+    }, [tasks]);
 
     return (
         <div className="space-y-8 pb-10">
@@ -69,23 +91,23 @@ const StaffPerformance: React.FC = () => {
                             <div>
                                 <div className="flex justify-between text-sm mb-1">
                                     <span>Task Resolution</span>
-                                    <span className="font-bold">2.4 Days</span>
+                                    <span className="font-bold">{teamVelocity.taskResolutionDays} Days</span>
                                 </div>
-                                <div className="w-full bg-gray-100 h-2 rounded-full"><div className="bg-blue-500 h-2 rounded-full" style={{width: '70%'}}></div></div>
+                                <div className="w-full bg-gray-100 h-2 rounded-full"><div className="bg-blue-500 h-2 rounded-full" style={{width: `${Math.min(100, Math.max(5, 100 - Number(teamVelocity.taskResolutionDays) * 10))}%`}}></div></div>
                             </div>
                             <div>
                                 <div className="flex justify-between text-sm mb-1">
                                     <span>Lease Processing</span>
-                                    <span className="font-bold">4.1 Days</span>
+                                    <span className="font-bold">{teamVelocity.leaseProcessingDays} Days</span>
                                 </div>
-                                <div className="w-full bg-gray-100 h-2 rounded-full"><div className="bg-green-500 h-2 rounded-full" style={{width: '85%'}}></div></div>
+                                <div className="w-full bg-gray-100 h-2 rounded-full"><div className="bg-green-500 h-2 rounded-full" style={{width: `${Math.min(100, Math.max(5, 100 - Number(teamVelocity.leaseProcessingDays) * 12))}%`}}></div></div>
                             </div>
                             <div>
                                 <div className="flex justify-between text-sm mb-1">
                                     <span>Response Time</span>
-                                    <span className="font-bold">2 Hrs</span>
+                                    <span className="font-bold">{teamVelocity.responseHours} Hrs</span>
                                 </div>
-                                <div className="w-full bg-gray-100 h-2 rounded-full"><div className="bg-purple-500 h-2 rounded-full" style={{width: '95%'}}></div></div>
+                                <div className="w-full bg-gray-100 h-2 rounded-full"><div className="bg-purple-500 h-2 rounded-full" style={{width: `${Math.min(100, Math.max(5, 100 - teamVelocity.responseHours * 3))}%`}}></div></div>
                             </div>
                         </div>
                     </div>

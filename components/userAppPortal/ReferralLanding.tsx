@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
+import { useRegistration } from '../../hooks/useRegistration';
 import Icon from '../Icon';
 import { INITIAL_FUNDS } from '../../constants';
 
@@ -158,7 +159,7 @@ const InvestmentModal: React.FC<{
         }
         setStep('processing');
         setTimeout(() => {
-            setTxCode(`INV${Math.floor(Math.random()*100000).toString().padStart(5, '0')}QT`);
+            setTxCode(`INV${Date.now().toString().slice(-8)}QT`);
             setStep('success');
         }, 3000);
     };
@@ -372,7 +373,7 @@ const ReferralLanding: React.FC = () => {
                 id: u.id,
                 title: `${u.unitNumber} at ${p.name}`,
                 rent: u.rent || p.defaultMonthlyRent || 0,
-                location: p.location || p.branch,
+                location: p.subLocation || p.nearestLandmark || p.location || p.zone || 'Location not set',
                 image: p.profilePictureUrl || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=800&q=80',
                 type: u.unitType || p.type,
                 bedrooms: u.bedrooms,

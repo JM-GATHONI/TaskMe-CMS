@@ -619,7 +619,7 @@ const Dashboard: React.FC = () => {
       {canView('dash_welcome') && (
         <div>
             <h1 className="text-3xl font-bold text-gray-800">
-            Welcome back <span className="text-primary">{profileLoading ? 'Loading...' : ((firstName ?? '').trim() ? (firstName as string).trim() : currentUser?.name.split(' ')[0])},</span>
+            Welcome back <span className="text-primary">{profileLoading ? 'Loading...' : ((firstName ?? '').trim() ? (firstName as string).trim() : 'User')},</span>
             </h1>
             <p className="text-lg text-gray-500 mt-1">
             Here is your portfolio performance overview.
