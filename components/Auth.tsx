@@ -12,7 +12,19 @@ interface AuthProps {
 type AuthView = 'login' | 'forgot' | 'verify-reset' | 'new-password';
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-    const { systemSettings, staff, landlords, tenants, renovationInvestors, vendors } = useData();
+    const {
+        systemSettings,
+        staff,
+        landlords,
+        tenants,
+        renovationInvestors,
+        vendors,
+        addTenant,
+        addLandlord,
+        addRenovationInvestor,
+        addVendor,
+        addStaff,
+    } = useData();
     const [view, setView] = useState<AuthView>('login');
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -124,6 +136,75 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 null;
             const pic = fromLists?.avatar || fromLists?.profilePicture || fromLists?.avatarUrl;
             if (pic) (loggedIn as any).profilePicture = pic;
+
+            // Ensure users signing in through public signup are reflected in app_state user lists.
+            // This backfills records when signup auto-signin is skipped due to email confirmation.
+            try {
+                const uid = user.id;
+                const meta: any = user.user_metadata ?? {};
+                const base: any = {
+                    id: uid,
+                    name: displayName || user.email || 'User',
+                    username: '',
+                    email: (user.email ?? '') as string,
+                    phone: (staffRow?.phone ?? meta.phone ?? '') as string,
+                    idNumber: (meta.id_number ?? '') as string,
+                    status: 'Active',
+                };
+
+                if (resolvedRole === 'Tenant') {
+                    if (!tenants.some(t => t.id === uid)) {
+                        addTenant({
+                            ...base,
+                            role: 'Tenant',
+                            unit: '',
+                            rentAmount: 0,
+                            onboardingDate: new Date().toISOString().split('T')[0],
+                            paymentHistory: [],
+                            outstandingBills: [],
+                            outstandingFines: [],
+                            maintenanceRequests: [],
+                        } as any);
+                    }
+                } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
+                    if (!landlords.some(l => l.id === uid)) {
+                        addLandlord({ ...base, role: resolvedRole } as any);
+                    }
+                } else if (resolvedRole === 'Investor') {
+                    if (!renovationInvestors.some(i => i.id === uid)) {
+                        addRenovationInvestor({
+                            ...base,
+                            role: 'Investor',
+                            joinDate: new Date().toISOString().split('T')[0],
+                            status: 'Active',
+                        } as any);
+                    }
+                } else if (resolvedRole === 'Contractor') {
+                    if (!vendors.some(v => v.id === uid)) {
+                        addVendor({
+                            id: uid,
+                            name: base.name,
+                            username: '',
+                            specialty: 'General',
+                            rating: 5,
+                            email: base.email,
+                            phone: base.phone,
+                        } as any);
+                    }
+                } else {
+                    if (!staff.some(s => s.id === uid)) {
+                        addStaff({
+                            ...base,
+                            role: resolvedRole,
+                            branch: (staffRow?.branch ?? meta.branch ?? 'Headquarters') as any,
+                            payrollInfo: { baseSalary: 0, nextPaymentDate: '' },
+                            leaveBalance: { annual: 0 },
+                        } as any);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to backfill signed-in user into app_state lists (non-blocking)', e);
+            }
 
             onLogin(loggedIn);
         } finally {

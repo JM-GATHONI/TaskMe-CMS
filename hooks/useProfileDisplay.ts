@@ -15,6 +15,8 @@ export function useProfileDisplay(options?: UseProfileDisplayOptions) {
     const nameFallback = options?.nameFallback;
     const [profile, setProfile] = useState<ProfileRow | null>(null);
     const [email, setEmail] = useState<string | null>(null);
+    const [metaFirstName, setMetaFirstName] = useState<string | null>(null);
+    const [metaFullName, setMetaFullName] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -32,6 +34,11 @@ export function useProfileDisplay(options?: UseProfileDisplayOptions) {
                     return;
                 }
                 if (alive) setEmail(user.email ?? null);
+                if (alive) {
+                    const metadata = (user.user_metadata ?? {}) as any;
+                    setMetaFirstName((metadata.first_name ?? null) as string | null);
+                    setMetaFullName((metadata.full_name ?? null) as string | null);
+                }
 
                 const { data: prof } = await supabase
                     .from('profiles')
@@ -63,12 +70,28 @@ export function useProfileDisplay(options?: UseProfileDisplayOptions) {
         const first = (profile?.first_name ?? '').trim();
         const full = (profile?.full_name ?? '').trim();
         const looksLikeEmail = (s: string) => s.includes('@');
+        const toTitle = (s: string) =>
+            s
+                .split(/\s+/)
+                .filter(Boolean)
+                .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+                .join(' ');
         const fromProfile = first || full;
         if (fromProfile && !looksLikeEmail(fromProfile)) return fromProfile;
+        const metaFirst = (metaFirstName ?? '').trim();
+        const metaFull = (metaFullName ?? '').trim();
+        const fromMeta = metaFirst || metaFull;
+        if (fromMeta && !looksLikeEmail(fromMeta)) return fromMeta;
         const fallbackFirst = nameFallback?.trim()?.split(/\s+/)[0];
-        if (fallbackFirst) return fallbackFirst;
-        return email || 'User';
-    }, [loading, profile?.first_name, profile?.full_name, email, nameFallback]);
+        if (fallbackFirst && !looksLikeEmail(fallbackFirst)) return fallbackFirst;
+        if (email) {
+            const localPart = email.split('@')[0]?.trim();
+            if (localPart) {
+                return toTitle(localPart.replace(/[._-]+/g, ' '));
+            }
+        }
+        return 'User';
+    }, [loading, profile?.first_name, profile?.full_name, metaFirstName, metaFullName, email, nameFallback]);
 
     const initial = useMemo(() => {
         const d = (displayName ?? '').trim();

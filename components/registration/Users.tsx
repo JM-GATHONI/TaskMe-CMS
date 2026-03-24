@@ -302,11 +302,44 @@ const Users: React.FC = () => {
     const [resetUser, setResetUser] = useState<UnifiedUser | null>(null);
     const [editUser, setEditUser] = useState<UnifiedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [dbStaffProfiles, setDbStaffProfiles] = useState<StaffProfile[]>([]);
     
     // Get dynamic system roles from context
     const systemRoleNames = useMemo(() => {
         return roles.filter(r => r.isSystem).map(r => r.name);
     }, [roles]);
+
+    // Pull server-side staff profiles so system users created directly in DB still appear in this module.
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const { data, error } = await supabase
+                    .schema('app')
+                    .from('staff_profiles')
+                    .select('id,name,role,email,phone,branch,status');
+                if (error) throw error;
+                if (!alive) return;
+                const mapped: StaffProfile[] = (data ?? []).map((row: any) => ({
+                    id: row.id,
+                    name: row.name || '',
+                    role: row.role || 'Staff',
+                    email: row.email || '',
+                    phone: row.phone || '',
+                    branch: row.branch || 'Headquarters',
+                    status: row.status || 'Active',
+                    payrollInfo: { baseSalary: 0, nextPaymentDate: '' },
+                    leaveBalance: { annual: 0 },
+                } as StaffProfile));
+                setDbStaffProfiles(mapped);
+            } catch (e) {
+                console.warn('Failed to load app.staff_profiles for user management', e);
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     // Construct Categories with dynamic system roles
     const categories: UserCategory[] = useMemo(() => [
@@ -325,7 +358,12 @@ const Users: React.FC = () => {
 
     // --- AGGREGATE ALL USERS ---
     const allUsers: UnifiedUser[] = useMemo(() => {
-        const staffUsers: UnifiedUser[] = staff.map(s => ({
+        const mergedStaff = [...staff];
+        for (const dbRow of dbStaffProfiles) {
+            if (!mergedStaff.some(s => s.id === dbRow.id)) mergedStaff.push(dbRow);
+        }
+
+        const staffUsers: UnifiedUser[] = mergedStaff.map(s => ({
             id: s.id, name: s.name, username: s.username, email: s.email, phone: s.phone, role: s.role, status: s.status, type: 'Staff', fullObject: s
         }));
         const landlordUsers: UnifiedUser[] = landlords.map(l => ({
@@ -342,7 +380,7 @@ const Users: React.FC = () => {
         }));
 
         return [...staffUsers, ...landlordUsers, ...tenantUsers, ...investors, ...contractors];
-    }, [staff, landlords, tenants, renovationInvestors, vendors]);
+    }, [staff, dbStaffProfiles, landlords, tenants, renovationInvestors, vendors]);
 
     // Filter Users by Active Category Roles
     const categoryUsers = useMemo(() => {
@@ -387,30 +425,34 @@ const Users: React.FC = () => {
         } else {
             // Create Auth user in Supabase so credentials work for login
             try {
-                if (plainPassword && rest.email) {
-                    const nameParts = String(rest.name ?? '').trim().split(/\s+/).filter(Boolean);
-                    const firstName = nameParts[0] ?? null;
-                    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
-                    const fullName = String(rest.name ?? rest.email);
-
-                    const { data: createdId, error } = await supabase.rpc('admin_create_auth_user', {
-                        p_email: rest.email,
-                        p_password: plainPassword,
-                        p_role: rest.role ?? activeCategory.roles?.[0] ?? 'Tenant',
-                        p_full_name: fullName,
-                        p_first_name: firstName,
-                        p_last_name: lastName,
-                        p_phone: rest.phone ?? null,
-                        p_id_number: rest.idNumber ?? null,
-                    });
-                    if (error) throw error;
-                    if (createdId) {
-                        newId = String(createdId);
-                    }
+                if (!plainPassword || !rest.email) {
+                    throw new Error('Email and initial password are required to create a login-enabled account.');
                 }
+
+                const nameParts = String(rest.name ?? '').trim().split(/\s+/).filter(Boolean);
+                const firstName = nameParts[0] ?? null;
+                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+                const fullName = String(rest.name ?? rest.email);
+
+                const { data: createdId, error } = await supabase.rpc('admin_create_auth_user', {
+                    p_email: rest.email,
+                    p_password: plainPassword,
+                    p_role: rest.role ?? activeCategory.roles?.[0] ?? 'Tenant',
+                    p_full_name: fullName,
+                    p_first_name: firstName,
+                    p_last_name: lastName,
+                    p_phone: rest.phone ?? null,
+                    p_id_number: rest.idNumber ?? null,
+                });
+                if (error) throw error;
+                if (!createdId) {
+                    throw new Error('Auth account was not created. User save cancelled to avoid app-only records.');
+                }
+                newId = String(createdId);
             } catch (e: any) {
-                console.warn('Supabase user creation failed; falling back to app-only user record', e);
-                alert(`Warning: User record saved in app data, but Supabase login user was NOT created.\n\n${e?.message ?? e}`);
+                console.warn('Supabase user creation failed; cancelling user creation', e);
+                alert(`Failed to create login-enabled account.\n\nNo user record was saved.\n\n${e?.message ?? e}`);
+                return;
             }
 
             const commonFieldsWithId = { ...commonFields, id: newId };

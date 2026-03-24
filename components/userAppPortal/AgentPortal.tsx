@@ -91,7 +91,6 @@ const AgentPortal: React.FC = () => {
         updateTask, addTenant, addMessage, updateTenant, addLandlordApplication,
         currentUser
     } = useData();
-    const { displayName: profileDisplayName, initial: profileInitial } = useProfileDisplay({ nameFallback: agent?.name });
     
     // Updated tab state to include Vacancies and reordered
     const [activeTab, setActiveTab] = useState<'Dashboard' | 'Tasks' | 'Vacancies' | 'My Properties' | 'My Tenants' | 'My Landlords'>('Dashboard');
@@ -108,6 +107,7 @@ const AgentPortal: React.FC = () => {
         }
         return staff.find(s => s.role === 'Field Agent') || staff[0];
     }, [staff, currentUser]);
+    const { displayName: profileDisplayName, initial: profileInitial } = useProfileDisplay({ nameFallback: agent?.name });
 
     // Live Data Filters
     const myTasks = useMemo(() => tasks.filter(t => t.assignedTo === agent.name && t.status !== 'Closed'), [tasks, agent]);

@@ -115,6 +115,25 @@ const UserProfile: React.FC = () => {
                  updateVendor(currentUser.id, updateData);
             }
 
+            // Keep public profile names in sync for stable header/sidebar display.
+            // Non-blocking if permissions differ between environments.
+            try {
+                const resolvedFullName = (displayName || currentUser.name || '').trim();
+                const resolvedFirstName = resolvedFullName.split(/\s+/).filter(Boolean)[0] || null;
+                await supabase
+                    .from('profiles')
+                    .upsert({
+                        id: currentUser.id,
+                        role: currentUser.role,
+                        first_name: resolvedFirstName,
+                        full_name: resolvedFullName || null,
+                        phone: currentUser.phone || null,
+                        email: formData.email || currentUser.email || null,
+                    });
+            } catch (profileSyncErr) {
+                console.warn('Profile display sync skipped', profileSyncErr);
+            }
+
             alert("Profile updated successfully!");
             setFormData(prev => ({ ...prev, password: '', confirmPassword: '' })); // Clear password fields
         } catch (err) {

@@ -267,7 +267,18 @@ const AppContent: React.FC = () => {
 
   const checkAccess = (requiredModulePath: string): boolean => {
       if (isSuperAdmin) return true;
-      if (!currentRoleDef) return false; 
+      if (!currentRoleDef) {
+          // Fallback for portal-only users when role rows are temporarily unavailable.
+          if (currentUser!.role === 'Field Agent') {
+              return [
+                  'User App Portal/Agent Portal',
+                  'User App Portal/Refer & Earn',
+                  'User App Portal/My Profile',
+                  'User App Portal/Referral Landing',
+              ].includes(requiredModulePath);
+          }
+          return false;
+      }
       // Allow access to Refer & Earn, Profile for all roles that have access to User App Portal features
       if (requiredModulePath === 'User App Portal/Refer & Earn' || requiredModulePath === 'User App Portal/My Profile' || requiredModulePath === 'User App Portal/Referral Landing') {
           return currentRoleDef.accessibleSubmodules.some(p => p.startsWith('User App Portal'));
