@@ -2,7 +2,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { Fund, Investment, WithdrawalRequest, RFTransaction } from '../../types';
-import { MOCK_REFERRAL_DATA } from '../../constants';
 import Icon from '../Icon';
 import { ProjectDetailModal } from '../r-reits/InvestmentPlans'; 
 
@@ -571,7 +570,7 @@ const KpiDetailModal: React.FC<{
     data: any; 
     onClose: () => void 
 }> = ({ type, data, onClose }) => {
-    const { investments, rfTransactions, funds } = data;
+    const { investments, rfTransactions, funds, referralRows } = data;
 
     const getTitle = () => {
         switch(type) {
@@ -754,13 +753,16 @@ const KpiDetailModal: React.FC<{
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            {MOCK_REFERRAL_DATA.referrals.map((ref, idx) => (
+                                            {(referralRows ?? []).map((ref: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-gray-50">
                                                     <td className="px-4 py-3 font-medium text-gray-900">{ref.name}</td>
                                                     <td className="px-4 py-3 text-right text-gray-600">KES {ref.activeBalance.toLocaleString()}</td>
                                                     <td className="px-4 py-3 text-right font-bold text-green-600">KES {ref.monthlyCommission.toLocaleString()}</td>
                                                 </tr>
                                             ))}
+                                            {(referralRows ?? []).length === 0 && (
+                                                <tr><td colSpan={3} className="p-4 text-center text-gray-400">No referrals yet.</td></tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -775,7 +777,7 @@ const KpiDetailModal: React.FC<{
 };
 
 const InvestorDashboard: React.FC = () => {
-    const { funds, investments, addInvestment, withdrawals, addWithdrawal, rfTransactions, updateFund } = useData();
+    const { funds, investments, addInvestment, withdrawals, addWithdrawal, rfTransactions, updateFund, currentUser, renovationInvestors } = useData();
     const [selectedProject, setSelectedProject] = useState<Fund | null>(null);
     const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
     const [isInvestOpen, setIsInvestOpen] = useState(false);
@@ -810,8 +812,41 @@ const InvestorDashboard: React.FC = () => {
         return sum + (i.amount * 0.025); 
     }, 0);
 
-    // Referral Commission (Mock)
-    const referralEarnings = MOCK_REFERRAL_DATA.stats.commission || 0;
+    // Referral Commission (Live)
+    const referralEarnings = useMemo(() => {
+        if (!currentUser?.name) return 0;
+        return rfTransactions
+            .filter(t => t.type === 'Referral Commission' && t.partyName === currentUser.name)
+            .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+    }, [currentUser?.name, rfTransactions]);
+
+    const referralRows = useMemo(() => {
+        if (!currentUser?.id) return [];
+        const myId = currentUser.id;
+        const referred = renovationInvestors.filter((i: any) => i?.referrerId === myId);
+        const thisMonth = new Date().toISOString().slice(0, 7);
+
+        return referred.map((inv: any) => {
+            const activeBalance = investments
+                .filter(i => i.status === 'Active' && i.investorId === inv.id)
+                .reduce((s, i) => s + Number(i.amount ?? 0), 0);
+
+            const monthlyCommission = rfTransactions
+                .filter(t =>
+                    t.type === 'Referral Commission' &&
+                    t.partyName === currentUser.name &&
+                    String(t.date ?? '').startsWith(thisMonth) &&
+                    String(t.description ?? '').toLowerCase().includes(String(inv.name ?? '').toLowerCase())
+                )
+                .reduce((s, t) => s + Number(t.amount ?? 0), 0);
+
+            return {
+                name: inv.name || inv.email || 'Referred Investor',
+                activeBalance,
+                monthlyCommission,
+            };
+        });
+    }, [currentUser?.id, currentUser?.name, renovationInvestors, investments, rfTransactions]);
 
     // Mock Wallet Balance (Simulated)
     const walletBalance = 5000; 
@@ -1147,7 +1182,7 @@ const InvestorDashboard: React.FC = () => {
             {activeKpiModal && (
                 <KpiDetailModal 
                     type={activeKpiModal} 
-                    data={{ investments, rfTransactions, funds }} 
+                    data={{ investments, rfTransactions, funds, referralRows }} 
                     onClose={() => setActiveKpiModal(null)} 
                 />
             )}

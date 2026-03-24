@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
-import { MOCK_AFFILIATE_PROFILE } from '../../constants';
 import { Affiliate } from '../../types';
 import Icon from '../Icon';
 import AdBanners from './AdBanners';
+import { useData } from '../../context/DataContext';
 
 const StatCard: React.FC<{ title: string; value: string | number; color: string; icon: string }> = ({ title, value, color, icon }) => (
     <div className={`bg-white p-5 rounded-xl shadow-sm border-l-4`} style={{ borderLeftColor: color }}>
@@ -20,7 +20,66 @@ const StatCard: React.FC<{ title: string; value: string | number; color: string;
 );
 
 const AffiliatePortal: React.FC = () => {
-    const affiliate: Affiliate = MOCK_AFFILIATE_PROFILE;
+    const { currentUser, leads, applications, rfTransactions, tenants } = useData();
+
+    const affiliate: Affiliate = useMemo(() => {
+        if (!currentUser) {
+            return {
+                id: 'aff-unknown',
+                name: 'User',
+                referralCode: 'REF2025',
+                stats: { leadsReferred: 0, leasesSigned: 0, totalEarned: 0 },
+                referrals: [],
+            };
+        }
+
+        const referralCode =
+            (currentUser as any).referralCode ||
+            `${String(currentUser.name ?? 'USER').split(' ')[0].toUpperCase() || 'USER'}2025`;
+
+        const myId = currentUser.id;
+        const myName = currentUser.name ?? '';
+        const thisMonth = new Date().toISOString().slice(0, 7);
+
+        const leadsReferred = (leads ?? []).filter((l: any) => l?.referrerId === myId).length;
+
+        // "Signed" is approximated by approved applications OR active tenants tied to this referrer.
+        const leasesSigned =
+            (applications ?? []).filter((a: any) => a?.referrerId === myId && a?.status === 'Approved').length +
+            (tenants ?? []).filter((t: any) => t?.referrerId === myId && t?.status === 'Active').length;
+
+        const totalEarned = (rfTransactions ?? [])
+            .filter((tx: any) => tx?.type === 'Referral Commission' && tx?.partyName === myName)
+            .reduce((sum: number, tx: any) => sum + Number(tx?.amount ?? 0), 0);
+
+        const referrals = (applications ?? [])
+            .filter((a: any) => a?.referrerId === myId)
+            .map((a: any) => {
+                const commission = (rfTransactions ?? [])
+                    .filter((tx: any) =>
+                        tx?.type === 'Referral Commission' &&
+                        tx?.partyName === myName &&
+                        String(tx?.date ?? '').startsWith(thisMonth) &&
+                        String(tx?.description ?? '').toLowerCase().includes(String(a?.name ?? '').toLowerCase())
+                    )
+                    .reduce((sum: number, tx: any) => sum + Number(tx?.amount ?? 0), 0);
+
+                return {
+                    date: a?.submittedDate || new Date().toISOString().split('T')[0],
+                    tenantName: a?.name || 'Referral',
+                    status: a?.status === 'Approved' ? 'Signed' : 'Pending',
+                    commission,
+                } as const;
+            });
+
+        return {
+            id: myId,
+            name: currentUser.name || 'User',
+            referralCode,
+            stats: { leadsReferred, leasesSigned, totalEarned },
+            referrals,
+        };
+    }, [currentUser, leads, applications, rfTransactions, tenants]);
     const [copyText, setCopyText] = useState('Copy Link');
 
     const handleCopy = () => {

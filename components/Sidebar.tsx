@@ -76,7 +76,7 @@ const NavLink: React.FC<{ item: NavItem; isActive: boolean; isSubMenuOpen: boole
 
 const Sidebar: React.FC<SidebarProps> = ({ activeRoute, isOpen, closeSidebarMobile }) => {
   const { currentUser, roles } = useData();
-  const { displayName, initial, email, loading: profileLoading } = useProfileDisplay();
+  const { displayName, initial, email, loading: profileLoading } = useProfileDisplay({ nameFallback: currentUser?.name });
 
   // Filter navigation based on role permissions (Super Admin sees everything).
   // If roles haven't loaded yet, show all modules to avoid an empty sidebar flash.

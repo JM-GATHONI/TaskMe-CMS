@@ -141,10 +141,9 @@ const TenantPortal: React.FC = () => {
     const [isPayRentModalOpen, setIsPayRentModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
     const [newMessageContent, setNewMessageContent] = useState('');
-    const { firstName, loading: profileLoading } = useProfileFirstName();
-
     // Use logged-in user if available and is a tenant, fallback to first tenant only for dev/demo
     const activeUser = (currentUser?.role === 'Tenant' ? (currentUser as TenantProfile) : undefined) || tenants[0];
+    const { firstName, loading: profileLoading } = useProfileFirstName({ nameFallback: activeUser?.name });
 
     const myTasks = useMemo(() => {
         if (!activeUser) return [];

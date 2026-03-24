@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
-export function useProfileFirstName() {
+type UseProfileFirstNameOptions = {
+    /** When profile first_name is empty or looks like email, use first word of this */
+    nameFallback?: string | null;
+};
+
+export function useProfileFirstName(options?: UseProfileFirstNameOptions) {
+    const nameFallback = options?.nameFallback;
     const [firstName, setFirstName] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -31,7 +37,10 @@ export function useProfileFirstName() {
                     return;
                 }
                 const fn = (profile as any)?.first_name;
-                setFirstName(typeof fn === 'string' ? fn : null);
+                const resolved = typeof fn === 'string' && fn.trim() && !fn.includes('@')
+                    ? fn.trim()
+                    : (nameFallback?.trim()?.split(/\s+/)[0] ?? null);
+                setFirstName(resolved);
             } finally {
                 if (alive) setLoading(false);
             }
@@ -47,7 +56,7 @@ export function useProfileFirstName() {
             alive = false;
             sub.subscription.unsubscribe();
         };
-    }, []);
+    }, [nameFallback]);
 
     return { firstName, loading };
 }

@@ -9,15 +9,13 @@ import { useProfileFirstName } from '../../hooks/useProfileFirstName';
 const CaretakerPortal: React.FC = () => {
     const { tasks, staff, addTask, updateTask, currentUser, isDataLoading } = useData();
     const [reportDescription, setReportDescription] = useState('');
-    const { firstName, loading: profileLoading } = useProfileFirstName();
-    
     // Prefer actual logged-in user if they are a caretaker; otherwise fall back to staff list (demo)
     const caretaker = useMemo(() => {
         if (currentUser && currentUser.role === 'Caretaker') return currentUser;
         return staff.find(s => s.role === 'Caretaker') || staff[0];
     }, [currentUser, staff]);
-
     const caretakerName = (caretaker as any)?.name as string | undefined;
+    const { firstName, loading: profileLoading } = useProfileFirstName({ nameFallback: caretakerName });
 
     const myTasks = useMemo(() => {
         if (!caretakerName) return [];

@@ -67,7 +67,7 @@ const CommunicationOverview: React.FC = () => {
     };
 
     const modules = [
-        { title: "Inbound Messages", icon: "mail", description: "View incoming inquiries and replies.", link: "#/general-operations/communications/inbound", color: "#3b82f6" },
+        { title: "Inbound Messages", icon: "mail", description: "View incoming inquiries and replies.", link: "#/operations/communications/inbound", color: "#3b82f6" },
         { title: "Outbound Messages", icon: "communication", description: "Track sent messages and broadcasts.", link: "#/general-operations/communications/outbound", color: "#10b981" },
         { title: "Templates", icon: "stack", description: "Manage reusable message templates.", link: "#/general-operations/communications/templates", color: "#f59e0b" },
         { title: "Automation", icon: "settings", description: "Configure auto-replies and triggers.", link: "#/general-operations/communications/automation", color: "#8b5cf6" },

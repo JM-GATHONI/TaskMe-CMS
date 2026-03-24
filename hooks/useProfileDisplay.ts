@@ -6,7 +6,13 @@ type ProfileRow = {
     full_name?: string | null;
 };
 
-export function useProfileDisplay() {
+type UseProfileDisplayOptions = {
+    /** When profile first_name/full_name is empty or looks like email, use first word of this as display name */
+    nameFallback?: string | null;
+};
+
+export function useProfileDisplay(options?: UseProfileDisplayOptions) {
+    const nameFallback = options?.nameFallback;
     const [profile, setProfile] = useState<ProfileRow | null>(null);
     const [email, setEmail] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -56,8 +62,13 @@ export function useProfileDisplay() {
         if (loading) return 'Loading...';
         const first = (profile?.first_name ?? '').trim();
         const full = (profile?.full_name ?? '').trim();
-        return first || full || email || 'User';
-    }, [loading, profile?.first_name, profile?.full_name, email]);
+        const looksLikeEmail = (s: string) => s.includes('@');
+        const fromProfile = first || full;
+        if (fromProfile && !looksLikeEmail(fromProfile)) return fromProfile;
+        const fallbackFirst = nameFallback?.trim()?.split(/\s+/)[0];
+        if (fallbackFirst) return fallbackFirst;
+        return email || 'User';
+    }, [loading, profile?.first_name, profile?.full_name, email, nameFallback]);
 
     const initial = useMemo(() => {
         const d = (displayName ?? '').trim();

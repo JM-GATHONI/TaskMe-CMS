@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { User, StaffProfile, TenantProfile, RenovationInvestor, Vendor } from '../../types';
 import Icon from '../Icon';
 import { hashPassword } from '../../utils/security';
+import { supabase } from '../../utils/supabaseClient';
 
 // Unified User Type for UI Display
 interface UnifiedUser {
@@ -128,7 +129,7 @@ const UserForm: React.FC<{
             passwordHash = await hashPassword(formData.password);
         }
 
-        onSave({ ...formData, passwordHash });
+        onSave({ ...formData, passwordHash, plainPassword: formData.password });
         setIsSaving(false);
     };
 
@@ -360,9 +361,9 @@ const Users: React.FC = () => {
 
     // --- ACTIONS ---
 
-    const handleSaveUser = (data: any) => {
-        const { passwordHash, assignedPropertyId, referrerId, referrerType, specialty, ...rest } = data;
-        const newId = rest.id || `${activeCategory.id}-${Date.now()}`;
+    const handleSaveUser = async (data: any) => {
+        const { passwordHash, plainPassword, assignedPropertyId, referrerId, referrerType, specialty, ...rest } = data;
+        let newId = rest.id || `${activeCategory.id}-${Date.now()}`;
         
         const commonFields = {
             id: newId,
@@ -384,18 +385,47 @@ const Users: React.FC = () => {
             else if (editUser.type === 'Vendor') updateVendor(editUser.id, { ...rest, specialty });
             setEditUser(null);
         } else {
+            // Create Auth user in Supabase so credentials work for login
+            try {
+                if (plainPassword && rest.email) {
+                    const nameParts = String(rest.name ?? '').trim().split(/\s+/).filter(Boolean);
+                    const firstName = nameParts[0] ?? null;
+                    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+                    const fullName = String(rest.name ?? rest.email);
+
+                    const { data: createdId, error } = await supabase.rpc('admin_create_auth_user', {
+                        p_email: rest.email,
+                        p_password: plainPassword,
+                        p_role: rest.role ?? activeCategory.roles?.[0] ?? 'Tenant',
+                        p_full_name: fullName,
+                        p_first_name: firstName,
+                        p_last_name: lastName,
+                        p_phone: rest.phone ?? null,
+                        p_id_number: rest.idNumber ?? null,
+                    });
+                    if (error) throw error;
+                    if (createdId) {
+                        newId = String(createdId);
+                    }
+                }
+            } catch (e: any) {
+                console.warn('Supabase user creation failed; falling back to app-only user record', e);
+                alert(`Warning: User record saved in app data, but Supabase login user was NOT created.\n\n${e?.message ?? e}`);
+            }
+
+            const commonFieldsWithId = { ...commonFields, id: newId };
             // Create Logic based on Category/Role
             if (activeCategory.id === 'landlords') {
-                addLandlord({ ...commonFields, role: 'Landlord' } as User);
+                addLandlord({ ...commonFieldsWithId, role: 'Landlord' } as User);
             } else if (activeCategory.id === 'tenants') {
                 addTenant({ 
-                    ...commonFields, 
+                    ...commonFieldsWithId, 
                     unit: '', rentAmount: 0, onboardingDate: new Date().toISOString().split('T')[0],
                     paymentHistory: [], outstandingBills: [], outstandingFines: [], maintenanceRequests: [] 
                 } as TenantProfile);
             } else if (activeCategory.id === 'investors') {
                 addRenovationInvestor({
-                    ...commonFields,
+                    ...commonFieldsWithId,
                     joinDate: new Date().toISOString().split('T')[0],
                     referrerId,
                     referrerType,
@@ -416,11 +446,11 @@ const Users: React.FC = () => {
                     passwordHash: passwordHash 
                 } as Vendor);
             } else if (activeCategory.id === 'affiliates') {
-                addLandlord({ ...commonFields, role: 'Affiliate' } as User); // Reuse User for affiliate login
+                addLandlord({ ...commonFieldsWithId, role: 'Affiliate' } as User); // Reuse User for affiliate login
             } else {
                 // Staff (System, Field, Caretaker)
                 addStaff({ 
-                    ...commonFields, 
+                    ...commonFieldsWithId, 
                     role: rest.role, 
                     branch: 'Headquarters', 
                     payrollInfo: { baseSalary: 0, nextPaymentDate: '' }, 

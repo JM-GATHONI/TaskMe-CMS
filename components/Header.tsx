@@ -14,8 +14,8 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogout }) => {
-  const { systemSettings, updateSystemSettings, notifications } = useData();
-  const { initial: profileInitial } = useProfileDisplay();
+  const { systemSettings, updateSystemSettings, notifications, currentUser } = useData();
+  const { initial: profileInitial } = useProfileDisplay({ nameFallback: currentUser?.name });
   const { logo, profilePic, companyName } = systemSettings;
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -153,7 +153,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
 
         {/* Right Action Icons */}
         <div className="flex items-center space-x-3">
-          <button onClick={() => navigate('#/general-operations/communications/inbound')} className="bg-white/20 hover:bg-white/30 text-white p-1.5 rounded-full transition-colors relative">
+          <button onClick={() => navigate('#/operations/communications/inbound')} className="bg-white/20 hover:bg-white/30 text-white p-1.5 rounded-full transition-colors relative">
             <Icon name="mail" className="w-4 h-4" />
           </button>
           
@@ -197,7 +197,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
                           )}
                       </div>
                       <div className="p-2 border-t bg-gray-50 text-center">
-                          <button onClick={() => navigate('#/general-operations/communications/inbound')} className="text-xs font-bold text-primary hover:underline">View All Messages</button>
+                          <button onClick={() => navigate('#/operations/communications/inbound')} className="text-xs font-bold text-primary hover:underline">View All Messages</button>
                       </div>
                   </div>
               )}

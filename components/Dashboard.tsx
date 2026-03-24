@@ -285,7 +285,7 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie'; data: any; options?: any; 
 
 const Dashboard: React.FC = () => {
     const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
-    const { firstName, loading: profileLoading } = useProfileFirstName();
+    const { firstName, loading: profileLoading } = useProfileFirstName({ nameFallback: currentUser?.name });
     const [searchQuery, setSearchQuery] = useState('');
     const [collectionsVsArrears, setCollectionsVsArrears] = useState<{ labels: string[]; collectionsM: number[]; arrearsM: number[] }>({ labels: [], collectionsM: [], arrearsM: [] });
 

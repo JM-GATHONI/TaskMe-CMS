@@ -355,7 +355,7 @@ export const LandlordInvestModal: React.FC<{
 
 const LandlordsPortal: React.FC = () => {
     const { landlords, properties, tenants, tasks, deductionRules, bills, addInvestment, currentUser, funds, rfTransactions, investments, isDataLoading } = useData();
-    const { displayName, initial: displayNameInitial } = useProfileDisplay();
+    const { displayName, initial: displayNameInitial } = useProfileDisplay({ nameFallback: currentLandlord?.name });
 
     // Tab State
     const [activeTab, setActiveTab] = useState<'dashboard' | 'properties' | 'financials' | 'requests' | 'growth'>('dashboard');

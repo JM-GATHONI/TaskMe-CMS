@@ -84,6 +84,7 @@ export const PropertyForm: React.FC<{
     const [formData, setFormData] = useState<Partial<Property>>({});
     const [activeFloorIndex, setActiveFloorIndex] = useState(0);
     const [baseRent, setBaseRent] = useState<number>(0); 
+    const [showUnitTagEditor, setShowUnitTagEditor] = useState(false);
     const [docFiles, setDocFiles] = useState<FileList | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const docInputRef = useRef<HTMLInputElement>(null);
@@ -159,6 +160,82 @@ export const PropertyForm: React.FC<{
         });
         setFormData(prev => ({ ...prev, floorplan: newPlan }));
     }, [formData.floors, activeFloorIndex, formData.defaultUnitType]);
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+
+    const getFloorPrefix = (floor: number) => {
+        if (floor <= 0) return 'G';
+        return `F${floor}`;
+    };
+
+    const expectedUnitsForFloor = (fp: FloorPlan | undefined) => {
+        if (!fp) return 0;
+        if (fp.compositionType === 'Uniform') return Number(fp.unitCount ?? 0) || 0;
+        const mixed = fp.mixedComposition || {};
+        return Object.values(mixed).reduce((s, v) => s + (Number(v) || 0), 0);
+    };
+
+    const buildUnitsFromFloorplan = (): Unit[] => {
+        const plan = formData.floorplan || [];
+        const units: Unit[] = [];
+
+        plan.forEach((fp, idx) => {
+            const floor = idx; // 0 = ground floor
+            const prefix = getFloorPrefix(floor);
+
+            const unitTypesForFloor: Array<string | undefined> = [];
+            if (fp.compositionType === 'Uniform') {
+                const count = Number(fp.unitCount ?? 0) || 0;
+                for (let i = 0; i < count; i++) unitTypesForFloor.push(fp.unitType || formData.defaultUnitType || undefined);
+            } else {
+                const mixed = fp.mixedComposition || {};
+                // Stable ordering based on UNIT_TYPES definition above
+                UNIT_TYPES.forEach((t) => {
+                    const count = Number((mixed as any)[t] ?? 0) || 0;
+                    for (let i = 0; i < count; i++) unitTypesForFloor.push(t);
+                });
+            }
+
+            unitTypesForFloor.forEach((unitType, unitIdx) => {
+                const unitNumber = `${prefix}${pad2(unitIdx + 1)}`;
+                units.push({
+                    id: `u-${Date.now()}-${floor}-${unitIdx}`,
+                    unitNumber,
+                    floor,
+                    bedrooms: 1,
+                    bathrooms: 1,
+                    status: 'Vacant',
+                    unitType,
+                } as Unit);
+            });
+        });
+
+        return units;
+    };
+
+    const handleAutoPopulateUnits = () => {
+        const plan = formData.floorplan || [];
+        if (!plan.length) {
+            alert('Please set Floors and unit counts first.');
+            return;
+        }
+        const expectedTotal = plan.reduce((s, fp) => s + expectedUnitsForFloor(fp), 0);
+        if (expectedTotal <= 0) {
+            alert('Please set unit counts first.');
+            return;
+        }
+
+        const nextUnits = buildUnitsFromFloorplan();
+        setFormData((prev) => ({ ...prev, units: nextUnits }));
+        setShowUnitTagEditor(true);
+    };
+
+    const updateUnitNumber = (unitId: string, next: string) => {
+        setFormData((prev) => ({
+            ...prev,
+            units: (prev.units || []).map((u) => (u.id === unitId ? { ...u, unitNumber: next } : u)),
+        }));
+    };
 
     // Cascading Geospatial Logic
     const geoData = geospatialData || GEOSPATIAL_DATA;
@@ -341,6 +418,31 @@ export const PropertyForm: React.FC<{
         if (!formData.name) {
             alert('Property Name is required.');
             return;
+        }
+
+        // Validate unit tags/IDs if a floorplan is configured
+        const plan = formData.floorplan || [];
+        const expectedTotalUnits = plan.reduce((s, fp) => s + expectedUnitsForFloor(fp), 0);
+        const units = formData.units || [];
+        if (expectedTotalUnits > 0) {
+            if (units.length !== expectedTotalUnits) {
+                alert(`Units are not fully configured. Expected ${expectedTotalUnits} units from the floor plan, but found ${units.length}. Use "Auto populate" or update unit tags manually.`);
+                return;
+            }
+            const tags = units.map((u) => (u.unitNumber || '').trim()).filter(Boolean);
+            if (tags.length !== units.length) {
+                alert('Every unit must have a Unit Tag/ID.');
+                return;
+            }
+            const seen = new Set<string>();
+            for (const t of tags) {
+                const key = t.toUpperCase();
+                if (seen.has(key)) {
+                    alert(`Duplicate Unit Tag/ID found: ${t}. Unit tags must be unique.`);
+                    return;
+                }
+                seen.add(key);
+            }
         }
 
         // Handle Custom Sub-location Logic
@@ -820,6 +922,70 @@ export const PropertyForm: React.FC<{
                             )}
                         </div>
                     ) : null}
+
+                    {/* Units & Rent: Unit Tag/ID configuration */}
+                    <div className="pt-4 border-t">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                                <h3 className="font-bold text-gray-800">Units (Tags/IDs)</h3>
+                                <p className="text-xs text-gray-500">
+                                    Auto-populate generates tags like <span className="font-mono">G01</span> for ground and <span className="font-mono">F101</span>, <span className="font-mono">F201</span> for upper floors. You can also edit manually.
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleAutoPopulateUnits}
+                                    className="px-3 py-2 bg-primary text-white rounded font-bold text-xs hover:bg-primary-dark shadow-sm"
+                                >
+                                    Auto populate
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowUnitTagEditor((v) => !v)}
+                                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded font-bold text-xs hover:bg-gray-200"
+                                >
+                                    {showUnitTagEditor ? 'Hide' : 'Edit Manually'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {showUnitTagEditor && (
+                            <div className="mt-4 bg-white border border-gray-200 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="text-xs font-bold text-gray-500 uppercase">
+                                        {activeFloorIndex === 0 ? 'Ground Floor' : `Floor ${activeFloorIndex}`} Units
+                                    </p>
+                                    <span className="text-xs text-gray-400">
+                                        {(formData.units || []).filter(u => u.floor === activeFloorIndex).length} units
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {(formData.units || [])
+                                        .filter(u => u.floor === activeFloorIndex)
+                                        .map((u) => (
+                                            <div key={u.id} className="p-3 bg-gray-50 rounded border border-gray-200">
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                                                    Unit Tag/ID {u.unitType ? `• ${u.unitType}` : ''}
+                                                </label>
+                                                <input
+                                                    value={u.unitNumber || ''}
+                                                    onChange={(e) => updateUnitNumber(u.id, e.target.value)}
+                                                    className="w-full p-2 border rounded bg-white text-sm font-semibold"
+                                                    placeholder="e.g. G01 / F101"
+                                                />
+                                            </div>
+                                        ))}
+                                    {(formData.units || []).filter(u => u.floor === activeFloorIndex).length === 0 && (
+                                        <div className="col-span-full text-center py-6 text-sm text-gray-500">
+                                            No units generated for this floor yet. Click <strong>Auto populate</strong> after setting unit counts.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -916,11 +1082,74 @@ export const PropertyForm: React.FC<{
 };
 
 const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: (propertyId: string, unit: Unit) => void; }> = ({ property, onClose, onAddUnit }) => {
-    const [unitData, setUnitData] = useState<Partial<Unit>>({ bedrooms: 1, bathrooms: 1, status: 'Vacant' });
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const getFloorPrefix = (floor: number) => (floor <= 0 ? 'G' : `F${floor}`);
+
+    const getNextUnitTagForFloor = (floor: number) => {
+        const prefix = getFloorPrefix(floor);
+        const existing = (property.units || [])
+            .filter(u => Number((u as any).floor ?? 0) === floor)
+            .map(u => String(u.unitNumber ?? '').trim().toUpperCase())
+            .filter(Boolean);
+
+        let maxIndex = 0;
+        existing.forEach(tag => {
+            if (floor <= 0) {
+                // G01..G99
+                if (!tag.startsWith('G')) return;
+                const num = parseInt(tag.slice(1), 10);
+                if (!Number.isNaN(num)) maxIndex = Math.max(maxIndex, num);
+            } else {
+                // F101..F1xx, F201..F2xx
+                if (!tag.startsWith(prefix.toUpperCase())) return;
+                const num = parseInt(tag.slice(prefix.length), 10);
+                if (!Number.isNaN(num)) maxIndex = Math.max(maxIndex, num);
+            }
+        });
+
+        const nextIndex = maxIndex + 1;
+        return `${prefix}${pad2(nextIndex)}`;
+    };
+
+    const maxFloors = Math.max(0, Number(property.floors ?? (property.floorplan?.length ?? 0) - 1) || 0);
+
+    const [unitData, setUnitData] = useState<Partial<Unit>>(() => {
+        const floor = 0;
+        return {
+            floor,
+            unitNumber: getNextUnitTagForFloor(floor),
+            bedrooms: 1,
+            bathrooms: 1,
+            status: 'Vacant',
+        };
+    });
+
+    // If floor changes and the tag still matches the previous auto suggestion, update to the new next suggestion
+    useEffect(() => {
+        const floor = Number((unitData as any).floor ?? 0) || 0;
+        const suggested = getNextUnitTagForFloor(floor);
+        const current = String(unitData.unitNumber ?? '').trim();
+        if (!current) {
+            setUnitData(p => ({ ...p, unitNumber: suggested }));
+            return;
+        }
+        // If user hasn't customized (still equals suggestion for some floor), refresh suggestion
+        if (current.toUpperCase().startsWith('G') || current.toUpperCase().startsWith('F')) {
+            // only auto-adjust if it exactly matches a suggestion for some floor prefix
+            // (keeps manual edits intact)
+            if (current.toUpperCase() !== suggested.toUpperCase()) {
+                // If current looks like an auto tag, but floor changed, replace it
+                // Only do this when current exactly matches the previous floor's suggestion pattern length
+                if (current.length === suggested.length) {
+                    setUnitData(p => ({ ...p, unitNumber: suggested }));
+                }
+            }
+        }
+    }, [unitData.floor]);
 
     const handleAdd = () => {
         if (!unitData.unitNumber) return alert('Unit Number is required');
-        onAddUnit(property.id, { id: `u-${Date.now()}`, ...unitData } as Unit);
+        onAddUnit(property.id, { id: `u-${Date.now()}`, ...unitData, floor: Number(unitData.floor ?? 0) || 0 } as Unit);
     };
 
     return (
@@ -928,7 +1157,31 @@ const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: 
             <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6" onClick={e => e.stopPropagation()}>
                 <h2 className="text-xl font-bold mb-4">Add Unit</h2>
                 <div className="space-y-3">
-                    <input onChange={e => setUnitData(p => ({...p, unitNumber: e.target.value}))} placeholder="Unit Number (e.g. A1)" className="w-full p-2 border rounded"/>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Floor</label>
+                            <select
+                                value={Number(unitData.floor ?? 0)}
+                                onChange={e => setUnitData(p => ({ ...p, floor: parseInt(e.target.value, 10) || 0 }))}
+                                className="w-full p-2 border rounded bg-white"
+                            >
+                                {Array.from({ length: maxFloors + 1 }, (_, i) => (
+                                    <option key={i} value={i}>
+                                        {i === 0 ? 'Ground (G)' : `Floor ${i} (F${i})`}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Unit Tag/ID</label>
+                            <input
+                                value={unitData.unitNumber || ''}
+                                onChange={e => setUnitData(p => ({...p, unitNumber: e.target.value}))}
+                                placeholder="e.g. G01 / F101"
+                                className="w-full p-2 border rounded"
+                            />
+                        </div>
+                    </div>
                     <input type="number" onChange={e => setUnitData(p => ({...p, bedrooms: parseInt(e.target.value)}))} placeholder="Bedrooms" className="w-full p-2 border rounded"/>
                     <input type="number" onChange={e => setUnitData(p => ({...p, bathrooms: parseInt(e.target.value)}))} placeholder="Bathrooms" className="w-full p-2 border rounded"/>
                 </div>

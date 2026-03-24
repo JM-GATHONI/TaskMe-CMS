@@ -10,7 +10,7 @@ import { supabase } from '../../utils/supabaseClient';
 
 const UserProfile: React.FC = () => {
     const { currentUser, updateTenant, updateStaff, updateLandlord, updateRenovationInvestor, updateVendor } = useData();
-    const { displayName, initial } = useProfileDisplay();
+    const { displayName, initial } = useProfileDisplay({ nameFallback: currentUser?.name });
     
     // Form state
     const [formData, setFormData] = useState({

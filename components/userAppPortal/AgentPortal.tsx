@@ -91,7 +91,7 @@ const AgentPortal: React.FC = () => {
         updateTask, addTenant, addMessage, updateTenant, addLandlordApplication,
         currentUser
     } = useData();
-    const { displayName: profileDisplayName, initial: profileInitial } = useProfileDisplay();
+    const { displayName: profileDisplayName, initial: profileInitial } = useProfileDisplay({ nameFallback: agent?.name });
     
     // Updated tab state to include Vacancies and reordered
     const [activeTab, setActiveTab] = useState<'Dashboard' | 'Tasks' | 'Vacancies' | 'My Properties' | 'My Tenants' | 'My Landlords'>('Dashboard');

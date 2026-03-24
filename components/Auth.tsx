@@ -12,7 +12,7 @@ interface AuthProps {
 type AuthView = 'login' | 'forgot' | 'verify-reset' | 'new-password';
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-    const { systemSettings } = useData();
+    const { systemSettings, staff, landlords, tenants, renovationInvestors, vendors } = useData();
     const [view, setView] = useState<AuthView>('login');
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -112,6 +112,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 attendanceRecord: staffRow?.attendanceRecord ?? {},
                 passwordHash: '',
             };
+
+            // Attach persisted profile picture (stored in app_state user lists) so it "sticks" across re-login.
+            const anyId = user.id;
+            const fromLists: any =
+                staff.find(s => s.id === anyId) ||
+                landlords.find(l => l.id === anyId) ||
+                tenants.find(t => t.id === anyId) ||
+                renovationInvestors.find(i => i.id === anyId) ||
+                vendors.find(v => v.id === anyId) ||
+                null;
+            const pic = fromLists?.avatar || fromLists?.profilePicture || fromLists?.avatarUrl;
+            if (pic) (loggedIn as any).profilePicture = pic;
 
             onLogin(loggedIn);
         } finally {

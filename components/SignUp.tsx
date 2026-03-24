@@ -12,7 +12,7 @@ interface SignUpProps {
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
-    const { systemSettings } = useData();
+    const { systemSettings, addTenant, addLandlord, addRenovationInvestor, addVendor, addStaff, tenants, landlords, renovationInvestors, vendors, staff } = useData();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
@@ -156,6 +156,76 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                     attendanceRecord: staffRow?.attendanceRecord ?? {},
                     passwordHash: '',
                 };
+
+                // Mirror signup into Supabase-backed app_state lists so "Registration -> Users" shows them.
+                // This does not change UI behavior; it just ensures the user is reflected in the admin module.
+                try {
+                    const uid = user.id;
+                    const meta: any = user.user_metadata ?? {};
+                    const base: any = {
+                        id: uid,
+                        name: fullName,
+                        username: '',
+                        email,
+                        phone,
+                        status: 'Active',
+                    };
+
+                    if (resolvedRole === 'Tenant') {
+                        if (!tenants.some(t => t.id === uid)) {
+                            addTenant({
+                                ...base,
+                                role: 'Tenant',
+                                unit: '',
+                                rentAmount: 0,
+                                onboardingDate: new Date().toISOString().split('T')[0],
+                                paymentHistory: [],
+                                outstandingBills: [],
+                                outstandingFines: [],
+                                maintenanceRequests: [],
+                            } as any);
+                        }
+                    } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
+                        if (!landlords.some(l => l.id === uid)) {
+                            addLandlord({ ...base, role: resolvedRole } as any);
+                        }
+                    } else if (resolvedRole === 'Investor') {
+                        if (!renovationInvestors.some(i => i.id === uid)) {
+                            addRenovationInvestor({
+                                ...base,
+                                role: 'Investor',
+                                idNumber: meta.id_number ?? idNumber ?? '',
+                                joinDate: new Date().toISOString().split('T')[0],
+                                status: 'Active',
+                            } as any);
+                        }
+                    } else if (resolvedRole === 'Contractor') {
+                        if (!vendors.some(v => v.id === uid)) {
+                            addVendor({
+                                id: uid,
+                                name: fullName,
+                                username: '',
+                                specialty: 'General',
+                                rating: 5,
+                                email,
+                                phone,
+                            } as any);
+                        }
+                    } else {
+                        if (!staff.some(s => s.id === uid)) {
+                            addStaff({
+                                ...base,
+                                role: resolvedRole,
+                                branch: 'Headquarters',
+                                payrollInfo: { baseSalary: 0, nextPaymentDate: '' },
+                                leaveBalance: { annual: 0 },
+                            } as any);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to mirror signup user into app_state lists (non-blocking)', e);
+                }
+
                 onLogin(loggedIn);
                 return;
             }
