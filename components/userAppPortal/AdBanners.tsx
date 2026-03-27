@@ -4,28 +4,57 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 
 const AdBanners: React.FC = () => {
-    const { currentUser } = useData();
+    const { currentUser, marketplaceListings, funds, marketingBanners } = useData();
     const [customContact, setCustomContact] = useState(currentUser?.phone || '');
 
-    // Mock Banner Data
-    const banners = [
-        {
-            id: 'b1',
-            title: 'Vacant 2BR at Riverside',
-            subtitle: 'Modern finishes, high speed internet.',
-            price: 'KES 25,000',
-            image: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=800&q=80',
-            type: 'For Rent'
-        },
-        {
-            id: 'b2',
-            title: 'Urban Renewal Fund I',
-            subtitle: 'Invest and earn 30% APY.',
-            price: 'Min KES 50k',
-            image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80',
-            type: 'Investment'
-        }
-    ];
+    const banners = (() => {
+        const fallbackRentImg =
+            'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=800&q=80';
+        const fallbackInvImg =
+            'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80';
+
+        // 1) For Rent: use live marketplace listings (auto-synced from vacant units in DataContext).
+        const rent = (marketplaceListings || [])
+            .filter(l => l.type === 'Rent' && l.status === 'Published')
+            .slice(0, 2)
+            .map(l => ({
+                id: `rent-${l.id}`,
+                title: l.title || `${l.propertyName} - ${l.unitNumber}`,
+                subtitle: l.description || `${l.location}`,
+                price: `KES ${Number(l.price ?? 0).toLocaleString()}`,
+                image: (l.images && l.images.length > 0 ? l.images[0] : null) || fallbackRentImg,
+                type: 'For Rent',
+            }));
+
+        // 2) Investment: use live active funds from R-REITs.
+        const investment = (funds || [])
+            .filter(f => f.status === 'Active' || f.status === 'Closing Soon')
+            .slice(0, 2)
+            .map(f => ({
+                id: `fund-${f.id}`,
+                title: f.name,
+                subtitle: f.description || `Risk: ${f.riskProfile}`,
+                price: `Target APY: ${f.targetApy}`,
+                image: f.projectPic || fallbackInvImg,
+                type: 'Investment',
+            }));
+
+        // 3) Fallback: real uploaded marketing creatives (if no listings/funds yet).
+        const templates = (marketingBanners || [])
+            .slice(0, 2)
+            .map(t => ({
+                id: `tpl-${t.id}`,
+                title: t.title,
+                subtitle: t.description || '',
+                price: t.type === 'Rent' ? 'For Rent' : t.type === 'Investment' ? 'Investment' : t.type,
+                image: t.imageUrl || (t.type === 'Investment' ? fallbackInvImg : fallbackRentImg),
+                type: t.type === 'Investment' ? 'Investment' : 'For Rent',
+            }));
+
+        const combined = [...rent, ...investment];
+        if (combined.length > 0) return combined;
+        return templates;
+    })();
 
     const handleDownload = (bannerTitle: string) => {
         const contact = customContact.trim() ? customContact : 'Contact Office';

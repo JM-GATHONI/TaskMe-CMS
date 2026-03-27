@@ -581,6 +581,9 @@ const Applications: React.FC = () => {
                 updateProperty(propertyId, { units: updatedUnits as Unit[] });
             }
 
+            const targetUnit = newProp?.units.find(u => u.id === unitId);
+            const targetRent = Number(targetUnit?.rent ?? 0) || 0;
+
             // 3. Update Tenant
             const moveNote = `Moved from ${moveTenant.propertyName} - ${moveTenant.unit} to ${propertyName} - ${unitName} on ${new Date().toLocaleDateString()}`;
             updateTenant(moveTenant.id, {
@@ -588,6 +591,8 @@ const Applications: React.FC = () => {
                 unitId,
                 propertyName,
                 unit: unitName,
+                // Auto-populate rent from the selected unit (supports variable rent per unit type/floor).
+                rentAmount: targetRent,
                 notes: [...(moveTenant.notes || []), moveNote]
             });
 

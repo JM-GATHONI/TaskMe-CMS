@@ -1955,12 +1955,24 @@ const ActiveTenants: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredTenants.map(tenant => {
                     const currentMonthIso = new Date().toISOString().slice(0, 7);
+                    const isAllocated =
+                        !!tenant.propertyId &&
+                        !!tenant.unitId &&
+                        !!String(tenant.unit ?? '').trim() &&
+                        !!String(tenant.propertyName ?? '').trim();
+
                     const isPaid = tenant.paymentHistory.some(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid');
                     const dueDay = tenant.rentDueDate || 5;
                     const daysLate = Math.max(0, new Date().getDate() - dueDay);
-                    const automatedLateFine = (!isPaid && new Date().getDate() > dueDay) ? daysLate * 100 : 0;
-                    const rentDue = isPaid ? 0 : tenant.rentAmount;
-                    const totalDue = rentDue + (tenant.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0) + (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0) + automatedLateFine;
+                    const automatedLateFine = (!isAllocated || isPaid || new Date().getDate() <= dueDay) ? 0 : daysLate * 100;
+                    const rentDue = !isAllocated ? 0 : (isPaid ? 0 : tenant.rentAmount);
+                    const pendingBills = !isAllocated
+                        ? 0
+                        : (tenant.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0);
+                    const pendingFines = !isAllocated
+                        ? 0
+                        : (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0);
+                    const totalDue = rentDue + pendingBills + pendingFines + automatedLateFine;
 
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);
@@ -1984,10 +1996,11 @@ const ActiveTenants: React.FC = () => {
                                     </div>
                                     <div className="flex flex-col items-end gap-1">
                                         <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                                            !isAllocated ? 'bg-yellow-100 text-yellow-800' :
                                             tenant.status === 'Active' ? 'bg-green-100 text-green-700' :
                                             tenant.status === 'Overdue' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
                                         }`}>
-                                            {tenant.status}
+                                            {!isAllocated ? 'Pending Allocation' : tenant.status}
                                         </span>
                                         {tenant.houseStatus && tenant.houseStatus.length > 0 && (
                                             <div className="flex flex-wrap gap-1 justify-end">
@@ -2005,7 +2018,7 @@ const ActiveTenants: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-2 text-sm mt-auto border-t pt-3 mb-3">
                                     <div>
                                         <p className="text-xs text-gray-400 uppercase font-bold">Rent</p>
-                                        <p className="font-semibold">KES {Number(tenant.rentAmount ?? 0).toLocaleString()}</p>
+                                        <p className="font-semibold">KES {Number(isAllocated ? (tenant.rentAmount ?? 0) : 0).toLocaleString()}</p>
                                     </div>
                                     <div>
                                         <p className="text-xs text-gray-400 uppercase font-bold">Total Due</p>

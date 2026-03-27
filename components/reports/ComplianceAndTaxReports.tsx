@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { exportToCSV } from '../../utils/exportHelper';
+import { computePlacementFeeDeduction, sumTenantPaymentsInPeriod } from '../../utils/landlordPeriodFinancials';
 
 const KpiCard: React.FC<{ title: string; value: string; color: string; icon: string }> = ({ title, value, color, icon }) => (
     <div className={`bg-white p-5 rounded-xl shadow-sm border-l-4`} style={{ borderLeftColor: color }}>
@@ -34,12 +35,16 @@ const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: strin
 );
 
 const ComplianceAndTaxReports: React.FC = () => {
-    const { tenants, taxRecords, updateTaxRecord } = useData();
+    const { tenants, taxRecords, updateTaxRecord, properties } = useData();
 
     // --- Live Estimations ---
-    const estGrossRevenue = tenants.reduce((acc, t) => acc + (t.status !== 'Overdue' ? t.rentAmount : 0), 0);
-    const estMRI = estGrossRevenue * 0.075; // 7.5% MRI Tax in Kenya (Example)
-    const estVAT = estGrossRevenue * 0.16; // 16% VAT if applicable
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const collectedRentThisMonth = tenants.reduce((sum, t) => sum + sumTenantPaymentsInPeriod(t, currentMonth), 0);
+    const { placementFeeDeduction } = computePlacementFeeDeduction(tenants, properties, currentMonth);
+    const mriTaxableBase = Math.max(0, collectedRentThisMonth - placementFeeDeduction);
+    const pendingMRI = mriTaxableBase * 0.075; // 7.5% MRI Tax
+    // Requirement: Pending VAT should feed from all pending MRI payments.
+    const pendingVAT = pendingMRI * 0.16;
 
     const stats = useMemo(() => {
         const totalDue = taxRecords.filter(t => t.status === 'Due').reduce((acc, t) => acc + t.amount, 0);
@@ -86,8 +91,8 @@ const ComplianceAndTaxReports: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <TaxLiabilityCard title="Est. MRI (Current Month)" amount={estMRI} dueDate="20th Next Month" />
-                <TaxLiabilityCard title="Pending VAT Liability" amount={estVAT} dueDate="20th Next Month" />
+                <TaxLiabilityCard title="Pending MRI (Current Month)" amount={pendingMRI} dueDate="20th Next Month" />
+                <TaxLiabilityCard title="Pending VAT Liability" amount={pendingVAT} dueDate="20th Next Month" />
                 <TaxLiabilityCard title="WHT Arrears" amount={12000} dueDate="Overdue" isOverdue />
             </div>
 

@@ -182,7 +182,7 @@ const IncomeStatementModal: React.FC<{
                     <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-1">Landlord</p>
                         <h3 className="text-lg font-bold text-gray-900">{landlord.name}</h3>
-                        <p className="text-sm text-gray-600">{landlord.email} | {landlord.phone}</p>
+                        <p className="text-sm text-gray-600">{landlord.phone}</p>
                     </div>
 
                     {/* Financial Table */}
@@ -808,8 +808,6 @@ const LandlordsPortal: React.FC = () => {
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
                         <p className="text-sm text-gray-500 flex items-center gap-2">
-                            <Icon name="mail" className="w-3 h-3" /> {currentLandlord.email}
-                            <span className="text-gray-300">|</span>
                             <Icon name="communication" className="w-3 h-3" /> {currentLandlord.phone}
                         </p>
                         <div className="flex items-center gap-2 mt-2">

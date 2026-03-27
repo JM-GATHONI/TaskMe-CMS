@@ -37,9 +37,11 @@ export function useProfileFirstName(options?: UseProfileFirstNameOptions) {
                     return;
                 }
                 const fn = (profile as any)?.first_name;
-                const resolved = typeof fn === 'string' && fn.trim() && !fn.includes('@')
-                    ? fn.trim()
-                    : (nameFallback?.trim()?.split(/\s+/)[0] ?? null);
+                const fallbackFirst = nameFallback?.trim()?.split(/\s+/)[0] ?? null;
+                const resolved =
+                    typeof fn === 'string' && fn.trim() && !fn.includes('@')
+                        ? fn.trim()
+                        : (fallbackFirst && !fallbackFirst.includes('@') ? fallbackFirst : null);
                 setFirstName(resolved);
             } finally {
                 if (alive) setLoading(false);

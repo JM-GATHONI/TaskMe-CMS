@@ -62,7 +62,25 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
             setCheckoutRequestId(id);
             // stay on processing: user should complete prompt, callback flips to success
         } catch (e: any) {
-            setErrorMsg(e?.message ?? 'Failed to initiate STK push.');
+            let msg = e?.message ?? 'Failed to initiate STK push.';
+            // When edge functions return a JSON { error }, Supabase wraps it in an error object.
+            // Best-effort parse so we can show the exact configured message.
+            try {
+                const ctx = e?.context;
+                if (ctx && typeof ctx.json === 'function') {
+                    const body = await ctx.json();
+                    if (body?.error) msg = String(body.error);
+                } else if (ctx && typeof ctx.text === 'function') {
+                    const txt = await ctx.text();
+                    if (txt) {
+                        const parsed = JSON.parse(txt);
+                        if (parsed?.error) msg = String(parsed.error);
+                    }
+                }
+            } catch {
+                // ignore parse issues
+            }
+            setErrorMsg(msg);
             setStep('input');
             setIsSubmitting(false);
         }

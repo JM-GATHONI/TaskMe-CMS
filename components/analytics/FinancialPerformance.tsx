@@ -17,13 +17,24 @@ const FinancialPerformance: React.FC = () => {
         const points = Array.from({ length: 6 }).map((_, i) => {
             const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
             const ym = d.toISOString().slice(0, 7);
-            const revenue = tenants.reduce((acc, t) => {
+            // Gross Revenue definition (Agency): Management fees + Placement fees.
+            // - Management fee assumed as 10% of collected rent (matches Accounting -> Income module).
+            // - Placement fee assumed as 1x rentAmount on onboarding month (when property placementFee is active).
+            const managementFees = tenants.reduce((acc, t) => {
                 const paid = t.paymentHistory.reduce((sum, p) => {
                     if (p.status !== 'Paid' || !p.date.startsWith(ym)) return sum;
                     return sum + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0);
                 }, 0);
-                return acc + paid;
+                return acc + paid * 0.10;
             }, 0);
+            const placementFees = tenants.reduce((acc, t) => {
+                if (!t.onboardingDate || !t.onboardingDate.startsWith(ym)) return acc;
+                const prop = properties.find(p => p.id === t.propertyId);
+                const isPlacementFeeActive = prop?.placementFee !== false; // default true
+                if (!isPlacementFeeActive) return acc;
+                return acc + (t.rentAmount || 0);
+            }, 0);
+            const revenue = managementFees + placementFees;
             const billExpense = bills.reduce((acc, b) => {
                 const stamp = (b.invoiceDate || b.dueDate || '').slice(0, 7);
                 if (b.status !== 'Paid' || stamp !== ym) return acc;
@@ -36,7 +47,7 @@ const FinancialPerformance: React.FC = () => {
             return { label: d.toLocaleString('default', { month: 'short' }), revenue, expenses: billExpense + taskExpense };
         });
         return points;
-    }, [tenants, bills, tasks]);
+    }, [tenants, bills, tasks, properties]);
 
     const revenueData = useMemo(() => monthSeries.map(m => m.revenue), [monthSeries]);
 
@@ -90,17 +101,28 @@ const FinancialPerformance: React.FC = () => {
     const previousExpense = expensesData[4] || 0;
     const currentExpense = expensesData[5] || 0;
     const expenseDelta = previousExpense > 0 ? ((currentExpense - previousExpense) / previousExpense) * 100 : 0;
-    const overdueRent = tenants.filter(t => t.status === 'Overdue').reduce((s, t) => s + (t.rentAmount || 0), 0);
+    // Keep arrears ratio meaningful in agency context by comparing overdue rent fee-equivalent.
+    const overdueRent = tenants
+        .filter(t => t.status === 'Overdue')
+        .reduce((s, t) => s + ((t.rentAmount || 0) * 0.10), 0);
     const arrearsRatio = currentRevenue > 0 ? (overdueRent / currentRevenue) * 100 : 0;
     const propertyRows = useMemo(() => {
         return properties.map(p => {
             const propTenants = tenants.filter(t => t.propertyId === p.id);
-            const revenue = propTenants.reduce((sum, t) => {
-                return sum + t.paymentHistory.reduce((s, pay) => {
+            const managementFees = propTenants.reduce((sum, t) => {
+                const paid = t.paymentHistory.reduce((s, pay) => {
                     if (pay.status !== 'Paid') return s;
                     return s + (parseFloat(String(pay.amount).replace(/[^0-9.]/g, '')) || 0);
                 }, 0);
+                return sum + paid * 0.10;
             }, 0);
+            const placementFees = propTenants.reduce((sum, t) => {
+                const isPlacementFeeActive = p.placementFee !== false;
+                if (!isPlacementFeeActive) return sum;
+                if (!t.onboardingDate) return sum;
+                return sum + (t.onboardingDate.startsWith(new Date().toISOString().slice(0, 7)) ? (t.rentAmount || 0) : 0);
+            }, 0);
+            const revenue = managementFees + placementFees;
             const expenses = bills
                 .filter(b => b.propertyId === p.id)
                 .reduce((sum, b) => sum + (b.amount || 0), 0);

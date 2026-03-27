@@ -28,7 +28,7 @@ interface UserCategory {
     icon: string;
 }
 
-const ResetPasswordModal: React.FC<{ user: UnifiedUser; onClose: () => void; onSave: (passwordHash: string) => void }> = ({ user, onClose, onSave }) => {
+const ResetPasswordModal: React.FC<{ user: UnifiedUser; onClose: () => void; onSave: (plainPassword: string, passwordHash: string) => void }> = ({ user, onClose, onSave }) => {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -40,7 +40,7 @@ const ResetPasswordModal: React.FC<{ user: UnifiedUser; onClose: () => void; onS
 
         setIsSaving(true);
         const hash = await hashPassword(newPassword);
-        onSave(hash);
+        onSave(newPassword, hash);
         setIsSaving(false);
     };
 
@@ -103,9 +103,11 @@ const UserForm: React.FC<{
         phone: existingUser?.phone || '',
         idNumber: (existingUser?.fullObject as any)?.idNumber || '',
         kraPin: (existingUser?.fullObject as any)?.kraPin || '',
-        role: existingUser?.role || availableRoles[0] || 'Tenant',
+        // Default the role to the selected category (prevents accidental routing to the wrong portal)
+        role: existingUser?.role || category.roles?.[0] || availableRoles[0] || 'Tenant',
         status: existingUser?.status || 'Active',
-        password: '', // Only for creation
+        // Requirement: default password for newly created users is 123456
+        password: existingUser ? '' : '123456',
         
         // Extended Fields
         assignedPropertyId: (existingUser?.fullObject as StaffProfile)?.assignedPropertyId || '',
@@ -414,6 +416,35 @@ const Users: React.FC = () => {
             passwordHash: passwordHash
         };
 
+        // Enforce unique phone across all user categories.
+        const trimmedPhone = String(rest.phone ?? '').trim();
+        if (trimmedPhone) {
+            // 1) Check app_state (fast path, catches duplicates in UI lists)
+            const phoneOwner = allUsers.find(u => u.phone === trimmedPhone && u.id !== (editUser?.id ?? ''));
+            if (phoneOwner) {
+                alert(`Mobile number ${trimmedPhone} is already registered to ${phoneOwner.name}. Each user must have a unique phone.`);
+                return;
+            }
+
+            // 2) Check Supabase-backed tables (tenants, landlords, staff_profiles)
+            try {
+                const { data: phoneRows, error: phoneErr } = await supabase.rpc('check_phone_unique', {
+                    p_phone: trimmedPhone,
+                });
+                if (phoneErr) {
+                    console.warn('check_phone_unique failed (non-blocking)', phoneErr);
+                } else if (Array.isArray(phoneRows) && phoneRows.length > 0) {
+                    const conflict = phoneRows.find((row: any) => row.user_id !== (editUser?.id ?? ''));
+                    if (conflict) {
+                        alert(`Mobile number ${trimmedPhone} is already registered to ${conflict.name} (${conflict.email}). Each user must have a unique phone.`);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('check_phone_unique threw (non-blocking)', e);
+            }
+        }
+
         if (editUser) {
             // Update logic
             if (editUser.type === 'Staff') updateStaff(editUser.id, { ...rest, assignedPropertyId });
@@ -504,8 +535,25 @@ const Users: React.FC = () => {
         setIsFormVisible(false);
     };
 
-    const handleResetPassword = (hash: string) => {
+    const handleResetPassword = async (plain: string, hash: string) => {
         if (!resetUser) return;
+
+        try {
+            const { error } = await supabase.rpc('admin_reset_password', {
+                p_user_id: resetUser.id,
+                p_new_password: plain,
+            });
+            if (error) {
+                console.warn('admin_reset_password failed', error);
+                alert(error.message ?? 'Failed to reset password in auth.');
+                return;
+            }
+        } catch (e: any) {
+            console.warn('admin_reset_password threw', e);
+            alert(e?.message ?? 'Failed to reset password in auth.');
+            return;
+        }
+
         if (resetUser.type === 'Staff') updateStaff(resetUser.id, { passwordHash: hash });
         else if (resetUser.type === 'Landlord') updateLandlord(resetUser.id, { passwordHash: hash });
         else if (resetUser.type === 'Tenant') updateTenant(resetUser.id, { passwordHash: hash });
@@ -531,8 +579,8 @@ const Users: React.FC = () => {
         if (activeCategory?.id === 'system') {
             return systemRoleNames;
         }
-        // Return combined list for non-system categories to allow role switching
-        return ['Landlord', 'Tenant', 'Field Agent', 'Affiliate', 'Caretaker', 'Contractor', 'Investor'];
+        // Non-system categories should not allow role switching (prevents routing mistakes)
+        return activeCategory?.roles ?? [];
     }, [activeCategory, systemRoleNames]);
 
     return (

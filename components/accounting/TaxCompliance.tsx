@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { exportToCSV } from '../../utils/exportHelper';
+import { computePlacementFeeDeduction, sumTenantPaymentsInPeriod } from '../../utils/landlordPeriodFinancials';
 
 const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: string; isOverdue?: boolean }> = ({ title, amount, dueDate, isOverdue }) => (
     <div className={`p-5 rounded-xl border-l-4 shadow-sm bg-white ${isOverdue ? 'border-red-500' : 'border-blue-500'}`}>
@@ -20,21 +21,19 @@ const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: strin
 );
 
 const TaxCompliance: React.FC = () => {
-    const { tenants, taxRecords, updateTaxRecord } = useData();
+    const { tenants, taxRecords, updateTaxRecord, properties } = useData();
 
     const today = new Date();
     const currentMonth = today.toISOString().slice(0, 7);
 
     // --- Live Estimations ---
-    const estGrossRevenue = tenants.reduce((acc, t) => {
-        const paidThisMonth = t.paymentHistory.reduce((sum, p) => {
-            if (p.status !== 'Paid' || !p.date.startsWith(currentMonth)) return sum;
-            return sum + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0);
-        }, 0);
-        return acc + paidThisMonth;
-    }, 0);
-    const estMRI = estGrossRevenue * 0.075;
-    const estVAT = estGrossRevenue * 0.16;
+    // MRI base should exclude rent taken as placement fee (not taxable under MRI in this system's rules).
+    const collectedRentThisMonth = tenants.reduce((sum, t) => sum + sumTenantPaymentsInPeriod(t, currentMonth), 0);
+    const { placementFeeDeduction } = computePlacementFeeDeduction(tenants, properties, currentMonth);
+    const mriTaxableBase = Math.max(0, collectedRentThisMonth - placementFeeDeduction);
+    const pendingMRI = mriTaxableBase * 0.075;
+    // Requirement: Pending VAT should feed from all pending MRI payments.
+    const pendingVAT = pendingMRI * 0.16;
 
     const whtArrears = useMemo(
         () => taxRecords
@@ -89,8 +88,8 @@ const TaxCompliance: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <TaxLiabilityCard title="Est. MRI (Current Month)" amount={estMRI} dueDate="20th Next Month" />
-                <TaxLiabilityCard title="Pending VAT Liability" amount={estVAT} dueDate="20th Next Month" />
+                <TaxLiabilityCard title="Pending MRI (Current Month)" amount={pendingMRI} dueDate="20th Next Month" />
+                <TaxLiabilityCard title="Pending VAT Liability" amount={pendingVAT} dueDate="20th Next Month" />
                 <TaxLiabilityCard title="WHT Arrears" amount={whtArrears} dueDate={whtArrears > 0 ? "Overdue" : "Up to date"} isOverdue={whtArrears > 0} />
             </div>
 

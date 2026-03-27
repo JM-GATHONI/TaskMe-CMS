@@ -314,6 +314,14 @@ const Affiliates: React.FC = () => {
         });
     }, [staff, landlords, leads, tenants, rfTransactions, applications]);
 
+    // Pending referral commissions to review/payout.
+    // This was previously missing and caused a runtime crash -> blank page.
+    const pendingReferralPayouts = useMemo(() => {
+        return (rfTransactions || [])
+            .filter(tx => tx.type === 'Referral Commission' && tx.status === 'Pending')
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [rfTransactions]);
+
 
     const handleInvite = (data: any) => {
         // Register as a "Landlord" type user but with 'Affiliate' role to grant portal access

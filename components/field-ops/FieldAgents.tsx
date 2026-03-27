@@ -1073,6 +1073,7 @@ const FieldAgents: React.FC = () => {
     const globalStats = useMemo(() => {
         // Filter agents
         const fieldAgentIds = staff.filter(s => s.role === 'Field Agent').map(s => s.id);
+        const fieldAgentNames = staff.filter(s => s.role === 'Field Agent').map(s => s.name);
         
         // Filter properties managed by these agents
         const relevantProperties = properties.filter(p => fieldAgentIds.includes(p.assignedAgentId || ''));
@@ -1080,6 +1081,14 @@ const FieldAgents: React.FC = () => {
         
         // Filter tenants in these properties
         const relevantTenants = tenants.filter(t => t.propertyId && relevantPropertyIds.includes(t.propertyId));
+
+        // Occupancy across managed properties
+        const totalUnits = relevantProperties.reduce((sum, p) => sum + (p.units?.length || 0), 0);
+        const occupiedUnits = relevantProperties.reduce(
+            (sum, p) => sum + (p.units || []).filter(u => u.status === 'Occupied').length,
+            0
+        );
+        const occupancy = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
 
         const currentMonth = new Date().toISOString().slice(0, 7);
         
@@ -1098,8 +1107,13 @@ const FieldAgents: React.FC = () => {
 
         const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
-        return { collected, rate };
-    }, [staff, properties, tenants]);
+        // Task velocity: completion rate for tasks assigned to field agents
+        const agentTasks = tasks.filter(t => fieldAgentNames.includes(t.assignedTo || ''));
+        const done = agentTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
+        const taskVelocity = agentTasks.length > 0 ? Math.round((done / agentTasks.length) * 100) : 0;
+
+        return { collected, rate, occupancy, taskVelocity };
+    }, [staff, properties, tenants, tasks]);
 
     const getAgentStats = (agentId: string, agentName: string) => {
         const props = properties.filter(p => p.assignedAgentId === agentId);
@@ -1185,14 +1199,14 @@ const FieldAgents: React.FC = () => {
                     <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Icon name="check" className="w-6 h-6" /></div>
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase">Avg. Occupancy</p>
-                        <p className="text-2xl font-extrabold text-gray-900">88%</p>
+                        <p className="text-2xl font-extrabold text-gray-900">{globalStats.occupancy}%</p>
                     </div>
                 </div>
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
                     <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Icon name="task-completed" className="w-6 h-6" /></div>
                     <div>
                         <p className="text-xs font-bold text-gray-400 uppercase">Task Velocity</p>
-                        <p className="text-2xl font-extrabold text-gray-900">92%</p>
+                        <p className="text-2xl font-extrabold text-gray-900">{globalStats.taskVelocity}%</p>
                     </div>
                 </div>
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">

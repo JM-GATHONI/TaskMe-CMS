@@ -178,6 +178,12 @@ export const PropertyForm: React.FC<{
     const buildUnitsFromFloorplan = (): Unit[] => {
         const plan = formData.floorplan || [];
         const units: Unit[] = [];
+        const uniformMonthlyRent = Number(formData.defaultMonthlyRent ?? 0) || 0;
+        const getUnitRent = (unitType?: string) => {
+            if (formData.rentIsUniform) return uniformMonthlyRent;
+            const typeKey = unitType ?? '';
+            return Number(formData.rentByType?.[typeKey] ?? 0) || 0;
+        };
 
         plan.forEach((fp, idx) => {
             const floor = idx; // 0 = ground floor
@@ -206,6 +212,10 @@ export const PropertyForm: React.FC<{
                     bathrooms: 1,
                     status: 'Vacant',
                     unitType,
+                        // Important: per-unit rent is the source of truth used when allocating tenants.
+                        // - Uniform: derived from Property.defaultMonthlyRent (gross for Inclusive pricing).
+                        // - Variable: derived from Property.rentByType[unitType] (gross for Inclusive pricing).
+                        rent: getUnitRent(unitType),
                 } as Unit);
             });
         });
@@ -234,6 +244,13 @@ export const PropertyForm: React.FC<{
         setFormData((prev) => ({
             ...prev,
             units: (prev.units || []).map((u) => (u.id === unitId ? { ...u, unitNumber: next } : u)),
+        }));
+    };
+
+    const updateUnitRent = (unitId: string, nextRent: number) => {
+        setFormData((prev) => ({
+            ...prev,
+            units: (prev.units || []).map((u) => (u.id === unitId ? { ...u, rent: nextRent } : u)),
         }));
     };
 
@@ -975,6 +992,26 @@ export const PropertyForm: React.FC<{
                                                     className="w-full p-2 border rounded bg-white text-sm font-semibold"
                                                     placeholder="e.g. G01 / F101"
                                                 />
+
+                                                <div className="mt-2">
+                                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Unit Rent (KES)</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-xs text-gray-400 font-bold">KES</div>
+                                                        <input
+                                                            type="number"
+                                                            value={Number.isFinite(Number(u.rent)) ? (u.rent as number) : ''}
+                                                            onChange={(e) => updateUnitRent(u.id, parseFloat(e.target.value) || 0)}
+                                                            disabled={!!formData.rentIsUniform}
+                                                            className={`w-full p-2 border rounded bg-white text-sm font-semibold ${formData.rentIsUniform ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                    {formData.rentIsUniform && (
+                                                        <p className="text-[10px] text-gray-400 mt-1">
+                                                            In uniform mode, rent is derived from Property default rent.
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     {(formData.units || []).filter(u => u.floor === activeFloorIndex).length === 0 && (

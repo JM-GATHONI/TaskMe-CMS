@@ -51,7 +51,11 @@ function timestampNairobi(): string {
 
 async function getOAuthToken(consumerKey: string, consumerSecret: string): Promise<string> {
   const basic = btoa(`${consumerKey}:${consumerSecret}`);
-  const res = await fetch("https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials", {
+  const baseUrl = Deno.env.get("MPESA_BASE_URL") ||
+    (Deno.env.get("MPESA_ENV") === "production"
+      ? "https://api.safaricom.co.ke"
+      : "https://sandbox.safaricom.co.ke");
+  const res = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
     method: "GET",
     headers: { Authorization: `Basic ${basic}` },
   });
@@ -79,7 +83,8 @@ Deno.serve(async (req) => {
     } = Deno.env.toObject();
 
     if (!MPESA_CONSUMER_KEY || !MPESA_CONSUMER_SECRET || !MPESA_SHORTCODE || !MPESA_PASSKEY) {
-      return json(500, { error: "M-Pesa env vars missing" });
+      // Requirement: if Mpesa STK API is not enabled/missing keys, return this exact message.
+      return json(500, { error: "Unable to trigger STK push due to missing Mpesa Api key" });
     }
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return json(500, { error: "Supabase env vars missing" });
@@ -115,7 +120,11 @@ Deno.serve(async (req) => {
       TransactionDesc: "TaskMe Rent Payment",
     };
 
-    const stkRes = await fetch("https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest", {
+    const baseUrl = Deno.env.get("MPESA_BASE_URL") ||
+      (Deno.env.get("MPESA_ENV") === "production"
+        ? "https://api.safaricom.co.ke"
+        : "https://sandbox.safaricom.co.ke");
+    const stkRes = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,

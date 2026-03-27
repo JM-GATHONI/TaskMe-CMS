@@ -42,9 +42,27 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         try {
             const { identifier, password } = loginData;
 
+            // Allow login via email or phone.
+            let loginEmail = identifier.trim();
+            if (!loginEmail.includes('@')) {
+                // Treat identifier as phone: resolve to email using app_state lists.
+                const byPhone =
+                    staff.find(s => s.phone === loginEmail) ||
+                    landlords.find(l => l.phone === loginEmail) ||
+                    tenants.find(t => t.phone === loginEmail) ||
+                    renovationInvestors.find(i => i.phone === loginEmail) ||
+                    vendors.find(v => v.phone === loginEmail);
+
+                if (!byPhone?.email) {
+                    alert('No user found for this phone number.');
+                    return;
+                }
+                loginEmail = byPhone.email;
+            }
+
             console.log('[Supabase] auth.signInWithPassword');
             const { data, error } = await supabase.auth.signInWithPassword({
-                email: identifier,
+                email: loginEmail,
                 password,
             });
 
@@ -93,6 +111,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             // Resolve display name from public.profiles (first_name/full_name), then staff, then email
             let displayName: string = (user.email ?? 'User') as string;
+            let profFirst: string | null = null;
+            let profFull: string | null = null;
             try {
                 const { data: prof } = await supabase
                     .from('profiles')
@@ -101,11 +121,38 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     .maybeSingle();
                 const first = (prof as any)?.first_name?.trim?.();
                 const full = (prof as any)?.full_name?.trim?.();
+                profFirst = first || null;
+                profFull = full || null;
                 if (first) displayName = first;
                 else if (full) displayName = full;
                 else displayName = (staffRow?.name ?? user.email ?? 'User') as string;
             } catch (_) {
                 displayName = (staffRow?.name ?? user.email ?? 'User') as string;
+            }
+
+            // Hardening: ensure public.profiles has a stable first_name/full_name for consistent welcome headers.
+            // Never store an email as first_name/full_name.
+            try {
+                const looksLikeEmail = (s: string) => s.includes('@');
+                const candidateFull = String(staffRow?.name ?? (user.user_metadata as any)?.full_name ?? displayName ?? '').trim();
+                const safeFull = candidateFull && !looksLikeEmail(candidateFull) ? candidateFull : null;
+                const safeFirst = safeFull ? (safeFull.split(/\s+/).filter(Boolean)[0] || null) : null;
+                const needUpsert =
+                    !profFirst ||
+                    looksLikeEmail(String(profFirst)) ||
+                    (!profFull || looksLikeEmail(String(profFull)));
+                if (needUpsert && safeFirst) {
+                    await supabase.from('profiles').upsert({
+                        id: user.id,
+                        role: resolvedRole,
+                        first_name: safeFirst,
+                        full_name: safeFull,
+                        phone: (staffRow?.phone ?? (user.user_metadata as any)?.phone ?? null) || null,
+                        email: user.email ?? null,
+                    });
+                }
+            } catch {
+                // non-blocking
             }
 
             const loggedIn: StaffProfile = {

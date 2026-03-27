@@ -86,14 +86,29 @@ const UserProfile: React.FC = () => {
         };
 
         if (profilePic) {
-            // Unify avatar field naming for update
-            if ('avatar' in currentUser) updateData.avatar = profilePic;
-            else if ('profilePicture' in currentUser) updateData.profilePicture = profilePic;
-            else if ('avatarUrl' in currentUser) updateData.avatarUrl = profilePic;
-            else updateData.avatar = profilePic; // Default fallback
+            // Persist avatar across all known fields to avoid mismatched readers in different modules.
+            updateData.avatar = profilePic;
+            updateData.profilePicture = profilePic;
+            updateData.avatarUrl = profilePic;
         }
 
         if (formData.password) {
+            // Update Supabase auth password for the currently logged-in user.
+            try {
+                const { error } = await supabase.auth.updateUser({ password: formData.password });
+                if (error) {
+                    console.warn('auth.updateUser password change failed', error);
+                    alert(error.message ?? 'Failed to update login password.');
+                    setIsSaving(false);
+                    return;
+                }
+            } catch (err: any) {
+                console.warn('auth.updateUser password change threw', err);
+                alert(err?.message ?? 'Failed to update login password.');
+                setIsSaving(false);
+                return;
+            }
+
             updateData.passwordHash = await hashPassword(formData.password);
         }
 
