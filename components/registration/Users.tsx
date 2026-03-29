@@ -39,9 +39,12 @@ const ResetPasswordModal: React.FC<{ user: UnifiedUser; onClose: () => void; onS
         if (newPassword !== confirmPassword) return alert("Passwords do not match.");
 
         setIsSaving(true);
-        const hash = await hashPassword(newPassword);
-        onSave(newPassword, hash);
-        setIsSaving(false);
+        try {
+            const hash = await hashPassword(newPassword);
+            onSave(newPassword, hash);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -91,7 +94,7 @@ const UserForm: React.FC<{
     existingUser?: UnifiedUser; 
     category: UserCategory;
     onClose: () => void; 
-    onSave: (data: any) => void;
+    onSave: (data: any) => void | Promise<void>;
     availableRoles: string[];
     properties: any[];
     referralOptions: any[];
@@ -126,13 +129,18 @@ const UserForm: React.FC<{
         if (!formData.name || !formData.email) return;
 
         setIsSaving(true);
-        let passwordHash = undefined;
-        if (!existingUser && formData.password) {
-            passwordHash = await hashPassword(formData.password);
+        try {
+            let passwordHash = undefined;
+            if (!existingUser && formData.password) {
+                passwordHash = await hashPassword(formData.password);
+            }
+            await Promise.resolve(onSave({ ...formData, passwordHash, plainPassword: formData.password }));
+        } catch (err) {
+            console.error('User form failed', err);
+            alert(err instanceof Error ? err.message : 'Something went wrong while saving.');
+        } finally {
+            setIsSaving(false);
         }
-
-        onSave({ ...formData, passwordHash, plainPassword: formData.password });
-        setIsSaving(false);
     };
 
     const isCaretaker = formData.role === 'Caretaker' || category.id === 'caretakers';
@@ -465,6 +473,12 @@ const Users: React.FC = () => {
                 const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
                 const fullName = String(rest.name ?? rest.email);
 
+                const isCaretakerCreate =
+                    activeCategory.id === 'caretakers' || String(rest.role ?? '').toLowerCase() === 'caretaker';
+                const idNumRaw = typeof rest.idNumber === 'string' ? rest.idNumber : '';
+                const idNumTrimmed = idNumRaw.trim();
+                const pIdNumber = isCaretakerCreate ? null : (idNumTrimmed ? idNumTrimmed : null);
+
                 const { data: createdId, error } = await supabase.rpc('admin_create_auth_user', {
                     p_email: rest.email,
                     p_password: plainPassword,
@@ -473,7 +487,7 @@ const Users: React.FC = () => {
                     p_first_name: firstName,
                     p_last_name: lastName,
                     p_phone: rest.phone ?? null,
-                    p_id_number: rest.idNumber ?? null,
+                    p_id_number: pIdNumber,
                 });
                 if (error) throw error;
                 if (!createdId) {

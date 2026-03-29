@@ -114,11 +114,58 @@ const TenantInsights: React.FC = () => {
         }));
     }, [tenants]);
 
-    // 4. Metrics
-    const retentionRate = 94.2; // Mock calc
-    const avgTenancy = "1.8 Yrs"; // Mock calc
-    const paymentCompliance = 88; // Mock calc
-    const satisfactionScore = 4.5; // Mock calc
+    // 4. Metrics (derived from live tenant + payment data)
+    const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+
+    const paymentCompliance = useMemo(() => {
+        const pool = tenants.filter(t => ['Active', 'Notice'].includes(t.status));
+        if (pool.length === 0) return 0;
+        const paid = pool.filter(t =>
+            (t.paymentHistory || []).some(p => p.date.startsWith(currentMonthPrefix) && p.status === 'Paid'),
+        ).length;
+        return Math.round((paid / pool.length) * 100);
+    }, [tenants, currentMonthPrefix]);
+
+    const retentionRate = useMemo(() => {
+        const longTenants = tenants.filter(t => {
+            if (!t.onboardingDate) return false;
+            const ageDays = (Date.now() - new Date(t.onboardingDate).getTime()) / 86400000;
+            return ageDays >= 365;
+        });
+        if (longTenants.length === 0) return 100;
+        const stillThere = longTenants.filter(t =>
+            ['Active', 'Notice', 'Overdue'].includes(t.status),
+        ).length;
+        return Math.round((stillThere / longTenants.length) * 100);
+    }, [tenants]);
+
+    const avgTenancy = useMemo(() => {
+        const active = tenants.filter(
+            t => t.onboardingDate && ['Active', 'Notice', 'Overdue'].includes(t.status),
+        );
+        if (active.length === 0) return '—';
+        let totalYears = 0;
+        for (const t of active) {
+            const start = new Date(t.onboardingDate!).getTime();
+            totalYears += (Date.now() - start) / (365.25 * 86400000);
+        }
+        return `${(totalYears / active.length).toFixed(1)} Yrs`;
+    }, [tenants]);
+
+    const maintSatisfaction = useMemo(() => {
+        let resolved = 0;
+        let total = 0;
+        for (const t of tenants) {
+            for (const r of t.requests || []) {
+                total++;
+                if (r.status === 'Converted to Task' || r.status === 'Approved') resolved++;
+            }
+        }
+        if (total === 0) return { scoreLabel: '—', subLabel: 'No request data' };
+        const ratio = resolved / total;
+        const outOf5 = Math.min(5, Math.max(0, ratio * 5));
+        return { scoreLabel: `${outOf5.toFixed(1)}/5.0`, subLabel: `${Math.round(ratio * 100)}% closed` };
+    }, [tenants]);
 
     // --- Chart Configurations ---
 
@@ -142,14 +189,41 @@ const TenantInsights: React.FC = () => {
         }]
     };
 
-    const paymentBehaviorChartData = {
-        labels: ['On-Time', 'Late (<7 Days)', 'Late (>7 Days)', 'Default'],
-        datasets: [{
-            data: [65, 20, 10, 5],
-            backgroundColor: ['#10b981', '#facc15', '#f97316', '#ef4444'],
-            borderWidth: 0
-        }]
-    };
+    const paymentBehaviorChartData = useMemo(() => {
+        const labels = ['On-Time', 'Late (<7 Days)', 'Late (>7 Days)', 'Default'];
+        let onTime = 0;
+        let lateShort = 0;
+        let lateLong = 0;
+        let def = 0;
+        const billable = tenants.filter(t => ['Active', 'Notice', 'Overdue'].includes(t.status));
+        for (const t of billable) {
+            const paidThisMonth = (t.paymentHistory || []).filter(
+                p => p.date.startsWith(currentMonthPrefix) && p.status === 'Paid',
+            );
+            if (!paidThisMonth.length) {
+                if (t.status === 'Overdue') def++;
+                else lateLong++;
+                continue;
+            }
+            const payDate = new Date(paidThisMonth[0].date);
+            const day = payDate.getDate();
+            if (day <= 7) onTime++;
+            else if (day <= 14) lateShort++;
+            else lateLong++;
+        }
+        const sum = onTime + lateShort + lateLong + def || 1;
+        const pct = (n: number) => Math.round((n / sum) * 100);
+        return {
+            labels,
+            datasets: [
+                {
+                    data: [pct(onTime), pct(lateShort), pct(lateLong), pct(def)],
+                    backgroundColor: ['#10b981', '#facc15', '#f97316', '#ef4444'],
+                    borderWidth: 0,
+                },
+            ],
+        };
+    }, [tenants, currentMonthPrefix]);
 
     return (
         <div className="space-y-8">
@@ -163,10 +237,10 @@ const TenantInsights: React.FC = () => {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <InsightMetricCard title="Retention Rate" value={`${retentionRate}%`} change="+1.2%" isPositive={true} icon="check" color="#10b981" />
-                <InsightMetricCard title="Avg. Tenancy" value={avgTenancy} change="+2 mo" isPositive={true} icon="leases" color="#3b82f6" />
-                <InsightMetricCard title="Payment Compliance" value={`${paymentCompliance}%`} change="-0.5%" isPositive={false} icon="payments" color="#f59e0b" />
-                <InsightMetricCard title="Maint. Satisfaction" value={`${satisfactionScore}/5.0`} change="Stable" isPositive={true} icon="maintenance" color="#8b5cf6" />
+                <InsightMetricCard title="Retention Rate" value={`${retentionRate}%`} change="Live data" isPositive={true} icon="check" color="#10b981" />
+                <InsightMetricCard title="Avg. Tenancy" value={avgTenancy} change="Live data" isPositive={true} icon="leases" color="#3b82f6" />
+                <InsightMetricCard title="Payment Compliance" value={`${paymentCompliance}%`} change="This month" isPositive={paymentCompliance >= 50} icon="payments" color="#f59e0b" />
+                <InsightMetricCard title="Maint. Satisfaction" value={maintSatisfaction.scoreLabel} change={maintSatisfaction.subLabel} isPositive={true} icon="maintenance" color="#8b5cf6" />
             </div>
 
             {/* Main Charts Section */}

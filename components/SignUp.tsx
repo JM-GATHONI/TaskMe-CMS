@@ -125,6 +125,8 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                 const staffRow = staffRows?.[0] ?? null;
                 const persistedStaff = staff.find(s => s.id === user.id);
 
+                const pickFirstWord = (s: string) => String(s ?? '').trim().split(/\s+/).filter(Boolean)[0] || '';
+
                 // Resolve display name from public.profiles (populated by handle_new_user), then staff, then form fullName
                 let displayName: string = (staffRow?.name ?? fullName ?? user.email ?? 'User') as string;
                 try {
@@ -138,6 +140,8 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                     if (first) displayName = first;
                     else if (full) displayName = full;
                 } catch (_) {}
+
+                displayName = pickFirstWord(displayName) || (user.email ? pickFirstWord(user.email.split('@')[0]) : '') || 'User';
 
                 const loggedIn: StaffProfile = {
                     id: user.id,

@@ -5,6 +5,7 @@ import { TenantApplication, RecurringBillSettings, TenantProfile, Unit, Property
 import Icon from '../Icon';
 import { uploadToBucket } from '../../utils/supabaseStorage';
 import { supabase } from '../../utils/supabaseClient';
+import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -14,6 +15,9 @@ export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProf
     submittedDate?: string;
     referrerId?: string; // Added to track specific person
 };
+
+const APP_CARD_CLASSES = "relative bg-white rounded-2xl border-t-[8px] border-t-primary border-b-[4px] border-b-secondary border-x-[3px] border-x-secondary shadow-[inset_0_0_60px_-15px_rgba(162,53,74,0.15)] hover:shadow-lg transition-all duration-300 overflow-hidden p-4 flex items-center justify-between min-h-[110px]";
+const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(val ?? '').trim());
 
 // --- MOVE TENANT MODAL ---
 const MoveTenantModal: React.FC<{
@@ -102,6 +106,8 @@ export const ApplicationFormModal: React.FC<{
         depositPaid: record?.depositPaid || 0,
         // Start date
         rentStartDate: record?.rentStartDate || record?.onboardingDate || new Date().toISOString().split('T')[0],
+        rentDueDate: record?.rentDueDate ?? 1,
+        rentGraceDays: record?.rentGraceDays ?? 5,
         source: record?.source || 'Walk-in'
     });
 
@@ -258,6 +264,16 @@ export const ApplicationFormModal: React.FC<{
         if (!formData.name || !formData.phone) return alert("Name and Phone are required");
         if (!selectedPropertyId || !selectedUnitId) return alert("Property and Unit are required");
 
+        const leaseSigned = !!formData.leaseSigned;
+        if (leaseSigned) {
+            const docs = Array.isArray(formData.documents) ? formData.documents : [];
+            const hasSignedLease = docs.some(d => String(d?.type ?? '') === 'Signed Lease Agreement' && String(d?.url ?? '').trim());
+            if (!hasSignedLease) {
+                alert('Lease is marked as signed. Please upload the signed lease document.');
+                return;
+            }
+        }
+
         onSave({
             ...formData,
             propertyId: selectedPropertyId,
@@ -265,10 +281,36 @@ export const ApplicationFormModal: React.FC<{
         });
     };
 
-    // Generic Document Upload Handler (Mock)
-    const handleDocUpload = (e: React.ChangeEvent<HTMLInputElement>, docType: string) => {
-        if (e.target.files && e.target.files[0]) {
-             alert(`${docType} selected: ${e.target.files[0].name}`);
+    const upsertDoc = (name: string, type: string, url: string) => {
+        setFormData(prev => {
+            const docs = Array.isArray(prev.documents) ? [...prev.documents] : [];
+            const idx = docs.findIndex(d => String(d?.type) === type);
+            const next = { name, type, url };
+            if (idx >= 0) docs[idx] = next;
+            else docs.push(next);
+            return { ...prev, documents: docs };
+        });
+    };
+
+    const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>, docType: string, docKey?: string) => {
+        if (!e.target.files || !e.target.files[0]) return;
+        const file = e.target.files[0];
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                alert('Please sign in to upload documents.');
+                return;
+            }
+            const ext = file.name.split('.').pop() || 'pdf';
+            const safeKey = String(docKey || docType).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            const path = `${user.id}/tenant-doc-${safeKey}-${Date.now()}.${ext}`;
+            const url = await uploadToBucket('documents', path, file);
+            upsertDoc(docType, docKey || docType, url);
+        } catch (err: any) {
+            console.warn('Document upload failed', err);
+            alert(err?.message ?? 'Document upload failed.');
+        } finally {
+            e.target.value = '';
         }
     };
 
@@ -462,6 +504,33 @@ export const ApplicationFormModal: React.FC<{
                                 </div>
 
                                 <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Rent due day (1–28)</label>
+                                    <input
+                                        type="number"
+                                        name="rentDueDate"
+                                        min={1}
+                                        max={28}
+                                        value={formData.rentDueDate ?? 1}
+                                        onChange={handleAmountChange}
+                                        className="w-full p-2 border rounded"
+                                    />
+                                    <p className="text-[10px] text-gray-500 mt-0.5">Default 1st. Late logic uses this plus grace.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Grace period (days)</label>
+                                    <input
+                                        type="number"
+                                        name="rentGraceDays"
+                                        min={0}
+                                        max={28}
+                                        value={formData.rentGraceDays ?? 5}
+                                        onChange={handleAmountChange}
+                                        className="w-full p-2 border rounded"
+                                    />
+                                    <p className="text-[10px] text-gray-500 mt-0.5">e.g. 5 → fees accrue from day due+6.</p>
+                                </div>
+
+                                <div>
                                     <label className="block text-xs font-bold text-blue-600 mb-1">Rent Due (Invoiced)</label>
                                     <input type="number" className="w-full p-2 border rounded bg-blue-50 font-bold text-blue-800" value={rentDue} disabled />
                                     <p className="text-[10px] text-gray-500 mt-1 italic">{calcNote}</p>
@@ -513,6 +582,19 @@ export const ApplicationFormModal: React.FC<{
 
                              <div className="border-t pt-4">
                                  <h4 className="text-sm font-bold text-gray-700 mb-3">Required Documents</h4>
+                                 <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                     <label className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                                         <input
+                                             type="checkbox"
+                                             checked={!!formData.leaseSigned}
+                                             onChange={(e) => setFormData(prev => ({ ...prev, leaseSigned: e.target.checked }))}
+                                         />
+                                         Lease signed
+                                     </label>
+                                     <p className="text-xs text-gray-500 mt-1">
+                                         If checked, a signed lease document must be uploaded below; otherwise the lease is treated as unsigned.
+                                     </p>
+                                 </div>
                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      {[
                                          'Full Picture', 
@@ -523,9 +605,25 @@ export const ApplicationFormModal: React.FC<{
                                      ].map((doc, idx) => (
                                          <div key={idx} className="border border-dashed border-gray-300 rounded p-3 hover:bg-gray-50 transition-colors">
                                              <label className="block text-xs font-bold text-gray-500 mb-1">{doc}</label>
-                                             <input type="file" onChange={(e) => handleDocUpload(e, doc)} className="w-full text-xs text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-gray-200 file:text-gray-700 hover:file:bg-gray-300" />
+                                             <input
+                                                 type="file"
+                                                 onChange={(e) => handleDocUpload(e, doc)}
+                                                 className="w-full text-xs text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-gray-200 file:text-gray-700 hover:file:bg-gray-300"
+                                             />
                                          </div>
                                      ))}
+                                     <div className={`border border-dashed rounded p-3 transition-colors ${formData.leaseSigned ? 'border-green-400 hover:bg-green-50/40' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                         <label className="block text-xs font-bold text-gray-500 mb-1">Signed Lease (required if signed)</label>
+                                         <input
+                                             type="file"
+                                             accept=".pdf,image/*"
+                                             onChange={(e) => handleDocUpload(e, 'Signed Lease', 'Signed Lease Agreement')}
+                                             className="w-full text-xs text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-gray-200 file:text-gray-700 hover:file:bg-gray-300"
+                                         />
+                                         {Array.isArray(formData.documents) && formData.documents.some(d => String(d?.type ?? '') === 'Signed Lease Agreement' && String(d?.url ?? '').trim()) && (
+                                             <p className="text-[10px] text-green-700 font-bold mt-1">Uploaded</p>
+                                         )}
+                                     </div>
                                  </div>
                              </div>
                         </div>
@@ -541,6 +639,134 @@ export const ApplicationFormModal: React.FC<{
     );
 };
 
+const AppRecordPaymentModal: React.FC<{
+    record: UnifiedRecord;
+    onClose: () => void;
+    onRecord: (amount: number, method: string, reference: string, date: string) => void;
+}> = ({ record, onClose, onRecord }) => {
+    const [amount, setAmount] = useState(String(Number(record.rentAmount || 0) + Number(record.depositPaid || 0)));
+    const [method, setMethod] = useState('Cash');
+    const [reference, setReference] = useState('');
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const handleSubmit = () => {
+        const val = parseFloat(amount);
+        if (!Number.isFinite(val) || val <= 0) return alert('Enter a valid amount.');
+        if (!reference.trim()) return alert('Reference is required.');
+        onRecord(val, method, reference.trim(), date);
+    };
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[2100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">Record Payment</h3>
+                <p className="text-xs text-gray-500 mb-4">{record.name} • {record.recordType}</p>
+                <div className="space-y-3">
+                    <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded" placeholder="Amount" />
+                    <select value={method} onChange={e => setMethod(e.target.value)} className="w-full p-2 border rounded bg-white">
+                        <option>Cash</option>
+                        <option>Bank Transfer</option>
+                        <option>M-Pesa (Manual)</option>
+                        <option>Cheque</option>
+                    </select>
+                    <input value={reference} onChange={e => setReference(e.target.value)} className="w-full p-2 border rounded" placeholder="Reference" />
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2 border rounded" />
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded">Cancel</button>
+                    <button onClick={handleSubmit} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Record</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const AppMpesaModal: React.FC<{
+    record: UnifiedRecord;
+    getPaymentUserId: (record: UnifiedRecord) => string | null;
+    onClose: () => void;
+    onPaid: (amount: number, reference: string) => void;
+}> = ({ record, getPaymentUserId, onClose, onPaid }) => {
+    const [phone, setPhone] = useState(record.phone || '');
+    const [amount, setAmount] = useState(Number(record.rentAmount || 0) + Number(record.depositPaid || 0));
+    const [checkoutId, setCheckoutId] = useState<string | null>(null);
+    const [step, setStep] = useState<'input' | 'processing'>('input');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const userId = getPaymentUserId(record);
+
+    useEffect(() => {
+        if (!userId || !checkoutId) return;
+        return followStkPaymentCompletion(supabase, userId, checkoutId, (row) => {
+            const status = String(row.status ?? '');
+            if (status === 'completed') {
+                onPaid(amount, String(row.transaction_id ?? checkoutId));
+            } else if (status === 'failed' || status === 'cancelled') {
+                setError(String(row.result_desc ?? 'Payment did not complete.'));
+                setStep('input');
+                setBusy(false);
+                setCheckoutId(null);
+            }
+        });
+    }, [userId, checkoutId, amount, onPaid, record]);
+
+    const handlePay = async () => {
+        if (!userId) {
+            setError('This record is not linked to a login-enabled user yet. Use manual payment or link user first.');
+            return;
+        }
+        if (!/^(2547|07)\d{8}$/.test(phone.replace(/\s/g, ''))) {
+            setError('Enter a valid Kenyan mobile number.');
+            return;
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setError('Enter a valid amount.');
+            return;
+        }
+        setError(null);
+        setBusy(true);
+        setStep('processing');
+        try {
+            const { data, error: invokeError } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: { phone, amount: Math.round(amount), leaseId: null, userId },
+            });
+            if (invokeError) throw invokeError;
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+            setCheckoutId(id);
+        } catch (e: any) {
+            setError(e?.message ?? 'Failed to initiate STK.');
+            setStep('input');
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[2100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">M-Pesa Payment</h3>
+                <p className="text-xs text-gray-500 mb-4">{record.name} • {record.recordType}</p>
+                {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 p-2 rounded mb-3">{error}</p>}
+                {step === 'input' ? (
+                    <div className="space-y-3">
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="07..." />
+                        <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value) || 0)} className="w-full p-2 border rounded" placeholder="Amount" />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded">Cancel</button>
+                            <button onClick={handlePay} disabled={busy} className="px-4 py-2 bg-green-700 text-white rounded font-bold disabled:opacity-50">
+                                {busy ? 'Sending...' : 'Send STK'}
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="py-6 text-center">
+                        <p className="font-semibold text-gray-800">Check your phone</p>
+                        <p className="text-sm text-gray-500 mt-1">Approve the STK prompt to complete payment.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const Applications: React.FC = () => {
     const { applications, tenants, properties, addApplication, updateApplication, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -548,6 +774,8 @@ const Applications: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState<'All' | 'Tenant' | 'Application'>('All');
     const [moveTenant, setMoveTenant] = useState<TenantProfile | null>(null);
+    const [manualPayRecord, setManualPayRecord] = useState<UnifiedRecord | null>(null);
+    const [stkPayRecord, setStkPayRecord] = useState<UnifiedRecord | null>(null);
 
     const handleAddNew = () => {
         setSelectedRecord({ recordType: 'Application', displayStatus: 'New' });
@@ -664,6 +892,42 @@ const Applications: React.FC = () => {
         setIsModalOpen(false);
     };
 
+    const getPaymentUserId = (record: UnifiedRecord): string | null => {
+        if (record.recordType === 'Tenant') {
+            const t = tenants.find(x => x.id === record.id);
+            if (!t) return null;
+            if (t.authUserId && isUuid(t.authUserId)) return t.authUserId;
+            if (isUuid(t.id)) return t.id;
+            const byPhone = tenants.find(x => x.phone === t.phone && x.authUserId && isUuid(x.authUserId));
+            return byPhone?.authUserId ?? null;
+        }
+        const byPhone = tenants.find(x => x.phone === record.phone && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)));
+        if (!byPhone) return null;
+        return byPhone.authUserId && isUuid(byPhone.authUserId) ? byPhone.authUserId : (isUuid(byPhone.id) ? byPhone.id : null);
+    };
+
+    const applyPaidState = (record: UnifiedRecord, amount: number, reference: string, method: string) => {
+        const payment = {
+            date: new Date().toISOString().split('T')[0],
+            amount: `KES ${Number(amount || 0).toLocaleString()}`,
+            status: 'Paid' as const,
+            method,
+            reference,
+        };
+        if (record.recordType === 'Tenant' && record.id) {
+            const t = tenants.find(x => x.id === record.id);
+            if (!t) return;
+            updateTenant(record.id, {
+                paymentHistory: [payment, ...(t.paymentHistory || [])],
+                status: t.status === 'Pending' ? 'Active' : t.status,
+            });
+            return;
+        }
+        if (record.id) {
+            updateApplication(record.id, { status: 'Approved' } as Partial<TenantApplication>);
+        }
+    };
+
     // --- Combine Data Sources ---
     const unifiedList: UnifiedRecord[] = useMemo(() => {
         const activeTenants: UnifiedRecord[] = tenants.map(t => ({
@@ -738,65 +1002,47 @@ const Applications: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Property / Unit</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredList.map(record => (
-                                <tr key={record.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredList.map(record => (
+                        <div key={record.id} className={APP_CARD_CLASSES}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 overflow-hidden">
+                                    {(record.avatar || record.profilePicture) ? (
+                                        <img src={record.avatar || record.profilePicture} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span>{String(record.name || '?').charAt(0)}</span>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-bold text-gray-800">{record.name}</p>
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${record.recordType === 'Tenant' ? 'bg-white border-green-200 text-green-700' : 'bg-white border-blue-200 text-blue-700'}`}>
                                             {record.recordType}
                                         </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap font-medium">
-                                        <div className="flex items-center">
-                                            {record.avatar || record.profilePicture ? (
-                                                <img src={record.avatar || record.profilePicture} alt="" className="w-8 h-8 rounded-full mr-3 object-cover" />
-                                            ) : (
-                                                <div className="w-8 h-8 rounded-full bg-gray-200 mr-3 flex items-center justify-center text-xs font-bold text-gray-500">
-                                                    {record.name?.charAt(0)}
-                                                </div>
-                                            )}
-                                            <div>
-                                                <div>{record.name}</div>
-                                                <div className="text-xs text-gray-400">{record.phone}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {record.propertyName || record.property} 
-                                        <span className="text-gray-400 mx-1">•</span> 
-                                        <span className="font-bold text-gray-700">{record.unit}</span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(record.displayStatus, record.recordType)}`}>
-                                            {record.displayStatus}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.submittedDate}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <div className="flex justify-end gap-2">
-                                            {record.recordType === 'Tenant' && (
-                                                <button onClick={() => handleMoveClick(record as TenantProfile)} className="text-blue-600 hover:text-blue-800 font-bold bg-blue-50 px-3 py-1 rounded">Move</button>
-                                            )}
-                                            <button onClick={() => handleEdit(record)} className="text-primary hover:text-primary-dark font-bold bg-primary/5 px-3 py-1 rounded">Edit</button>
-                                            <button onClick={() => handleDelete(record)} className="text-red-500 hover:text-red-700 font-bold bg-red-50 px-3 py-1 rounded">Delete</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                    </div>
+                                    <p className="text-xs text-gray-500">{record.propertyName || record.property} • <span className="font-bold">{record.unit}</span></p>
+                                    <p className="text-[11px] text-gray-400">{record.phone} • {record.submittedDate || '-'}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(record.displayStatus, record.recordType)}`}>
+                                    {record.displayStatus}
+                                </span>
+                                <div className="flex gap-2 justify-end mt-3">
+                                    {record.recordType === 'Tenant' && (
+                                        <button onClick={() => handleMoveClick(record as TenantProfile)} className="text-blue-600 hover:text-blue-800 font-bold bg-blue-50 px-2 py-1 rounded text-xs">Move</button>
+                                    )}
+                                    <button onClick={() => setManualPayRecord(record)} className="text-green-700 hover:text-green-800 font-bold bg-green-50 px-2 py-1 rounded text-xs">Manual Pay</button>
+                                    <button onClick={() => setStkPayRecord(record)} className="text-emerald-700 hover:text-emerald-800 font-bold bg-emerald-50 px-2 py-1 rounded text-xs">STK</button>
+                                    <button onClick={() => handleEdit(record)} className="text-primary hover:text-primary-dark font-bold bg-primary/5 px-2 py-1 rounded text-xs">Edit</button>
+                                    <button onClick={() => handleDelete(record)} className="text-red-500 hover:text-red-700 font-bold bg-red-50 px-2 py-1 rounded text-xs">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {filteredList.length === 0 && (
+                        <div className="col-span-full text-center py-12 text-gray-500">No records found.</div>
+                    )}
                 </div>
             </div>
             
@@ -815,6 +1061,27 @@ const Applications: React.FC = () => {
                     onClose={() => setMoveTenant(null)}
                     onMove={handleMoveSubmit}
                     properties={properties}
+                />
+            )}
+            {manualPayRecord && (
+                <AppRecordPaymentModal
+                    record={manualPayRecord}
+                    onClose={() => setManualPayRecord(null)}
+                    onRecord={(amount, method, reference, _date) => {
+                        applyPaidState(manualPayRecord, amount, reference, method);
+                        setManualPayRecord(null);
+                    }}
+                />
+            )}
+            {stkPayRecord && (
+                <AppMpesaModal
+                    record={stkPayRecord}
+                    getPaymentUserId={getPaymentUserId}
+                    onClose={() => setStkPayRecord(null)}
+                    onPaid={(amount, reference) => {
+                        applyPaidState(stkPayRecord, amount, reference, 'M-Pesa');
+                        setStkPayRecord(null);
+                    }}
                 />
             )}
         </div>

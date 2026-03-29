@@ -7,6 +7,7 @@ import { printSection } from '../../utils/exportHelper';
 import AdBanners from './AdBanners';
 import { useProfileFirstName } from '../../hooks/useProfileFirstName';
 import { supabase } from '../../utils/supabaseClient';
+import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 
 // --- STK PUSH UI ---
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile; userId: string; leaseId?: string | null }> = ({ onClose, amount, tenant, userId, leaseId = null }) => {
@@ -18,34 +19,20 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        if (!userId) return;
-        if (!checkoutRequestId) return;
+        if (!userId || !checkoutRequestId) return;
 
-        const channel = supabase
-            .channel(`payments-${userId}-${checkoutRequestId}`)
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'payments', filter: `user_id=eq.${userId}` },
-                (payload: any) => {
-                    const row = payload?.new ?? payload?.old;
-                    if (!row) return;
-                    if (String(row.checkout_request_id ?? '') !== checkoutRequestId) return;
-                    if (String(row.status ?? '') === 'completed') {
-                        setTxCode(String(row.transaction_id ?? ''));
-                        setStep('success');
-                    }
-                    if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
-                        setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
-                        setStep('input');
-                        setIsSubmitting(false);
-                    }
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return followStkPaymentCompletion(supabase, userId, checkoutRequestId, (row) => {
+            if (String(row.status ?? '') === 'completed') {
+                setTxCode(String(row.transaction_id ?? ''));
+                setStep('success');
+                setIsSubmitting(false);
+            }
+            if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
+                setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
+                setStep('input');
+                setIsSubmitting(false);
+            }
+        });
     }, [userId, checkoutRequestId]);
 
     const handlePay = async () => {

@@ -14,7 +14,8 @@ const ListingModal: React.FC<{
     onSave: (l: MarketplaceListing) => void;
     properties: Property[];
     landlords: any[];
-}> = ({ listing, onClose, onSave, properties, landlords }) => {
+    staff: any[];
+}> = ({ listing, onClose, onSave, properties, landlords, staff }) => {
     // Determine initial entry mode
     const isSystemProp = listing ? properties.some(p => p.id === listing.propertyId) : true;
     
@@ -46,6 +47,9 @@ const ListingModal: React.FC<{
             const prop = properties.find(p => p.id === selectedPropId);
             const unit = prop?.units.find(u => u.id === selectedUnitId);
             const landlord = landlords.find(l => l.id === prop?.landlordId);
+            const assignedAgent = staff.find((s: any) => s.id === prop?.assignedAgentId);
+            const affiliate = landlords.find(l => l.role === 'Affiliate' && l.id === prop?.landlordId);
+            const contactOwner = assignedAgent || affiliate || landlord;
 
             if (prop && unit) {
                 setFormData(prev => ({
@@ -56,17 +60,18 @@ const ListingModal: React.FC<{
                     propertyName: prop.name,
                     unitNumber: unit.unitNumber,
                     location: prop.location || prop.branch || '',
+                    pinLocationUrl: prop.pinLocationUrl || '',
                     ownerDetails: {
-                        name: landlord?.name || 'Management',
-                        contact: landlord?.phone || '',
-                        email: landlord?.email || '',
+                        name: contactOwner?.name || 'Management',
+                        contact: contactOwner?.phone || '',
+                        email: contactOwner?.email || '',
                         rating: 5,
                         reviews: 0
                     }
                 }));
             }
         }
-    }, [selectedPropId, selectedUnitId, properties, landlords, listing, type, entryMode]);
+    }, [selectedPropId, selectedUnitId, properties, landlords, staff, listing, type, entryMode]);
 
     const handleFeatures = (e: React.ChangeEvent<HTMLInputElement>) => {
         // Simple comma split
@@ -127,6 +132,7 @@ const ListingModal: React.FC<{
             description: formData.description || '',
             title: formData.title || '',
             location: formData.location || '',
+            pinLocationUrl: formData.pinLocationUrl || '',
             images: formData.images || [],
             features: formData.features?.map(s => s.trim()) || [],
             airbnbConfig: type === 'AirBnB' ? formData.airbnbConfig : undefined,
@@ -307,6 +313,15 @@ const ListingModal: React.FC<{
                             rows={3}
                             placeholder="Detailed description..."
                         />
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Google / Pin Location URL</label>
+                            <input
+                                value={formData.pinLocationUrl || ''}
+                                onChange={e => setFormData({ ...formData, pinLocationUrl: e.target.value })}
+                                className="w-full p-2 border rounded-lg text-sm"
+                                placeholder="https://maps.google.com/..."
+                            />
+                        </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Features (comma separated)</label>
                             <input 
@@ -596,6 +611,16 @@ const ListingCard: React.FC<{ listing: MarketplaceListing; onEdit: () => void; o
                     Mark Occupied / Sold
                 </button>
             )}
+            {listing.status === 'Published' && listing.pinLocationUrl && (
+                <a
+                    href={listing.pinLocationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full mt-2 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 shadow-sm text-center block"
+                >
+                    Open Map Pin
+                </a>
+            )}
         </div>
     </div>
 );
@@ -603,7 +628,7 @@ const ListingCard: React.FC<{ listing: MarketplaceListing; onEdit: () => void; o
 // --- MAIN COMPONENT ---
 
 const Listings: React.FC = () => {
-    const { properties, landlords, marketplaceListings, addMarketplaceListing, updateMarketplaceListing, deleteMarketplaceListing, markUnitOccupied } = useData();
+    const { properties, landlords, staff, marketplaceListings, addMarketplaceListing, updateMarketplaceListing, deleteMarketplaceListing, markUnitOccupied } = useData();
     
     // UI State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -709,6 +734,7 @@ const Listings: React.FC = () => {
                     onSave={handleSave} 
                     properties={properties}
                     landlords={landlords}
+                    staff={staff}
                 />
             )}
         </div>

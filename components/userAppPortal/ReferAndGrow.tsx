@@ -103,6 +103,7 @@ const ReferAndGrow: React.FC = () => {
                 title: `${u.unitNumber} at ${p.name}`,
                 rent: u.rent || p.defaultMonthlyRent || 0,
                 location: p.location || p.branch,
+                pinLocationUrl: p.pinLocationUrl || '',
                 image: p.profilePictureUrl,
                 type: u.unitType || p.type
             }))
@@ -253,6 +254,16 @@ const ReferAndGrow: React.FC = () => {
                                         <p className="text-sm text-gray-500 mb-6 flex items-center gap-1">
                                             <Icon name="map-pin" className="w-4 h-4" /> {unit.location}
                                         </p>
+                                        {unit.pinLocationUrl && (
+                                            <a
+                                                href={unit.pinLocationUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center text-xs font-bold text-blue-700 hover:text-blue-800 mb-3"
+                                            >
+                                                <Icon name="map-pin" className="w-3 h-3 mr-1" /> Open map pin
+                                            </a>
+                                        )}
                                         
                                         <div className="mt-auto space-y-4">
                                             <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">

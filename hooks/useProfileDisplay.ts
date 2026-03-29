@@ -48,6 +48,51 @@ export function useProfileDisplay(options?: UseProfileDisplayOptions) {
 
                 if (!alive) return;
                 setProfile((prof as any) ?? null);
+
+                // Permanent fix: ensure public.profiles has a stable first_name/full_name so all headers
+                // can reliably render a first name (even if metadata drifts or app_state is empty).
+                try {
+                    const looksLikeEmail = (s: string) => s.includes('@');
+                    const pickFirstWord = (s: string) => s.trim().split(/\s+/).filter(Boolean)[0] || '';
+                    const emailLocal = (user.email ?? '').split('@')[0] || '';
+
+                    const profFirst = String((prof as any)?.first_name ?? '').trim();
+                    const profFull = String((prof as any)?.full_name ?? '').trim();
+                    const metaFirst = String(((user.user_metadata as any)?.first_name ?? '')).trim();
+                    const metaFull = String(((user.user_metadata as any)?.full_name ?? '')).trim();
+                    const fallback = String(nameFallback ?? '').trim();
+
+                    const candidateFull =
+                        (profFull && !looksLikeEmail(profFull) ? profFull : '') ||
+                        (metaFull && !looksLikeEmail(metaFull) ? metaFull : '') ||
+                        (fallback && !looksLikeEmail(fallback) ? fallback : '') ||
+                        (metaFirst && !looksLikeEmail(metaFirst) ? metaFirst : '') ||
+                        (emailLocal ? emailLocal : '');
+
+                    const candidateFirst =
+                        (profFirst && !looksLikeEmail(profFirst) ? profFirst : '') ||
+                        (metaFirst && !looksLikeEmail(metaFirst) ? metaFirst : '') ||
+                        pickFirstWord(candidateFull) ||
+                        'User';
+
+                    const safeFirst = candidateFirst.trim() || 'User';
+                    const safeFull = (candidateFull && !looksLikeEmail(candidateFull) ? candidateFull : safeFirst).trim();
+
+                    const needUpsert =
+                        !profFirst ||
+                        looksLikeEmail(profFirst) ||
+                        !profFull ||
+                        looksLikeEmail(profFull);
+
+                    if (needUpsert && safeFirst && safeFirst !== 'User') {
+                        await supabase.from('profiles').upsert(
+                            { id: user.id, first_name: safeFirst, full_name: safeFull, email: user.email ?? null },
+                            { onConflict: 'id' },
+                        );
+                    }
+                } catch {
+                    // non-blocking
+                }
             } finally {
                 if (alive) setLoading(false);
             }
@@ -71,14 +116,15 @@ export function useProfileDisplay(options?: UseProfileDisplayOptions) {
         const full = (profile?.full_name ?? '').trim();
         const looksLikeEmail = (s: string) => s.includes('@');
         const fromProfile = first || full;
-        if (fromProfile && !looksLikeEmail(fromProfile)) return fromProfile;
+        if (fromProfile && !looksLikeEmail(fromProfile)) return fromProfile.split(/\s+/)[0];
         const metaFirst = (metaFirstName ?? '').trim();
         const metaFull = (metaFullName ?? '').trim();
         const fromMeta = metaFirst || metaFull;
-        if (fromMeta && !looksLikeEmail(fromMeta)) return fromMeta;
+        if (fromMeta && !looksLikeEmail(fromMeta)) return fromMeta.split(/\s+/)[0];
         const fallbackFirst = nameFallback?.trim()?.split(/\s+/)[0];
         if (fallbackFirst && !looksLikeEmail(fallbackFirst)) return fallbackFirst;
-        // Critical: do NOT fall back to email/local-part. If profile data is missing, show generic.
+        const local = (email ?? '').split('@')[0]?.trim();
+        if (local) return local.split(/[._-]/)[0] || 'User';
         return 'User';
     }, [loading, profile?.first_name, profile?.full_name, metaFirstName, metaFullName, email, nameFallback]);
 

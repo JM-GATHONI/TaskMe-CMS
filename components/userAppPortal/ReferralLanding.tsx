@@ -4,6 +4,9 @@ import { useData } from '../../context/DataContext';
 import { useRegistration } from '../../hooks/useRegistration';
 import Icon from '../Icon';
 import { INITIAL_FUNDS } from '../../constants';
+import { supabase } from '../../utils/supabaseClient';
+import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
+import type { Property } from '../../types';
 
 import RegistrationModal from './RegistrationModal';
 
@@ -114,6 +117,7 @@ const InvestmentModal: React.FC<{
     onClose: () => void;
 }> = ({ fund, onClose }) => {
     const { registerInvestor } = useRegistration();
+    const { staff, landlords, tenants, renovationInvestors, vendors } = useData();
     const [step, setStep] = useState<'auth' | 'config' | 'payment' | 'processing' | 'success'>('auth');
     const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
     const [userForm, setUserForm] = useState({ name: '', email: '', phone: '', password: '' });
@@ -121,47 +125,193 @@ const InvestmentModal: React.FC<{
     const [duration, setDuration] = useState<number>(12);
     const [mpesaPhone, setMpesaPhone] = useState('');
     const [txCode, setTxCode] = useState('');
+    const [userId, setUserId] = useState<string | null>(null);
+    const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
 
     const rates = useMemo(() => getTierRates(duration), [duration]);
     const estMonthlyReturn = amount ? (parseFloat(amount) * rates.monthly / 100) : 0;
     const estTotalReturn = amount ? (parseFloat(amount) * (rates.apy / 100) * (duration / 12)) : 0;
 
     useEffect(() => {
-        if (step === 'payment' && userForm.phone) {
+        let cancelled = false;
+        (async () => {
+            const { data } = await supabase.auth.getSession();
+            const uid = data.session?.user?.id ?? null;
+            if (!cancelled && uid) {
+                setUserId(uid);
+                setStep('config');
+                const meta = data.session?.user?.user_metadata as any;
+                if (meta?.phone) setMpesaPhone(String(meta.phone));
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (step === 'payment' && userForm.phone && authMode === 'register') {
             setMpesaPhone(userForm.phone);
         }
-    }, [step, userForm.phone]);
+    }, [step, userForm.phone, authMode]);
 
-    const handleAuthSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (authMode === 'register') {
-            if (!userForm.name || !userForm.phone) return alert("Please fill all fields");
-            registerInvestor({
-                name: userForm.name,
-                email: userForm.email,
-                phone: userForm.phone,
-                // In real app, handle password
-            });
+    useEffect(() => {
+        if (!userId || !checkoutRequestId) return;
+        return followStkPaymentCompletion(supabase, userId, checkoutRequestId, (row) => {
+            if (String(row.status ?? '') === 'completed') {
+                setTxCode(String(row.transaction_id ?? checkoutRequestId));
+                setStep('success');
+                setBusy(false);
+            }
+            if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
+                setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
+                setStep('payment');
+                setBusy(false);
+                setCheckoutRequestId(null);
+            }
+        });
+    }, [userId, checkoutRequestId]);
+
+    const resolveLoginEmail = (identifier: string) => {
+        let loginEmail = identifier.trim();
+        if (!loginEmail.includes('@')) {
+            const byPhone =
+                staff.find(s => s.phone === loginEmail) ||
+                landlords.find(l => l.phone === loginEmail) ||
+                tenants.find(t => t.phone === loginEmail) ||
+                renovationInvestors.find(i => i.phone === loginEmail) ||
+                vendors.find(v => v.phone === loginEmail);
+            if (!byPhone?.email) return null;
+            loginEmail = byPhone.email;
         }
-        if (!userForm.email || !userForm.password) return alert("Please fill all fields");
-        setStep('config');
+        return loginEmail;
+    };
+
+    const handleAuthSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setErrorMsg(null);
+        if (!userForm.email || !userForm.password) {
+            setErrorMsg('Please fill email and password.');
+            return;
+        }
+        if (userForm.password.length < 6) {
+            setErrorMsg('Password must be at least 6 characters.');
+            return;
+        }
+        if (authMode === 'register') {
+            if (!userForm.name || !userForm.phone) {
+                setErrorMsg('Please fill name and phone.');
+                return;
+            }
+        }
+        setBusy(true);
+        try {
+            if (authMode === 'register') {
+                const parts = userForm.name.trim().split(/\s+/).filter(Boolean);
+                const emailTrim = userForm.email.trim();
+                const { data, error } = await supabase.auth.signUp({
+                    email: emailTrim,
+                    password: userForm.password,
+                    options: {
+                        data: {
+                            role: 'Investor',
+                            full_name: userForm.name,
+                            first_name: parts[0] ?? userForm.name,
+                            last_name: parts.length > 1 ? parts.slice(1).join(' ') : '',
+                            phone: userForm.phone,
+                        },
+                    },
+                });
+                if (error) throw error;
+                registerInvestor({
+                    name: userForm.name,
+                    email: emailTrim,
+                    phone: userForm.phone,
+                });
+                const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+                    email: emailTrim,
+                    password: userForm.password,
+                });
+                const uid = !signInErr && signInData?.user?.id ? signInData.user.id : data.user?.id ?? null;
+                if (!uid) throw signInErr ?? new Error('Could not establish session after sign-up.');
+                setUserId(uid);
+                setMpesaPhone(userForm.phone);
+                setStep('config');
+            } else {
+                const loginEmail = resolveLoginEmail(userForm.email);
+                if (!loginEmail) {
+                    setErrorMsg('No account found for this email or phone.');
+                    return;
+                }
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: loginEmail,
+                    password: userForm.password,
+                });
+                if (error || !data.user) throw error ?? new Error('Login failed');
+                setUserId(data.user.id);
+                const metaPhone = (data.user.user_metadata as any)?.phone;
+                if (metaPhone) setMpesaPhone(String(metaPhone));
+                setStep('config');
+            }
+        } catch (err: any) {
+            setErrorMsg(err?.message ?? String(err));
+        } finally {
+            setBusy(false);
+        }
     };
 
     const handleConfigSubmit = () => {
-        if (!amount || parseFloat(amount) < 5000) return alert("Minimum investment is KES 5,000");
+        setErrorMsg(null);
+        const amt = parseFloat(amount);
+        if (!amount || !Number.isFinite(amt) || amt < 5000) {
+            setErrorMsg('Minimum investment is KES 5,000.');
+            return;
+        }
         setStep('payment');
     };
 
-    const handleProcessPayment = () => {
-        if (!/^(2547|07)\d{8}$/.test(mpesaPhone.replace(/\s/g, ''))) {
-            alert('Please enter a valid Kenyan mobile number');
+    const handleProcessPayment = async () => {
+        if (!userId) {
+            setErrorMsg('You must be signed in.');
             return;
         }
+        if (!/^(2547|07)\d{8}$/.test(mpesaPhone.replace(/\s/g, ''))) {
+            setErrorMsg('Please enter a valid Kenyan mobile number.');
+            return;
+        }
+        const amt = Math.round(parseFloat(amount));
+        if (!Number.isFinite(amt) || amt < 5000) {
+            setErrorMsg('Minimum investment is KES 5,000.');
+            return;
+        }
+        setErrorMsg(null);
+        setBusy(true);
         setStep('processing');
-        setTimeout(() => {
-            setTxCode(`INV${Date.now().toString().slice(-8)}QT`);
-            setStep('success');
-        }, 3000);
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: { phone: mpesaPhone, amount: amt, leaseId: null, userId },
+            });
+            if (error) throw error;
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+            setCheckoutRequestId(id);
+        } catch (e: any) {
+            let msg = e?.message ?? 'Failed to initiate STK push.';
+            try {
+                const ctx = e?.context;
+                if (ctx && typeof ctx.json === 'function') {
+                    const body = await ctx.json();
+                    if (body?.error) msg = String(body.error);
+                }
+            } catch {
+                /* ignore */
+            }
+            setErrorMsg(msg);
+            setStep('payment');
+            setBusy(false);
+        }
     };
 
     return (
@@ -172,21 +322,27 @@ const InvestmentModal: React.FC<{
                         <h3 className="font-bold text-gray-800">{step === 'success' ? 'Investment Confirmed' : `Invest: ${fund.name}`}</h3>
                         {step !== 'success' && <p className="text-xs text-gray-500">Step {step === 'auth' ? '1' : step === 'config' ? '2' : '3'} of 3</p>}
                     </div>
-                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
+                    <button type="button" onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
                 </div>
                 <div className="p-6 overflow-y-auto">
+                    {errorMsg && (
+                        <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-4">{errorMsg}</p>
+                    )}
                     {step === 'auth' && (
                         <div className="space-y-6">
                             <div className="flex p-1 bg-gray-100 rounded-lg">
-                                <button onClick={() => setAuthMode('register')} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${authMode === 'register' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}>New Investor</button>
-                                <button onClick={() => setAuthMode('login')} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${authMode === 'login' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}>Log In</button>
+                                <button type="button" onClick={() => setAuthMode('register')} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${authMode === 'register' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}>New Investor</button>
+                                <button type="button" onClick={() => setAuthMode('login')} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${authMode === 'login' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}>Log In</button>
                             </div>
                             <form onSubmit={handleAuthSubmit} className="space-y-4">
                                 {authMode === 'register' && <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label><input required value={userForm.name} onChange={e => setUserForm({...userForm, name: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20" placeholder="e.g. John Doe" /></div>}
-                                <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label><input type="email" required value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20" placeholder="john@example.com" /></div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{authMode === 'login' ? 'Email or phone' : 'Email address'}</label>
+                                    <input type={authMode === 'register' ? 'email' : 'text'} required value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20" placeholder={authMode === 'login' ? 'john@example.com or 07...' : 'john@example.com'} />
+                                </div>
                                 {authMode === 'register' && <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label><input type="tel" required value={userForm.phone} onChange={e => setUserForm({...userForm, phone: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20" placeholder="07..." /></div>}
                                 <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label><input type="password" required value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20" placeholder="••••••••" /></div>
-                                <button type="submit" className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary-dark transition-transform active:scale-95">Continue</button>
+                                <button type="submit" disabled={busy} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary-dark transition-transform active:scale-95 disabled:opacity-60">{busy ? 'Please wait…' : 'Continue'}</button>
                             </form>
                         </div>
                     )}
@@ -202,7 +358,7 @@ const InvestmentModal: React.FC<{
                                 <div className="flex justify-between items-center"><span className="text-sm text-gray-600">Monthly Return</span><span className="font-bold text-green-600 text-lg">{rates.monthly}%</span></div>
                                 <div className="border-t border-blue-200 pt-2 mt-2"><div className="flex justify-between items-center"><span className="text-sm font-bold text-gray-700">Est. Monthly Payout</span><span className="font-bold text-gray-800">KES {estMonthlyReturn.toLocaleString()}</span></div><p className="text-xs text-gray-500 mt-1 text-right">Total Profit: KES {estTotalReturn.toLocaleString()}</p></div>
                             </div>
-                            <div className="flex gap-3"><button onClick={() => setStep('auth')} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200">Back</button><button onClick={handleConfigSubmit} className="flex-[2] py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark shadow-md">Next: Payment</button></div>
+                            <div className="flex gap-3"><button type="button" onClick={() => setStep('auth')} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200">Back</button><button type="button" onClick={handleConfigSubmit} className="flex-[2] py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark shadow-md">Next: Payment</button></div>
                         </div>
                     )}
                     {(step === 'payment' || step === 'processing' || step === 'success') && (
@@ -212,11 +368,11 @@ const InvestmentModal: React.FC<{
                                 <div className="space-y-4">
                                     <div className="bg-green-50 p-4 rounded-xl border border-green-100 mb-6 text-center"><p className="text-xs text-green-700 font-bold uppercase mb-1">Amount to Pay</p><p className="text-2xl font-extrabold text-green-800">KES {parseFloat(amount).toLocaleString()}</p></div>
                                     <div><label className="block mb-1 font-semibold text-gray-700 text-xs uppercase">M-Pesa Number</label><input type="tel" value={mpesaPhone} onChange={e => setMpesaPhone(e.target.value)} className="w-full p-3 border-2 border-[#c8e6c9] rounded-xl text-base focus:outline-none focus:border-[#1F9F21] transition-colors" placeholder="07..."/></div>
-                                    <div className="flex gap-3 pt-2"><button onClick={() => setStep('config')} className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200">Back</button><button onClick={handleProcessPayment} className="flex-[2] py-3.5 bg-gradient-to-r from-[#1F9F21] to-[#177D1A] text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all transform active:scale-95">Pay & Invest</button></div>
+                                    <div className="flex gap-3 pt-2"><button type="button" onClick={() => setStep('config')} className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200">Back</button><button type="button" disabled={busy} onClick={handleProcessPayment} className="flex-[2] py-3.5 bg-gradient-to-r from-[#1F9F21] to-[#177D1A] text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all transform active:scale-95 disabled:opacity-60">{busy ? 'Sending…' : 'Pay & Invest'}</button></div>
                                 </div>
                             )}
                             {step === 'processing' && <div className="py-10 text-center"><div className="mpesa-spinner"></div><p className="text-xl font-semibold text-[#1a365d] mb-2">Processing Investment...</p><p className="text-[#4a904a] font-medium">Check your phone for the M-Pesa prompt.</p><div className="loading-dots flex justify-center gap-1.5 mt-6"><span></span><span></span><span></span></div></div>}
-                            {step === 'success' && <div className="text-center py-6"><div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600"><Icon name="check" className="w-8 h-8" /></div><h3 className="text-2xl font-bold text-gray-800 mb-2">Welcome Aboard!</h3><p className="text-gray-600 text-sm mb-6">Your investment of <strong>KES {parseFloat(amount).toLocaleString()}</strong> in {fund.name} is active.</p><button onClick={onClose} className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-colors">Go to Investor Dashboard</button></div>}
+                            {step === 'success' && <div className="text-center py-6"><div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600"><Icon name="check" className="w-8 h-8" /></div><h3 className="text-2xl font-bold text-gray-800 mb-2">Welcome Aboard!</h3><p className="text-gray-600 text-sm mb-2">Your investment of <strong>KES {parseFloat(amount).toLocaleString()}</strong> in {fund.name} is recorded.</p>{txCode ? <p className="text-xs text-gray-500 mb-6">M-Pesa ref: <span className="font-mono">{txCode}</span></p> : <p className="text-xs text-gray-500 mb-6">Payment completed.</p>}<button type="button" onClick={onClose} className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-colors">Close</button></div>}
                         </div>
                     )}
                 </div>
@@ -225,17 +381,303 @@ const InvestmentModal: React.FC<{
     );
 };
 
-const BookingModal: React.FC<{ unit: any; discount: number; onClose: () => void; }> = ({ unit, discount, onClose }) => {
-    return <div className="fixed inset-0 bg-black/70 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e=>e.stopPropagation()}>
-            <div className="flex justify-between mb-4"><h3 className="font-bold text-xl">Booking</h3><button onClick={onClose}><Icon name="close" className="w-5 h-5"/></button></div>
-            <p className="text-gray-500 mb-4">Book Unit {unit.unitNumber}. Functionality simulated.</p>
-            <button onClick={onClose} className="w-full py-3 bg-primary text-white rounded-xl font-bold">Close Demo</button>
-        </div>
-    </div>;
+export type BookableVacancy = {
+    id: string;
+    propertyId: string;
+    unitId: string;
+    unitNumber: string;
+    title: string;
+    rent: number;
+    location: string;
+    image: string;
+    type: string;
+    bedrooms: number;
+    property: Property;
 };
 
+const UnitBookingModal: React.FC<{ unit: BookableVacancy; onClose: () => void }> = ({ unit, onClose }) => {
+    const { addApplication, staff, landlords, tenants, renovationInvestors, vendors } = useData();
+    const [step, setStep] = useState<'auth' | 'payment' | 'processing' | 'success'>('auth');
+    const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [mpesaPhone, setMpesaPhone] = useState('');
+    const [userId, setUserId] = useState<string | null>(null);
+    const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
+    const [txRef, setTxRef] = useState('');
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
 
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data } = await supabase.auth.getSession();
+            const uid = data.session?.user?.id ?? null;
+            if (!cancelled && uid) {
+                setUserId(uid);
+                setStep('payment');
+                const meta = data.session?.user?.user_metadata as any;
+                if (meta?.phone) setMpesaPhone(String(meta.phone));
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!userId || !checkoutRequestId) return;
+        return followStkPaymentCompletion(supabase, userId, checkoutRequestId, (row) => {
+            if (String(row.status ?? '') === 'completed') {
+                setTxRef(String(row.transaction_id ?? checkoutRequestId));
+                setStep('success');
+                setBusy(false);
+            }
+            if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
+                setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
+                setStep('payment');
+                setBusy(false);
+                setCheckoutRequestId(null);
+            }
+        });
+    }, [userId, checkoutRequestId]);
+
+    const resolveLoginEmail = (identifier: string) => {
+        let loginEmail = identifier.trim();
+        if (!loginEmail.includes('@')) {
+            const byPhone =
+                staff.find(s => s.phone === loginEmail) ||
+                landlords.find(l => l.phone === loginEmail) ||
+                tenants.find(t => t.phone === loginEmail) ||
+                renovationInvestors.find(i => i.phone === loginEmail) ||
+                vendors.find(v => v.phone === loginEmail);
+            if (!byPhone?.email) return null;
+            loginEmail = byPhone.email;
+        }
+        return loginEmail;
+    };
+
+    const handleAuth = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setErrorMsg(null);
+        setBusy(true);
+        try {
+            if (authMode === 'login') {
+                const loginEmail = resolveLoginEmail(email);
+                if (!loginEmail) {
+                    setErrorMsg('No account found for this email or phone.');
+                    setBusy(false);
+                    return;
+                }
+                const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+                if (error || !data.user) throw error ?? new Error('Login failed');
+                setUserId(data.user.id);
+                const metaPhone = (data.user.user_metadata as any)?.phone;
+                if (metaPhone) setMpesaPhone(String(metaPhone));
+                else if (phone) setMpesaPhone(phone);
+                setStep('payment');
+            } else {
+                if (!email || !password || !name || !phone) {
+                    setErrorMsg('Please complete all fields.');
+                    setBusy(false);
+                    return;
+                }
+                if (password.length < 6) {
+                    setErrorMsg('Password must be at least 6 characters.');
+                    setBusy(false);
+                    return;
+                }
+                const parts = name.trim().split(/\s+/).filter(Boolean);
+                const { data, error } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: {
+                            role: 'Tenant',
+                            full_name: name,
+                            first_name: parts[0] ?? name,
+                            last_name: parts.length > 1 ? parts.slice(1).join(' ') : '',
+                            phone,
+                        },
+                    },
+                });
+                if (error) throw error;
+                if (!data.user) throw new Error('Sign up did not return a user.');
+                const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+                const uid = !signInErr && signInData?.user?.id ? signInData.user.id : data.user.id;
+                setUserId(uid);
+                setMpesaPhone(phone);
+                setStep('payment');
+            }
+        } catch (err: any) {
+            setErrorMsg(err?.message ?? String(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handlePay = async () => {
+        if (!userId) {
+            setErrorMsg('You must be signed in.');
+            return;
+        }
+        if (!/^(2547|07)\d{8}$/.test(mpesaPhone.replace(/\s/g, ''))) {
+            setErrorMsg('Enter a valid Kenyan mobile number.');
+            return;
+        }
+        const amount = Math.round(Number(unit.rent) || 0);
+        if (amount <= 0) {
+            setErrorMsg('Invalid rent amount for this listing.');
+            return;
+        }
+        setErrorMsg(null);
+        setBusy(true);
+        setStep('processing');
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: { phone: mpesaPhone, amount, leaseId: null, userId },
+            });
+            if (error) throw error;
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+            setCheckoutRequestId(id);
+        } catch (e: any) {
+            let msg = e?.message ?? 'Failed to initiate STK push.';
+            try {
+                const ctx = e?.context;
+                if (ctx && typeof ctx.json === 'function') {
+                    const body = await ctx.json();
+                    if (body?.error) msg = String(body.error);
+                }
+            } catch {
+                /* ignore */
+            }
+            setErrorMsg(msg);
+            setStep('payment');
+            setBusy(false);
+        }
+    };
+
+    const handleSuccessDone = () => {
+        const displayName = name.trim() || email.split('@')[0] || 'Applicant';
+        addApplication({
+            id: `app-${Date.now()}`,
+            name: displayName,
+            phone: mpesaPhone || phone,
+            email,
+            status: 'Under Review',
+            submittedDate: new Date().toISOString().split('T')[0],
+            propertyId: unit.propertyId,
+            unitId: unit.unitId,
+            propertyName: unit.property.name,
+            unit: unit.unitNumber,
+            rentAmount: unit.rent,
+            source: 'Referral landing — Book Now',
+        });
+        window.location.hash = '#/user-app-portal/tenant-portal';
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="bg-gray-50 p-4 border-b flex justify-between items-center">
+                    <div>
+                        <h3 className="font-bold text-gray-800">Book {unit.title}</h3>
+                        <p className="text-xs text-gray-500">KES {unit.rent.toLocaleString()} / month</p>
+                    </div>
+                    <button type="button" onClick={onClose}>
+                        <Icon name="close" className="w-5 h-5 text-gray-400" />
+                    </button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    {errorMsg && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">{errorMsg}</p>}
+
+                    {step === 'auth' && (
+                        <>
+                            <div className="flex p-1 bg-gray-100 rounded-lg">
+                                <button
+                                    type="button"
+                                    onClick={() => setAuthMode('login')}
+                                    className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${authMode === 'login' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}
+                                >
+                                    Sign in
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAuthMode('register')}
+                                    className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${authMode === 'register' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}
+                                >
+                                    Register
+                                </button>
+                            </div>
+                            <form onSubmit={handleAuth} className="space-y-3">
+                                {authMode === 'register' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full name</label>
+                                            <input value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border rounded-lg" required={authMode === 'register'} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
+                                            <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 border rounded-lg" required={authMode === 'register'} placeholder="07..." />
+                                        </div>
+                                    </>
+                                )}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 border rounded-lg" required />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 border rounded-lg" required />
+                                </div>
+                                <button type="submit" disabled={busy} className="w-full py-3 bg-primary text-white font-bold rounded-xl disabled:opacity-50">
+                                    {busy ? 'Please wait...' : authMode === 'login' ? 'Continue to payment' : 'Create account & continue'}
+                                </button>
+                            </form>
+                        </>
+                    )}
+
+                    {step === 'payment' && (
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600">Pay your first month&apos;s rent via M-Pesa STK. Requires Daraja credentials on the project.</p>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">M-Pesa number</label>
+                                <input type="tel" value={mpesaPhone} onChange={e => setMpesaPhone(e.target.value)} className="w-full p-3 border rounded-lg" placeholder="07..." />
+                            </div>
+                            <button type="button" disabled={busy} onClick={handlePay} className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl disabled:opacity-50">
+                                Pay KES {unit.rent.toLocaleString()}
+                            </button>
+                        </div>
+                    )}
+
+                    {step === 'processing' && (
+                        <div className="text-center py-8">
+                            <p className="text-lg font-semibold text-gray-800 mb-2">Check your phone</p>
+                            <p className="text-gray-600 text-sm">Complete the M-Pesa prompt to confirm payment.</p>
+                        </div>
+                    )}
+
+                    {step === 'success' && (
+                        <div className="text-center space-y-4 py-4">
+                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
+                                <Icon name="check" className="w-8 h-8" />
+                            </div>
+                            <h4 className="font-bold text-xl text-gray-800">Payment received</h4>
+                            {txRef && <p className="text-xs text-gray-500 font-mono">Ref: {txRef}</p>}
+                            <button type="button" onClick={handleSuccessDone} className="w-full py-3 bg-primary text-white font-bold rounded-xl">
+                                Go to tenant portal
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 // --- FULL PAGES ---
 
 const AboutUsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -337,7 +779,7 @@ const ReferralLanding: React.FC = () => {
     const [viewMode, setViewMode] = useState<UserPersona>('Tenant'); // Default view
     const [searchTerm, setSearchQuery] = useState('');
     const [selectedFund, setSelectedFund] = useState<any>(null);
-    const [selectedUnit, setSelectedUnit] = useState<any>(null);
+    const [selectedUnit, setSelectedUnit] = useState<BookableVacancy | null>(null);
     const [isCallbackOpen, setIsCallbackOpen] = useState(false);
     const [callbackType, setCallbackType] = useState('General');
     const [currentPage, setCurrentPage] = useState<PageType>('Home'); // Home acts as the main landing, Properties/Funds act as filtered views if needed, About is separate.
@@ -371,13 +813,17 @@ const ReferralLanding: React.FC = () => {
             .filter(u => u.status === 'Vacant')
             .map(u => ({
                 id: u.id,
+                propertyId: p.id,
+                unitId: u.id,
+                unitNumber: u.unitNumber,
                 title: `${u.unitNumber} at ${p.name}`,
                 rent: u.rent || p.defaultMonthlyRent || 0,
                 location: p.subLocation || p.nearestLandmark || p.location || p.zone || 'Location not set',
+                pinLocationUrl: p.pinLocationUrl || '',
                 image: p.profilePictureUrl || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=800&q=80',
                 type: u.unitType || p.type,
                 bedrooms: u.bedrooms,
-                property: p
+                property: p,
             }))
         ).filter(u => u.title.toLowerCase().includes(searchTerm.toLowerCase()) || u.location?.toLowerCase().includes(searchTerm.toLowerCase()));
     }, [properties, searchTerm]);
@@ -492,6 +938,16 @@ const ReferralLanding: React.FC = () => {
                                                 <span className="bg-gray-100 px-2 py-1 rounded">{unit.bedrooms} Beds</span>
                                                 <span className="bg-gray-100 px-2 py-1 rounded">WiFi Ready</span>
                                             </div>
+                                            {unit.pinLocationUrl && (
+                                                <a
+                                                    href={unit.pinLocationUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex mb-4 items-center text-xs font-bold text-blue-700 hover:text-blue-800"
+                                                >
+                                                    <Icon name="map-pin" className="w-3 h-3 mr-1" /> Open map pin
+                                                </a>
+                                            )}
                                             <button 
                                                 onClick={() => setSelectedUnit(unit)}
                                                 className="w-full mt-auto py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-all shadow-md flex justify-center items-center group-hover:bg-primary"
@@ -763,11 +1219,7 @@ const ReferralLanding: React.FC = () => {
             )}
             
             {selectedUnit && (
-                <BookingModal 
-                    unit={selectedUnit} 
-                    discount={0} 
-                    onClose={() => setSelectedUnit(null)} 
-                />
+                <UnitBookingModal unit={selectedUnit} onClose={() => setSelectedUnit(null)} />
             )}
 
             {isCallbackOpen && (

@@ -201,6 +201,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const existingListing = newListings.find(l => l.unitId === unit.id);
                 if (!existingListing) {
                     const landlord = landlords.find(l => l.id === property.landlordId);
+                    const assignedAgent = staff.find(s => s.id === property.assignedAgentId);
+                    const affiliate = landlords.find(l => l.role === 'Affiliate' && l.id === property.landlordId);
+                    const contactOwner = assignedAgent || affiliate || landlord;
                     const newListing: MarketplaceListing = {
                         id: `auto-lst-${unit.id}-${Date.now()}`,
                         propertyId: property.id,
@@ -214,12 +217,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         description: `Vacant ${unit.unitType || unit.bedrooms + 'BR'} unit available in ${property.location || property.branch}.`,
                         title: `${property.name} - ${unit.unitNumber}`,
                         location: property.location || property.branch,
+                        pinLocationUrl: property.pinLocationUrl || '',
                         images: property.profilePictureUrl ? [property.profilePictureUrl] : [],
                         features: unit.amenities || [],
                         ownerDetails: {
-                            name: landlord?.name || 'Property Manager',
-                            contact: landlord?.phone || '',
-                            email: landlord?.email || ''
+                            name: contactOwner?.name || 'Property Manager',
+                            contact: contactOwner?.phone || '',
+                            email: contactOwner?.email || ''
                         },
                         dateCreated: new Date().toISOString()
                     };
@@ -231,15 +235,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (listing.type === 'Rent') {
                     const prop = properties.find(p => p.id === listing.propertyId);
                     const unit = prop?.units.find(u => u.id === listing.unitId);
+                    const landlord = landlords.find(l => l.id === prop?.landlordId);
+                    const assignedAgent = staff.find(s => s.id === prop?.assignedAgentId);
+                    const affiliate = landlords.find(l => l.role === 'Affiliate' && l.id === prop?.landlordId);
+                    const contactOwner = assignedAgent || affiliate || landlord;
                     if (unit && unit.status !== 'Vacant' && listing.status === 'Published') {
                         newListings[index] = { ...listing, status: 'Rented' };
                         hasChanges = true;
+                    } else if (unit && prop) {
+                        const nextOwner = {
+                            name: contactOwner?.name || 'Property Manager',
+                            contact: contactOwner?.phone || '',
+                            email: contactOwner?.email || ''
+                        };
+                        const nextPin = prop.pinLocationUrl || '';
+                        if (
+                            listing.location !== (prop.location || prop.branch) ||
+                            (listing.pinLocationUrl || '') !== nextPin ||
+                            listing.ownerDetails?.name !== nextOwner.name ||
+                            listing.ownerDetails?.contact !== nextOwner.contact ||
+                            listing.ownerDetails?.email !== nextOwner.email
+                        ) {
+                            newListings[index] = {
+                                ...listing,
+                                location: prop.location || prop.branch,
+                                pinLocationUrl: nextPin,
+                                ownerDetails: { ...listing.ownerDetails, ...nextOwner },
+                            };
+                            hasChanges = true;
+                        }
                     }
                 }
             });
             return hasChanges ? newListings : currentListings;
         });
-    }, [properties, landlords]);
+    }, [properties, landlords, staff]);
 
     // ... (Keep existing update functions) ...
     const addTenant = (t: TenantProfile) => setTenants(prev => [t, ...prev]);

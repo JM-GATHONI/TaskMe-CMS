@@ -87,7 +87,10 @@ export interface TenantProfile {
   unitId?: string;
   unit: string;
   rentAmount: number;
-  rentDueDate?: number; // Day of month
+  /** Rent due on this day of month (1–28). Default 1. */
+  rentDueDate?: number;
+  /** Grace days after due day before late fees accrue. Default 5 (due 1 + 5 → fines from day 6). */
+  rentGraceDays?: number;
   depositPaid?: number;
   onboardingDate: string;
   leaseEnd?: string;
@@ -121,6 +124,8 @@ export interface TenantProfile {
       rateType: '%' | 'KES';
       rateValue: number;
   };
+  /** When set, used for M-Pesa ledger (auth.users.id). Falls back to `id` if it looks like a UUID. */
+  authUserId?: string;
 }
 
 export interface Property {
@@ -152,9 +157,15 @@ export interface Property {
   subCounty?: string;
   zone?: string;
   subLocation?: string;
+  /** Google Maps share link / pin URL (coordinates, plus code, or map link). */
+  pinLocationUrl?: string;
   profilePictureUrl?: string;
   rentByType?: Record<string, number>;
   floorplan?: FloorPlan[];
+  /** Monthly Rental Income Tax rate for residential (e.g. 7.5 = 7.5%). */
+  monthlyRentalIncomeTaxPercent?: number;
+  /** VAT rate for commercial (e.g. 16 = 16%). */
+  commercialVatPercent?: number;
 }
 
 export interface Unit {
@@ -225,7 +236,12 @@ export interface TenantApplication {
   source?: string;
   rentStartDate?: string;
   rentAmount?: number;
+  /** Carried to TenantProfile when approved/converted. */
+  rentDueDate?: number;
+  rentGraceDays?: number;
   depositPaid?: number;
+  /** When true, a signed lease document must be uploaded. */
+  leaseSigned?: boolean;
   documents?: Array<{ name: string; type: string; url: string }>;
   recurringBills?: RecurringBillSettings;
   avatar?: string;
@@ -815,6 +831,8 @@ export interface MarketplaceListing {
   description: string;
   title: string;
   location: string;
+  /** Google map pin/share URL for live listings. */
+  pinLocationUrl?: string;
   images: string[];
   features: string[]; // "WiFi", "Pool", "Title Deed Ready"
   

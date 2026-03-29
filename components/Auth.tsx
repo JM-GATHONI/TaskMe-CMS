@@ -109,6 +109,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             const persistedStaff = staff.find(s => s.id === user.id);
 
+            const pickFirstWord = (s: string) => String(s ?? '').trim().split(/\s+/).filter(Boolean)[0] || '';
+
             // Resolve display name from public.profiles (first_name/full_name), then staff, then email
             let displayName: string = (user.email ?? 'User') as string;
             let profFirst: string | null = null;
@@ -130,6 +132,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 displayName = (staffRow?.name ?? user.email ?? 'User') as string;
             }
 
+            // Permanent UX: always greet by first name.
+            displayName = pickFirstWord(displayName) || (user.email ? pickFirstWord(user.email.split('@')[0]) : '') || 'User';
+
             // Hardening: ensure public.profiles has a stable first_name/full_name for consistent welcome headers.
             // Never store an email as first_name/full_name.
             try {
@@ -142,14 +147,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     looksLikeEmail(String(profFirst)) ||
                     (!profFull || looksLikeEmail(String(profFull)));
                 if (needUpsert && safeFirst) {
-                    await supabase.from('profiles').upsert({
+                    const meta: any = user.user_metadata ?? {};
+                    const idNumRaw = String(meta.id_number ?? '').trim();
+                    const row: Record<string, unknown> = {
                         id: user.id,
                         role: resolvedRole,
                         first_name: safeFirst,
                         full_name: safeFull,
-                        phone: (staffRow?.phone ?? (user.user_metadata as any)?.phone ?? null) || null,
+                        phone: (staffRow?.phone ?? meta.phone ?? null) || null,
                         email: user.email ?? null,
-                    });
+                    };
+                    if (idNumRaw) row.id_number = idNumRaw;
+                    await supabase.from('profiles').upsert(row, { onConflict: 'id' });
                 }
             } catch {
                 // non-blocking

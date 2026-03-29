@@ -635,6 +635,27 @@ const FieldProperties: React.FC = () => {
         };
     };
 
+    const insightsBanners = useMemo(() => {
+        if (properties.length === 0) return { top: [] as Array<{ p: Property; stats: ReturnType<typeof getPropertyStats> }>, attention: [] as Array<{ p: Property; stats: ReturnType<typeof getPropertyStats> }> };
+        const scored = properties.map(p => ({ p, stats: getPropertyStats(p) }));
+        const top = [...scored]
+            .sort((a, b) => b.stats.collectionRate - a.stats.collectionRate || b.stats.occupancyRate - a.stats.occupancyRate)
+            .slice(0, 3);
+        const attention = [...scored]
+            .filter(
+                ({ stats }) =>
+                    stats.totalUnits > 0 &&
+                    (stats.occupancyRate < 70 || (stats.expectedRent > 0 && stats.collectionRate < 70)),
+            )
+            .sort(
+                (a, b) =>
+                    a.stats.occupancyRate - b.stats.occupancyRate ||
+                    a.stats.collectionRate - b.stats.collectionRate,
+            )
+            .slice(0, 3);
+        return { top, attention };
+    }, [properties, tenants]);
+
     const handleViewLandlord = (e: React.MouseEvent, landlordId: string) => {
         e.stopPropagation();
         // Redirect logic if needed
@@ -678,23 +699,31 @@ const FieldProperties: React.FC = () => {
                 <div className="bg-green-50 p-4 rounded-xl border border-green-100">
                     <h4 className="font-bold text-green-800 mb-3 flex items-center"><Icon name="check" className="w-4 h-4 mr-2" /> Top Performing Assets</h4>
                     <div className="space-y-2">
-                        {properties.slice(0, 3).map(p => (
-                            <div key={p.id} className="bg-white p-2 rounded shadow-sm flex justify-between text-sm">
-                                <span className="font-medium">{p.name}</span>
-                                <span className="text-green-600 font-bold">98% Occ.</span>
-                            </div>
-                        ))}
+                        {insightsBanners.top.length === 0 ? (
+                            <p className="text-sm text-gray-600">No performance data yet.</p>
+                        ) : (
+                            insightsBanners.top.map(({ p, stats }) => (
+                                <div key={p.id} className="bg-white p-2 rounded shadow-sm flex justify-between text-sm gap-2">
+                                    <span className="font-medium truncate">{p.name}</span>
+                                    <span className="text-green-600 font-bold whitespace-nowrap">{stats.occupancyRate}% occ. · {stats.collectionRate}% coll.</span>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100">
                     <h4 className="font-bold text-red-800 mb-3 flex items-center"><Icon name="arrears" className="w-4 h-4 mr-2" /> Requires Attention</h4>
                      <div className="space-y-2">
-                        {properties.slice(-2).map(p => (
-                            <div key={p.id} className="bg-white p-2 rounded shadow-sm flex justify-between text-sm">
-                                <span className="font-medium">{p.name}</span>
-                                <span className="text-red-600 font-bold">High Vacancy</span>
-                            </div>
-                        ))}
+                        {insightsBanners.attention.length === 0 ? (
+                            <p className="text-sm text-gray-600">No assets below thresholds.</p>
+                        ) : (
+                            insightsBanners.attention.map(({ p, stats }) => (
+                                <div key={p.id} className="bg-white p-2 rounded shadow-sm flex justify-between text-sm gap-2">
+                                    <span className="font-medium truncate">{p.name}</span>
+                                    <span className="text-red-600 font-bold whitespace-nowrap">{stats.occupancyRate}% occ. · {stats.collectionRate}% coll.</span>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

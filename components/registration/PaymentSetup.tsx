@@ -1,9 +1,25 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '../Icon';
+import { supabase } from '../../utils/supabaseClient';
 
 const PaymentSetup: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'mpesa' | 'airtel' | 'bank'>('mpesa');
+    const [stkTestPhone, setStkTestPhone] = useState('');
+    const [stkTestBusy, setStkTestBusy] = useState(false);
+    const [stkTestMsg, setStkTestMsg] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data } = await supabase.auth.getSession();
+            const p = (data.session?.user?.user_metadata as any)?.phone;
+            if (!cancelled && p) setStkTestPhone(String(p));
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
     
     // M-Pesa Mock State
     const [mpesaConfig, setMpesaConfig] = useState({
@@ -103,6 +119,44 @@ const PaymentSetup: React.FC = () => {
         window.location.hash = '#/registration/overview';
     };
 
+    const handleTestStk = async () => {
+        setStkTestMsg(null);
+        const { data: sess } = await supabase.auth.getSession();
+        const uid = sess.session?.user?.id;
+        if (!uid) {
+            setStkTestMsg('Sign in first. Test STK uses your account id for the payment row in public.payments.');
+            return;
+        }
+        if (!/^(2547|07)\d{8}$/.test(stkTestPhone.replace(/\s/g, ''))) {
+            setStkTestMsg('Enter a valid Kenyan M-Pesa number (07… or 2547…).');
+            return;
+        }
+        setStkTestBusy(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: { phone: stkTestPhone, amount: 1, leaseId: null, userId: uid },
+            });
+            if (error) throw error;
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+            setStkTestMsg(`STK push sent. CheckoutRequestID: ${id}. Approve on the handset; status updates in public.payments.`);
+        } catch (e: any) {
+            let msg = e?.message ?? 'STK request failed.';
+            try {
+                const ctx = e?.context;
+                if (ctx && typeof ctx.json === 'function') {
+                    const body = await ctx.json();
+                    if (body?.error) msg = String(body.error);
+                }
+            } catch {
+                /* ignore */
+            }
+            setStkTestMsg(msg);
+        } finally {
+            setStkTestBusy(false);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
@@ -147,6 +201,43 @@ const PaymentSetup: React.FC = () => {
                                 <div>
                                     <h4 className="font-bold text-green-800 text-sm">M-Pesa Daraja API</h4>
                                     <p className="text-green-700 text-xs mt-1">Ensure your Consumer Key and Secret are from the Daraja portal matching the selected environment.</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-amber-50 p-4 rounded-lg border border-amber-100 flex items-start gap-3">
+                                <Icon name="info" className="w-5 h-5 text-amber-700 mt-0.5" />
+                                <div className="space-y-2 text-xs text-amber-900">
+                                    <p className="font-semibold">Live STK in this product</p>
+                                    <p>
+                                        Production credentials are not stored by this screen. Configure{' '}
+                                        <span className="font-mono">MPESA_CONSUMER_KEY</span>,{' '}
+                                        <span className="font-mono">MPESA_CONSUMER_SECRET</span>,{' '}
+                                        <span className="font-mono">MPESA_SHORTCODE</span>, and{' '}
+                                        <span className="font-mono">MPESA_PASSKEY</span> on the Supabase Edge Function{' '}
+                                        <span className="font-mono">mpesa-stk-push</span> (and callback <span className="font-mono">mpesa-callback</span>). The fields below are for planning and demos only until a secure admin vault exists.
+                                    </p>
+                                    <div className="pt-2 border-t border-amber-200/80 space-y-2">
+                                        <p className="font-semibold text-amber-950">Test STK (sandbox or production)</p>
+                                        <label className="block text-[11px] font-medium text-amber-950/90">M-Pesa number</label>
+                                        <input
+                                            type="tel"
+                                            value={stkTestPhone}
+                                            onChange={e => setStkTestPhone(e.target.value)}
+                                            className="w-full max-w-sm p-2 border border-amber-200 rounded-md bg-white text-gray-900"
+                                            placeholder="07XXXXXXXX"
+                                        />
+                                        {stkTestMsg && (
+                                            <p className="text-[11px] text-amber-950 whitespace-pre-wrap break-words">{stkTestMsg}</p>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleTestStk}
+                                            disabled={stkTestBusy}
+                                            className="px-4 py-2 bg-amber-800 text-white text-sm font-semibold rounded-md hover:bg-amber-900 disabled:opacity-50"
+                                        >
+                                            {stkTestBusy ? 'Sending…' : 'Send test STK (KES 1)'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 

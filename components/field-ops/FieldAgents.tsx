@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
+import { supabase } from '../../utils/supabaseClient';
+import { hashPassword } from '../../utils/security';
 import { StaffProfile, Property, Task, User, TenantProfile, TenantApplication, TaskStatus, TaskPriority, LandlordApplication } from '../../types';
 import Icon from '../Icon';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, ArcElement, RadialLinearScale } from 'chart.js';
@@ -108,18 +110,53 @@ const AddAgentModal: React.FC<{ onClose: () => void; onSave: (agent: StaffProfil
         leaveBalance: { annual: 21 },
         commissions: []
     });
+    const [initialPassword, setInitialPassword] = useState('123456');
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!formData.name || !formData.email) return alert("Name and Email required");
-        
-        const newAgent: StaffProfile = {
-            ...formData,
-            id: `staff-${Date.now()}`,
-            payrollInfo: { baseSalary: formData.salaryConfig?.amount || 0, nextPaymentDate: new Date().toISOString().split('T')[0] },
-            avatar: formData.name?.charAt(0).toUpperCase() || 'A'
-        } as StaffProfile;
+        if (!initialPassword || initialPassword.length < 6) return alert('Password must be at least 6 characters.');
 
-        onSave(newAgent);
+        setIsSaving(true);
+        try {
+            const nameParts = String(formData.name ?? '').trim().split(/\s+/).filter(Boolean);
+            const firstName = nameParts[0] ?? null;
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+            const fullName = String(formData.name ?? formData.email);
+
+            const { data: createdId, error } = await supabase.rpc('admin_create_auth_user', {
+                p_email: formData.email!,
+                p_password: initialPassword,
+                p_role: 'Field Agent',
+                p_full_name: fullName,
+                p_first_name: firstName,
+                p_last_name: lastName,
+                p_phone: formData.phone ?? null,
+                p_id_number: null,
+            });
+
+            if (error) throw error;
+            if (!createdId) throw new Error('Auth account was not created.');
+
+            const id = String(createdId);
+            const pwdHash = await hashPassword(initialPassword);
+            const newAgent: StaffProfile = {
+                ...formData,
+                id,
+                email: formData.email!,
+                phone: formData.phone || '',
+                payrollInfo: { baseSalary: formData.salaryConfig?.amount || 0, nextPaymentDate: new Date().toISOString().split('T')[0] },
+                avatar: formData.name?.charAt(0).toUpperCase() || 'A',
+                passwordHash: pwdHash,
+            } as StaffProfile;
+
+            onSave(newAgent);
+        } catch (e: any) {
+            console.warn('Field Agent creation failed', e);
+            alert(e?.message ?? e ?? 'Failed to create agent account.');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -166,10 +203,23 @@ const AddAgentModal: React.FC<{ onClose: () => void; onSave: (agent: StaffProfil
                             onChange={e => setFormData({...formData, salaryConfig: { type: 'Target Based', amount: Number(e.target.value) }})}
                         />
                     </div>
+                    <div className="pt-2">
+                        <label className="text-xs font-bold text-gray-500 uppercase">Initial login password</label>
+                        <input
+                            type="password"
+                            className="w-full p-3 border rounded-lg mt-1"
+                            value={initialPassword}
+                            onChange={e => setInitialPassword(e.target.value)}
+                            placeholder="Min 6 characters"
+                        />
+                        <p className="text-[10px] text-gray-500 mt-1">Creates a real Supabase login (same as Registration → Users).</p>
+                    </div>
                 </div>
                 <div className="mt-6 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg text-gray-700 font-bold">Cancel</button>
-                    <button onClick={handleSubmit} className="px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-primary-dark">Create Agent</button>
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg text-gray-700 font-bold">Cancel</button>
+                    <button type="button" disabled={isSaving} onClick={handleSubmit} className="px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-primary-dark disabled:opacity-50">
+                        {isSaving ? 'Creating...' : 'Create Agent'}
+                    </button>
                 </div>
             </div>
         </div>

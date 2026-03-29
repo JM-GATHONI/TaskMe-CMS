@@ -9,7 +9,7 @@ import { supabase } from '../../utils/supabaseClient';
 
 const UNIT_TYPES: string[] = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
 
-export const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; }> = ({ property, onEdit, onAddUnit }) => {
+export const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; onDelete: (p: Property) => void; }> = ({ property, onEdit, onAddUnit, onDelete }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const statusClasses = {
         Active: 'bg-green-100 text-green-800',
@@ -41,7 +41,23 @@ export const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Proper
                 </div>
                 <div className="flex items-center space-x-4">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[property.status]}`}>{property.status}</span>
-                    <button onClick={(e) => { e.stopPropagation(); onEdit(property); }} className="text-sm font-semibold text-primary hover:text-primary-dark">Edit</button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onEdit(property); }}
+                        className="text-sm font-semibold text-primary hover:text-primary-dark"
+                    >
+                        Edit
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Delete property \"${property.name}\"? This will remove it from the CMS lists but will not touch Supabase directly.`)) {
+                                onDelete(property);
+                            }
+                        }}
+                        className="text-xs font-semibold text-red-500 hover:text-red-700"
+                    >
+                        Delete
+                    </button>
                     <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} className="w-5 h-5 text-gray-400" />
                 </div>
             </div>
@@ -124,6 +140,8 @@ export const PropertyForm: React.FC<{
             remittanceCutoffDay: 5,
             nearestLandmark: '',
             assignedAgentId: '',
+            monthlyRentalIncomeTaxPercent: 7.5,
+            commercialVatPercent: 16,
         };
         const initialData = { ...defaults, ...property };
         if (property && property.floors !== undefined) {
@@ -625,13 +643,22 @@ export const PropertyForm: React.FC<{
                                     </button>
                                 </div>
                             ) : (
-                                <input 
-                                    name="nearestLandmark" 
-                                    value={formData.nearestLandmark || ''} 
-                                    onChange={handleChange} 
-                                    placeholder="Nearest Road / Landmark" 
-                                    className="p-2 border rounded bg-white w-full"
-                                />
+                                <>
+                                    <input 
+                                        name="nearestLandmark" 
+                                        value={formData.nearestLandmark || ''} 
+                                        onChange={handleChange} 
+                                        placeholder="Nearest Road / Landmark" 
+                                        className="p-2 border rounded bg-white w-full"
+                                    />
+                                    <input
+                                        name="pinLocationUrl"
+                                        value={formData.pinLocationUrl || ''}
+                                        onChange={handleChange}
+                                        placeholder="Google Maps pin / location URL (optional)"
+                                        className="p-2 border rounded bg-white w-full md:col-span-2"
+                                    />
+                                </>
                             )}
                         </div>
                     </div>
@@ -753,6 +780,70 @@ export const PropertyForm: React.FC<{
                                         <p className="text-right text-xs text-gray-400 mt-1 italic">
                                             Used for calculating Monthly Rental Income Tax. Landlord payout is Gross Rent minus applicable deductions.
                                         </p>
+
+                                        {(() => {
+                                            const mriPct = Number(formData.monthlyRentalIncomeTaxPercent ?? 7.5) || 0;
+                                            const vatPct = Number(formData.commercialVatPercent ?? 16) || 0;
+                                            const taxableBase = baseRent || 0;
+                                            const mriKes = Math.round(taxableBase * (mriPct / 100));
+                                            const vatKes = Math.round(taxableBase * (vatPct / 100));
+                                            const t = (formData.type || 'Residential').toLowerCase();
+                                            const isMixed = t.includes('mixed');
+                                            const isCommercialOnly = t.includes('commercial') && !isMixed;
+
+                                            return (
+                                                <div className="mt-4 pt-4 border-t border-dashed border-gray-200 space-y-3 text-sm">
+                                                    <p className="text-xs font-bold text-gray-600 uppercase">Tax rates (configurable)</p>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Residential MRI %</label>
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                value={formData.monthlyRentalIncomeTaxPercent ?? 7.5}
+                                                                onChange={e =>
+                                                                    setFormData(p => ({
+                                                                        ...p,
+                                                                        monthlyRentalIncomeTaxPercent: parseFloat(e.target.value) || 0,
+                                                                    }))
+                                                                }
+                                                                className="w-full p-2 border rounded text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Commercial VAT %</label>
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                value={formData.commercialVatPercent ?? 16}
+                                                                onChange={e =>
+                                                                    setFormData(p => ({
+                                                                        ...p,
+                                                                        commercialVatPercent: parseFloat(e.target.value) || 0,
+                                                                    }))
+                                                                }
+                                                                className="w-full p-2 border rounded text-sm"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                                                        <p className="font-semibold text-gray-700">Estimated tax on base rent (KES {taxableBase.toLocaleString()})</p>
+                                                        {(isMixed || !isCommercialOnly) && (
+                                                            <p className="flex justify-between text-gray-600">
+                                                                <span>Monthly Rental Income Tax ({mriPct}%)</span>
+                                                                <span className="font-bold text-gray-800">KES {mriKes.toLocaleString()}</span>
+                                                            </p>
+                                                        )}
+                                                        {(isMixed || isCommercialOnly) && (
+                                                            <p className="flex justify-between text-gray-600">
+                                                                <span>VAT ({vatPct}%)</span>
+                                                                <span className="font-bold text-gray-800">KES {vatKes.toLocaleString()}</span>
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             ) : (
@@ -1232,7 +1323,7 @@ const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: 
 };
 
 const Properties: React.FC = () => {
-    const { properties, addProperty, updateProperty, addUnitToProperty, landlords, staff, isDataLoading } = useData();
+    const { properties, addProperty, updateProperty, deleteProperty, addUnitToProperty, landlords, staff, isDataLoading } = useData();
     const [view, setView] = useState<'list' | 'form'>('list');
     const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
     const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
@@ -1261,6 +1352,11 @@ const Properties: React.FC = () => {
         if (p.id) updateProperty(p.id, p);
         else addProperty({ ...p, id: `prop-${Date.now()}`, units: [] });
         setView('list');
+    };
+
+    const handleDelete = (p: Property) => {
+        if (!p.id) return;
+        deleteProperty(p.id);
     };
 
     if (isDataLoading) {
@@ -1308,6 +1404,7 @@ const Properties: React.FC = () => {
                                 property={p} 
                                 onEdit={handleEdit} 
                                 onAddUnit={(prop) => { setPropertyForUnit(prop); setIsUnitModalOpen(true); }} 
+                                onDelete={handleDelete}
                             />
                         ))}
                         {filteredProperties.length === 0 && <p className="text-center text-gray-500 py-10">No properties found.</p>}

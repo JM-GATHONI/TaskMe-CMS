@@ -1,8 +1,6 @@
--- 0013_check_phone_unique.sql
--- Helper to check whether a phone number is already in use across core profile tables.
--- Used by Registration -> Users to enforce unique mobile numbers more robustly.
+-- Ensure public RPCs exist on projects that were linked before 0013 was added.
+-- Safe to re-run: replaces functions with the same signatures.
 
--- PostgreSQL cannot change the return type of an existing function with CREATE OR REPLACE (42P13).
 drop function if exists public.check_phone_unique(text);
 drop function if exists app.check_phone_unique(text);
 
@@ -49,4 +47,3 @@ as $$
 $$;
 
 grant execute on function public.check_phone_unique(text) to authenticated;
-

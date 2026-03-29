@@ -35,7 +35,9 @@ const FinesAndPenalties: React.FC = () => {
             </button>
             <div>
                 <h1 className="text-3xl font-bold text-gray-800">Fines & Penalties Configuration</h1>
-                <p className="text-lg text-gray-500 mt-1">Define rules for automated fines and penalty charges. Changes made here will persist for this session.</p>
+                <p className="text-lg text-gray-500 mt-1">
+                    Define rules for automated fines and penalty charges. Changes made here will persist for this session. Late rent on the tenant grid also uses each tenant&apos;s due day, grace period, and default per-day estimate from the lease configuration.
+                </p>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">

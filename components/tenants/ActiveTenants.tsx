@@ -3,6 +3,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { TenantProfile, Task, BillItem, FineItem, TenantRequest, RequestMessage, TaskPriority, TaskStatus, RecurringBillSettings, Notice, Message, Notification, OffboardingRecord, Bill } from '../../types';
 import Icon from '../Icon';
+import { supabase } from '../../utils/supabaseClient';
+import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
+import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 import { printSection } from '../../utils/exportHelper';
 import { ManageOffboardingModal } from './Offboarding';
 
@@ -30,6 +33,30 @@ const styles = `
 `;
 
 const GRID_CARD_CLASSES = "relative bg-white rounded-2xl border-t-[8px] border-t-primary border-b-[4px] border-b-secondary border-x-[3px] border-x-secondary shadow-[inset_0_0_60px_-15px_rgba(162,53,74,0.15)] hover:shadow-lg transition-all duration-300 overflow-hidden cursor-pointer group p-4 flex items-center justify-between min-h-[110px]";
+
+function isProbablyAuthUuid(id: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(id).trim());
+}
+
+function resolveTenantPaymentUserId(t: TenantProfile | undefined): string | null {
+    if (!t) return null;
+    if (t.authUserId && isProbablyAuthUuid(t.authUserId)) return t.authUserId;
+    if (isProbablyAuthUuid(t.id)) return t.id;
+    return null;
+}
+
+function tenantFullyAllocated(t: TenantProfile): boolean {
+    return (
+        !!t.propertyId &&
+        !!t.unitId &&
+        !!String(t.unit ?? '').trim() &&
+        !!String(t.propertyName ?? '').trim()
+    );
+}
+
+function isInactiveApplicantTenant(t: TenantProfile): boolean {
+    return t.status === 'Pending' || !tenantFullyAllocated(t);
+}
 
 // --- HELPER: Get Arrears Text ---
 const getArrearsText = (tenant: TenantProfile) => {
@@ -175,6 +202,20 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
     const [phone, setPhone] = useState('');
     const [txCode, setTxCode] = useState('');
     const [editableAmount, setEditableAmount] = useState(amount);
+    const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const tenant = tenants.find(t => t.id === tenantId);
+    const paymentUserId = resolveTenantPaymentUserId(tenant);
+    const tenantsRef = useRef(tenants);
+    const amountRef = useRef(editableAmount);
+    useEffect(() => {
+        tenantsRef.current = tenants;
+    }, [tenants]);
+    useEffect(() => {
+        amountRef.current = editableAmount;
+    }, [editableAmount]);
 
     // Pre-fill phone from tenant if available
     useEffect(() => {
@@ -182,60 +223,113 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
         if (t?.phone) setPhone(t.phone);
     }, [tenantId, tenants]);
 
-    const handlePay = () => {
+    useEffect(() => {
+        if (!paymentUserId || !checkoutRequestId) return;
+
+        const applyRow = (row: { status?: string | null; transaction_id?: string | null; result_desc?: string | null }) => {
+            if (String(row.status ?? '') === 'completed') {
+                const ref = String(row.transaction_id ?? '').trim() || checkoutRequestId;
+                setTxCode(ref);
+                const t = tenantsRef.current.find(te => te.id === tenantId);
+                const amt = Number(amountRef.current ?? 0);
+                if (t) {
+                    const newPayment = {
+                        date: new Date().toISOString().split('T')[0],
+                        amount: `KES ${amt.toLocaleString()}`,
+                        status: 'Paid' as const,
+                        method: 'M-Pesa',
+                        reference: ref,
+                    };
+                    const currentHistory = t.paymentHistory || [];
+                    const updates: Partial<TenantProfile> = {
+                        paymentHistory: [newPayment, ...currentHistory],
+                    };
+                    if (t.status === 'Pending') updates.status = 'Active';
+                    updateTenant(tenantId, updates);
+
+                    const msg = `Tenant ${t.name} paid KES ${amt.toLocaleString()} via M-Pesa.`;
+                    addNotification({
+                        id: `notif-${Date.now()}`,
+                        title: 'Payment Received',
+                        message: msg,
+                        date: new Date().toLocaleString(),
+                        read: false,
+                        type: 'Success',
+                        recipientRole: 'All',
+                    });
+                    addMessage({
+                        id: `msg-${Date.now()}`,
+                        recipient: { name: t.name, contact: t.phone },
+                        content: `Payment of KES ${amt.toLocaleString()} received. Ref: ${ref}. Thank you!`,
+                        channel: 'SMS',
+                        status: 'Sent',
+                        timestamp: new Date().toLocaleString(),
+                        priority: 'Normal',
+                    });
+                }
+                setStep('success');
+                setIsSubmitting(false);
+            }
+            if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
+                setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
+                setStep('input');
+                setIsSubmitting(false);
+                setCheckoutRequestId(null);
+            }
+        };
+
+        return followStkPaymentCompletion(supabase, paymentUserId, checkoutRequestId, applyRow);
+    }, [paymentUserId, checkoutRequestId, tenantId, updateTenant, addNotification, addMessage]);
+
+    const handlePay = async () => {
+        setErrorMsg(null);
+
+        if (!paymentUserId) {
+            setErrorMsg(
+                'This tenant is not linked to a Supabase login (auth user). STK cannot be recorded in the payments ledger. Use Record Payment for offline settlement, or onboard the tenant via Registration → Users so their ID matches their login.',
+            );
+            return;
+        }
+
         if (!/^(2547|07)\d{8}$/.test(phone.replace(/\s/g, ''))) {
             alert('Please enter a valid Kenyan mobile number');
             return;
         }
 
+        setIsSubmitting(true);
         setStep('processing');
-        setTimeout(() => {
-            const randomCode = `LGR${Date.now().toString().slice(-10)}QT`;
-            setTxCode(randomCode);
-            
-            // --- SAVE PAYMENT TO CONTEXT ---
-            const tenant = tenants.find(t => t.id === tenantId);
-            if (tenant) {
-                const newPayment = {
-                    date: new Date().toISOString().split('T')[0],
-                    amount: `KES ${Number(editableAmount ?? 0).toLocaleString()}`,
-                    status: 'Paid' as const,
-                    method: 'M-Pesa',
-                    reference: randomCode
-                };
-                // Safely update payment history
-                const currentHistory = tenant.paymentHistory || [];
-                updateTenant(tenantId, { paymentHistory: [newPayment, ...currentHistory] });
 
-                // --- TRIGGER NOTIFICATIONS ---
-                const msg = `Tenant ${tenant.name} paid KES ${Number(editableAmount ?? 0).toLocaleString()} via M-Pesa.`;
-                const newNotif: Notification = {
-                    id: `notif-${Date.now()}`,
-                    title: 'Payment Received',
-                    message: msg,
-                    date: new Date().toLocaleString(),
-                    read: false,
-                    type: 'Success',
-                    recipientRole: 'All' // Notify everyone
-                };
-                addNotification(newNotif);
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: {
+                    phone,
+                    amount: Math.round(Number(editableAmount) || 0),
+                    leaseId: null,
+                    userId: paymentUserId,
+                },
+            });
 
-                // Send Receipt SMS
-                const receiptSMS: Message = {
-                    id: `msg-${Date.now()}`,
-                    recipient: { name: tenant.name, contact: tenant.phone },
-                    content: `Payment of KES ${Number(editableAmount ?? 0).toLocaleString()} received. Ref: ${randomCode}. Thank you!`,
-                    channel: 'SMS',
-                    status: 'Sent',
-                    timestamp: new Date().toLocaleString(),
-                    priority: 'Normal'
-                };
-                addMessage(receiptSMS);
+            if (error) throw error;
+
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+
+            setCheckoutRequestId(id);
+        } catch (e: any) {
+            let msg = e?.message ?? 'Failed to initiate STK push.';
+            try {
+                const ctx = e?.context;
+                if (ctx && typeof ctx.json === 'function') {
+                    const body = await ctx.json();
+                    if (body?.error) msg = String(body.error);
+                }
+            } catch {
+                /* ignore */
             }
-            // -------------------------------
-
-            setStep('success');
-        }, 3000);
+            setErrorMsg(msg);
+            setStep('input');
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -411,6 +505,10 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         
                         <p className="text-sm text-gray-500 mb-6 -mt-4">Paying for {tenantName}</p>
 
+                        {errorMsg && (
+                            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3 mb-4">{errorMsg}</p>
+                        )}
+
                         <div className="mpesa-input-group">
                             <label className="mpesa-label">Mobile Number</label>
                             <input 
@@ -435,7 +533,9 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         
                         <div className="flex gap-3">
                             <button onClick={onClose} className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors">Cancel</button>
-                            <button onClick={handlePay} className="flex-[2] mpesa-btn">Send STK Push</button>
+                            <button type="button" disabled={isSubmitting} onClick={handlePay} className="flex-[2] mpesa-btn disabled:opacity-50">
+                                {isSubmitting ? 'Sending...' : 'Send STK Push'}
+                            </button>
                         </div>
                     </>
                 )}
@@ -1862,9 +1962,10 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 // --- LIST VIEW ---
 
 const ActiveTenants: React.FC = () => {
-    const { tenants, isDataLoading } = useData();
+    const { tenants, applications, isDataLoading } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('All');
+    const [listMode, setListMode] = useState<'active' | 'inactive'>('active');
    
     // Check URL for specific tenant view on load or change
     const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
@@ -1884,15 +1985,25 @@ const ActiveTenants: React.FC = () => {
         return () => window.removeEventListener('hashchange', handleHashChange);
     }, []);
 
+    const approvedPendingApps = useMemo(() => {
+        return applications.filter(a => a.status === 'Approved');
+    }, [applications]);
+
+    const inactivePool = useMemo(() => tenants.filter(isInactiveApplicantTenant), [tenants]);
+
     const filteredTenants = useMemo(() => {
-        return tenants.filter(t => {
-            const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                  t.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                  t.phone.includes(searchQuery);
+        const pool = listMode === 'inactive' ? inactivePool : tenants;
+
+        return pool.filter(t => {
+            const matchesSearch =
+                t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                t.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                t.phone.includes(searchQuery);
+            if (listMode === 'inactive') return matchesSearch;
             const matchesFilter = activeFilter === 'All' || t.status === activeFilter;
             return matchesSearch && matchesFilter;
         });
-    }, [tenants, searchQuery, activeFilter]);
+    }, [tenants, inactivePool, listMode, searchQuery, activeFilter]);
 
     const handleTenantClick = (id: string) => {
         window.location.hash = `#/tenants/active-tenants?tenantId=${id}`;
@@ -1907,7 +2018,7 @@ const ActiveTenants: React.FC = () => {
         return <div className="text-center py-8">Loading data...</div>;
     }
 
-    if (!isDataLoading && tenants.length === 0) {
+    if (!isDataLoading && tenants.length === 0 && applications.length === 0) {
         return <div className="text-center py-8 text-gray-500">No tenants yet. Add your first one.</div>;
     }
 
@@ -1924,47 +2035,84 @@ const ActiveTenants: React.FC = () => {
            
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Active Tenants</h1>
-                    <p className="text-lg text-gray-500 mt-1">Manage tenant profiles, bills, and house status.</p>
+                    <h1 className="text-3xl font-bold text-gray-800">
+                        {listMode === 'inactive' ? 'Inactive / Pending applicants' : 'Active Tenants'}
+                    </h1>
+                    <p className="text-lg text-gray-500 mt-1">
+                        {listMode === 'inactive'
+                            ? 'Tenants not yet active or missing allocation. Open a card to record payment or STK — successful M-Pesa confirms a Pending tenant as Active.'
+                            : 'Manage tenant profiles, bills, and house status.'}
+                    </p>
                 </div>
-                <div className="flex items-center gap-3 bg-white p-2 rounded-lg border shadow-sm">
-                    <Icon name="search" className="w-5 h-5 text-gray-400 ml-2" />
-                    <input
-                        className="outline-none text-sm w-48"
-                        placeholder="Search name, unit..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                    />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setListMode('active')}
+                            className={`px-4 py-2 text-sm font-bold ${listMode === 'active' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                            Active tenants
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setListMode('inactive')}
+                            className={`px-4 py-2 text-sm font-bold border-l border-gray-200 ${listMode === 'inactive' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                            Inactive / Pending ({inactivePool.length})
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white p-2 rounded-lg border shadow-sm">
+                        <Icon name="search" className="w-5 h-5 text-gray-400 ml-2" />
+                        <input
+                            className="outline-none text-sm w-48"
+                            placeholder="Search name, unit..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
+                    </div>
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="flex gap-2 overflow-x-auto pb-2">
-                {['All', 'Active', 'Overdue', 'Notice', 'Vacated'].map(status => (
+            {approvedPendingApps.length > 0 && listMode === 'inactive' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-amber-900">
+                        <strong>{approvedPendingApps.length}</strong> approved application(s) may still need a tenant record or allocation. Review them in Applications.
+                    </p>
                     <button
-                        key={status}
-                        onClick={() => setActiveFilter(status)}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${activeFilter === status ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border'}`}
+                        type="button"
+                        onClick={() => { window.location.hash = '#/tenants/applications'; }}
+                        className="px-4 py-2 bg-amber-700 text-white text-sm font-bold rounded-lg hover:bg-amber-800"
                     >
-                        {status}
+                        Open Applications
                     </button>
-                ))}
-            </div>
+                </div>
+            )}
+
+            {/* Filters */}
+            {listMode === 'active' && (
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                    {['All', 'Active', 'Overdue', 'Notice', 'Vacated'].map(status => (
+                        <button
+                            key={status}
+                            type="button"
+                            onClick={() => setActiveFilter(status)}
+                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${activeFilter === status ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border'}`}
+                        >
+                            {status}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredTenants.map(tenant => {
                     const currentMonthIso = new Date().toISOString().slice(0, 7);
-                    const isAllocated =
-                        !!tenant.propertyId &&
-                        !!tenant.unitId &&
-                        !!String(tenant.unit ?? '').trim() &&
-                        !!String(tenant.propertyName ?? '').trim();
+                    const isAllocated = tenantFullyAllocated(tenant);
 
                     const isPaid = tenant.paymentHistory.some(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid');
-                    const dueDay = tenant.rentDueDate || 5;
-                    const daysLate = Math.max(0, new Date().getDate() - dueDay);
-                    const automatedLateFine = (!isAllocated || isPaid || new Date().getDate() <= dueDay) ? 0 : daysLate * 100;
+                    const rentStat = getMonthlyRentStatus(tenant, { isRentPaidThisMonth: isPaid });
+                    const automatedLateFine = rentStat.automatedLateFine;
                     const rentDue = !isAllocated ? 0 : (isPaid ? 0 : tenant.rentAmount);
                     const pendingBills = !isAllocated
                         ? 0
