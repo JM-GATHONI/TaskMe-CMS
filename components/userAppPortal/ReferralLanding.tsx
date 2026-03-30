@@ -574,6 +574,7 @@ const UnitBookingModal: React.FC<{ unit: BookableVacancy; onClose: () => void }>
             propertyName: unit.property.name,
             unit: unit.unitNumber,
             rentAmount: unit.rent,
+            authUserId: userId || undefined,
             source: 'Referral landing — Book Now',
         });
         window.location.hash = '#/user-app-portal/tenant-portal';

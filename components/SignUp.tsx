@@ -12,7 +12,12 @@ interface SignUpProps {
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
-    const { systemSettings, addTenant, addLandlord, addRenovationInvestor, addVendor, addStaff, tenants, landlords, renovationInvestors, vendors, staff } = useData();
+    const { 
+        systemSettings, 
+        addTenant, addLandlord, addRenovationInvestor, addVendor, addStaff, 
+        deleteTenant, deleteLandlord, deleteRenovationInvestor, deleteVendor, deleteStaff,
+        tenants, landlords, renovationInvestors, vendors, staff 
+    } = useData();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
@@ -177,6 +182,10 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                     };
 
                     if (resolvedRole === 'Tenant') {
+                        deleteLandlord(uid);
+                        deleteRenovationInvestor(uid);
+                        deleteVendor(uid);
+                        deleteStaff(uid);
                         if (!tenants.some(t => t.id === uid)) {
                             addTenant({
                                 ...base,
@@ -191,10 +200,18 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                             } as any);
                         }
                     } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
+                        deleteTenant(uid);
+                        deleteRenovationInvestor(uid);
+                        deleteVendor(uid);
+                        deleteStaff(uid);
                         if (!landlords.some(l => l.id === uid)) {
                             addLandlord({ ...base, role: resolvedRole } as any);
                         }
                     } else if (resolvedRole === 'Investor') {
+                        deleteTenant(uid);
+                        deleteLandlord(uid);
+                        deleteVendor(uid);
+                        deleteStaff(uid);
                         if (!renovationInvestors.some(i => i.id === uid)) {
                             addRenovationInvestor({
                                 ...base,
@@ -205,6 +222,10 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                             } as any);
                         }
                     } else if (resolvedRole === 'Contractor') {
+                        deleteTenant(uid);
+                        deleteLandlord(uid);
+                        deleteRenovationInvestor(uid);
+                        deleteStaff(uid);
                         if (!vendors.some(v => v.id === uid)) {
                             addVendor({
                                 id: uid,
@@ -217,6 +238,11 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                             } as any);
                         }
                     } else {
+                        // Staff roles: Field Agent, Caretaker, etc.
+                        deleteTenant(uid);
+                        deleteLandlord(uid);
+                        deleteRenovationInvestor(uid);
+                        deleteVendor(uid);
                         if (!staff.some(s => s.id === uid)) {
                             addStaff({
                                 ...base,

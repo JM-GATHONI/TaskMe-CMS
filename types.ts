@@ -242,6 +242,8 @@ export interface TenantApplication {
   depositPaid?: number;
   /** When true, a signed lease document must be uploaded. */
   leaseSigned?: boolean;
+  /** When set, links this application to an auth.users user for STK payment polling. */
+  authUserId?: string;
   documents?: Array<{ name: string; type: string; url: string }>;
   recurringBills?: RecurringBillSettings;
   avatar?: string;

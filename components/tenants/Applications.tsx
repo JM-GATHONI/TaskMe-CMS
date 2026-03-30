@@ -6,6 +6,7 @@ import Icon from '../Icon';
 import { uploadToBucket } from '../../utils/supabaseStorage';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
+import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -18,6 +19,27 @@ export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProf
 
 const APP_CARD_CLASSES = "relative bg-white rounded-2xl border-t-[8px] border-t-primary border-b-[4px] border-b-secondary border-x-[3px] border-x-secondary shadow-[inset_0_0_60px_-15px_rgba(162,53,74,0.15)] hover:shadow-lg transition-all duration-300 overflow-hidden p-4 flex items-center justify-between min-h-[110px]";
 const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(val ?? '').trim());
+
+function tenantFullyAllocated(t: Partial<TenantProfile>): boolean {
+    return !!t.propertyId && !!t.unitId && !!String(t.unit ?? '').trim() && !!String(t.propertyName ?? '').trim();
+}
+
+// Arrears text copied to keep Applications card internals aligned with Active Tenants cards.
+const getArrearsText = (tenant: TenantProfile) => {
+    if (tenant.status !== 'Overdue') return null;
+
+    const rentBills = tenant.outstandingBills?.filter(b =>
+        (b.type === 'Rent Arrears' || b.type === 'Rent' || (b.description && b.description.toLowerCase().includes('rent'))) &&
+        b.status === 'Pending',
+    );
+
+    if (rentBills && rentBills.length > 0) {
+        const months = [...new Set(rentBills.map(b => new Date(b.date).toLocaleString('default', { month: 'long' })))];
+        if (months.length > 0) return `Rent Due (${months.join(', ')})`;
+    }
+
+    return 'Rent Due (Arrears)';
+};
 
 // --- MOVE TENANT MODAL ---
 const MoveTenantModal: React.FC<{
@@ -767,6 +789,65 @@ const AppMpesaModal: React.FC<{
     );
 };
 
+const ProfileHubModal: React.FC<{
+    record: UnifiedRecord;
+    onClose: () => void;
+    onManualPay: () => void;
+    onStkPay: () => void;
+    onEdit: () => void;
+    onMove?: () => void;
+    onDelete?: () => void;
+}> = ({ record, onClose, onManualPay, onStkPay, onEdit, onMove, onDelete }) => {
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[2150] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800">View Profile</h3>
+                        <p className="text-xs text-gray-500 mt-1">{record.name} • {record.propertyName || record.property} • {record.unit}</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700 font-bold">
+                        <Icon name="close" className="w-4 h-4" />
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                    <button
+                        type="button"
+                        onClick={onManualPay}
+                        className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
+                    >
+                        Record Manual Pay
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onStkPay}
+                        className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md transition-colors"
+                    >
+                        M-Pesa Push
+                    </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mt-5">
+                    <button type="button" onClick={onEdit} className="flex-1 px-4 py-2 bg-gray-100 text-gray-800 rounded font-bold text-xs hover:bg-gray-200">
+                        Edit Details
+                    </button>
+                    {onMove && (
+                        <button type="button" onClick={onMove} className="px-4 py-2 bg-blue-50 text-blue-800 rounded font-bold text-xs hover:bg-blue-100">
+                            Move
+                        </button>
+                    )}
+                    {onDelete && (
+                        <button type="button" onClick={onDelete} className="px-4 py-2 bg-red-50 text-red-700 rounded font-bold text-xs hover:bg-red-100">
+                            Delete
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Applications: React.FC = () => {
     const { applications, tenants, properties, addApplication, updateApplication, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -776,6 +857,7 @@ const Applications: React.FC = () => {
     const [moveTenant, setMoveTenant] = useState<TenantProfile | null>(null);
     const [manualPayRecord, setManualPayRecord] = useState<UnifiedRecord | null>(null);
     const [stkPayRecord, setStkPayRecord] = useState<UnifiedRecord | null>(null);
+    const [profileHubRecord, setProfileHubRecord] = useState<UnifiedRecord | null>(null);
 
     const handleAddNew = () => {
         setSelectedRecord({ recordType: 'Application', displayStatus: 'New' });
@@ -901,7 +983,16 @@ const Applications: React.FC = () => {
             const byPhone = tenants.find(x => x.phone === t.phone && x.authUserId && isUuid(x.authUserId));
             return byPhone?.authUserId ?? null;
         }
-        const byPhone = tenants.find(x => x.phone === record.phone && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)));
+        if (record.recordType === 'Application') {
+            const authUserId = (record as any).authUserId;
+            if (authUserId && isUuid(authUserId)) return authUserId;
+            // For applications created by other flows that don't include authUserId yet,
+            // STK polling cannot be completed reliably.
+            return null;
+        }
+        const byPhone = tenants.find(
+            x => x.phone === record.phone && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)),
+        );
         if (!byPhone) return null;
         return byPhone.authUserId && isUuid(byPhone.authUserId) ? byPhone.authUserId : (isUuid(byPhone.id) ? byPhone.id : null);
     };
@@ -923,6 +1014,87 @@ const Applications: React.FC = () => {
             });
             return;
         }
+        if (record.recordType === 'Application' && record.id) {
+            const app = applications.find(a => a.id === record.id) ?? (record as any as TenantApplication);
+            if (!app) return;
+
+            const rentAmount = Number(app.rentAmount || 0);
+            const depositPaid = Number(app.depositPaid || 0);
+            const expectedTotal = rentAmount + depositPaid;
+
+            // This conversion requires the first payment to include rent+deposit.
+            if (expectedTotal > 0 && Number(amount || 0) + 0.00001 < expectedTotal) {
+                alert(`First payment must cover rent + deposit (expected KES ${expectedTotal.toLocaleString()}).`);
+                return;
+            }
+
+            if (!app.propertyId || !app.unitId) {
+                alert('Property and unit allocation are required to activate the tenant.');
+                return;
+            }
+
+            const prop = properties.find(p => p.id === app.propertyId);
+            const unit = prop?.units?.find(u => u.id === app.unitId);
+            if (!prop || !unit) {
+                alert('Could not find the property/unit for this application.');
+                return;
+            }
+
+            const existingActiveSameUnit = tenants.find(
+                t => t.propertyId === app.propertyId && t.unitId === app.unitId && t.status === 'Active' && t.id !== app.id,
+            );
+            if (existingActiveSameUnit) {
+                alert('This unit is already allocated to an active tenant.');
+                return;
+            }
+
+            // 1) Mark unit as occupied.
+            const updatedUnits = prop.units.map(u => (u.id === app.unitId ? { ...u, status: 'Occupied' } : u));
+            updateProperty(prop.id, { units: updatedUnits as any });
+
+            // 2) Upsert TenantProfile.
+            const tenantPayload: Partial<TenantProfile> = {
+                id: app.id,
+                name: app.name,
+                username: '',
+                email: String(app.email || ''),
+                phone: String(app.phone || ''),
+                idNumber: String(app.idNumber || ''),
+                status: 'Active',
+                propertyId: app.propertyId,
+                propertyName: app.propertyName || prop.name,
+                unitId: app.unitId,
+                unit: app.unit || unit.unitNumber,
+                rentAmount: Number(app.rentAmount || unit.rent || 0),
+                rentDueDate: app.rentDueDate,
+                rentGraceDays: app.rentGraceDays,
+                depositPaid,
+                onboardingDate: new Date().toISOString().split('T')[0],
+                paymentHistory: [payment],
+                outstandingBills: [],
+                outstandingFines: [],
+                maintenanceRequests: [],
+                authUserId: (app as any).authUserId,
+                avatar: app.avatar,
+                profilePicture: (app as any).profilePicture,
+                kraPin: app.kraPin,
+            };
+
+            const alreadyTenant = tenants.find(t => t.id === app.id);
+            if (alreadyTenant) {
+                updateTenant(app.id, {
+                    ...tenantPayload,
+                    paymentHistory: [payment, ...(alreadyTenant.paymentHistory || [])],
+                } as any);
+            } else {
+                addTenant(tenantPayload as TenantProfile);
+            }
+
+            // 3) Remove the application so it effectively "moves" into Active tenants.
+            deleteApplication(app.id);
+            return;
+        }
+
         if (record.id) {
             updateApplication(record.id, { status: 'Approved' } as Partial<TenantApplication>);
         }
@@ -1003,43 +1175,111 @@ const Applications: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredList.map(record => (
-                        <div key={record.id} className={APP_CARD_CLASSES}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 overflow-hidden">
-                                    {(record.avatar || record.profilePicture) ? (
-                                        <img src={record.avatar || record.profilePicture} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <span>{String(record.name || '?').charAt(0)}</span>
-                                    )}
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <p className="font-bold text-gray-800">{record.name}</p>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${record.recordType === 'Tenant' ? 'bg-white border-green-200 text-green-700' : 'bg-white border-blue-200 text-blue-700'}`}>
-                                            {record.recordType}
-                                        </span>
+                    {filteredList.map(record => {
+                        const currentMonthIso = new Date().toISOString().slice(0, 7);
+                        const isApplication = record.recordType === 'Application';
+                        const tenant = record as any as TenantProfile;
+
+                        const isAllocated = !isApplication ? tenantFullyAllocated(tenant) : false;
+                        const isPaid = !isApplication && Array.isArray(tenant.paymentHistory)
+                            ? tenant.paymentHistory.some(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid')
+                            : false;
+
+                        const rentAmountForApps = Number(record.rentAmount || 0);
+                        const depositForApps = Number((record as any).depositPaid || 0);
+
+                        const rentDisplay = isApplication
+                            ? rentAmountForApps
+                            : Number(isAllocated ? (tenant.rentAmount ?? 0) : 0);
+
+                        const automatedLateFine = !isApplication && isAllocated
+                            ? getMonthlyRentStatus(tenant, { isRentPaidThisMonth: isPaid }).automatedLateFine
+                            : 0;
+
+                        const pendingBills = !isApplication && isAllocated
+                            ? (tenant.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0)
+                            : 0;
+
+                        const pendingFines = !isApplication && isAllocated
+                            ? (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0)
+                            : 0;
+
+                        const rentDue = isApplication
+                            ? rentAmountForApps
+                            : (!isAllocated ? 0 : (isPaid ? 0 : (tenant.rentAmount ?? 0)));
+
+                        const totalDue = isApplication
+                            ? (rentAmountForApps + depositForApps)
+                            : (rentDue + pendingBills + pendingFines + automatedLateFine);
+
+                        const arrearsText = !isApplication ? getArrearsText(tenant) : null;
+
+                        return (
+                            <div
+                                key={record.id}
+                                className={APP_CARD_CLASSES}
+                                onClick={() => setProfileHubRecord(record)}
+                            >
+                                <div className="flex flex-col h-full w-full">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold border border-gray-200 uppercase">
+                                                {String(record.name || '?').trim().charAt(0)}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-gray-800">{record.name}</h3>
+                                                <p className="text-xs text-gray-500">{record.unit} • {record.propertyName || record.property}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                                                !isAllocated ? 'bg-yellow-100 text-yellow-800' :
+                                                    tenant.status === 'Active' ? 'bg-green-100 text-green-700' :
+                                                        tenant.status === 'Overdue' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                            }`}>
+                                                {!isAllocated ? 'Pending Allocation' : tenant.status}
+                                            </span>
+                                            {!isApplication && tenant.houseStatus && tenant.houseStatus.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 justify-end">
+                                                    {tenant.houseStatus.slice(0, 2).map((status: string) => (
+                                                        <span key={status} className="text-[9px] bg-red-50 text-red-600 px-1 rounded border border-red-100">
+                                                            {status}
+                                                        </span>
+                                                    ))}
+                                                    {tenant.houseStatus.length > 2 && <span className="text-[9px] text-gray-400">+{tenant.houseStatus.length - 2}</span>}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                    <p className="text-xs text-gray-500">{record.propertyName || record.property} • <span className="font-bold">{record.unit}</span></p>
-                                    <p className="text-[11px] text-gray-400">{record.phone} • {record.submittedDate || '-'}</p>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(record.displayStatus, record.recordType)}`}>
-                                    {record.displayStatus}
-                                </span>
-                                <div className="flex gap-2 justify-end mt-3">
-                                    {record.recordType === 'Tenant' && (
-                                        <button onClick={() => handleMoveClick(record as TenantProfile)} className="text-blue-600 hover:text-blue-800 font-bold bg-blue-50 px-2 py-1 rounded text-xs">Move</button>
+
+                                    <div className="grid grid-cols-2 gap-2 text-sm mt-auto border-t pt-3 mb-3">
+                                        <div>
+                                            <p className="text-xs text-gray-400 uppercase font-bold">Rent</p>
+                                            <p className="font-semibold">KES {Number(rentDisplay ?? 0).toLocaleString()}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-gray-400 uppercase font-bold">Total Due</p>
+                                            <p className={`font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                KES {Number(totalDue ?? 0).toLocaleString()}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {arrearsText && (
+                                        <div className="mb-2 text-xs text-red-600 font-bold bg-red-50 p-1 rounded text-center border border-red-100">
+                                            {arrearsText}
+                                        </div>
                                     )}
-                                    <button onClick={() => setManualPayRecord(record)} className="text-green-700 hover:text-green-800 font-bold bg-green-50 px-2 py-1 rounded text-xs">Manual Pay</button>
-                                    <button onClick={() => setStkPayRecord(record)} className="text-emerald-700 hover:text-emerald-800 font-bold bg-emerald-50 px-2 py-1 rounded text-xs">STK</button>
-                                    <button onClick={() => handleEdit(record)} className="text-primary hover:text-primary-dark font-bold bg-primary/5 px-2 py-1 rounded text-xs">Edit</button>
-                                    <button onClick={() => handleDelete(record)} className="text-red-500 hover:text-red-700 font-bold bg-red-50 px-2 py-1 rounded text-xs">Delete</button>
+
+                                    <div className="flex gap-2">
+                                        <button type="button" className="flex-1 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded border border-gray-200 transition-colors">
+                                            View Profile
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                     {filteredList.length === 0 && (
                         <div className="col-span-full text-center py-12 text-gray-500">No records found.</div>
                     )}
@@ -1052,6 +1292,36 @@ const Applications: React.FC = () => {
                     onClose={() => setIsModalOpen(false)} 
                     onSave={handleSave} 
                     properties={properties}
+                />
+            )}
+            {profileHubRecord && (
+                <ProfileHubModal
+                    record={profileHubRecord}
+                    onClose={() => setProfileHubRecord(null)}
+                    onManualPay={() => {
+                        setProfileHubRecord(null);
+                        setManualPayRecord(profileHubRecord);
+                    }}
+                    onStkPay={() => {
+                        setProfileHubRecord(null);
+                        setStkPayRecord(profileHubRecord);
+                    }}
+                    onEdit={() => {
+                        setProfileHubRecord(null);
+                        handleEdit(profileHubRecord);
+                    }}
+                    onMove={
+                        profileHubRecord.recordType === 'Tenant'
+                            ? () => {
+                                setProfileHubRecord(null);
+                                handleMoveClick(profileHubRecord as TenantProfile);
+                            }
+                            : undefined
+                    }
+                    onDelete={() => {
+                        setProfileHubRecord(null);
+                        handleDelete(profileHubRecord);
+                    }}
                 />
             )}
             

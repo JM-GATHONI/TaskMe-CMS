@@ -2,6 +2,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
+import { getRentDueDay, getRentGraceDays } from '../../utils/rentSchedule';
 
 const Chart: React.FC<{ type: 'bar' | 'doughnut' | 'line'; data: any; options?: any; height?: string }> = ({ type, data, options, height = 'h-64' }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,12 +119,26 @@ const TenantInsights: React.FC = () => {
     const currentMonthPrefix = new Date().toISOString().slice(0, 7);
 
     const paymentCompliance = useMemo(() => {
-        const pool = tenants.filter(t => ['Active', 'Notice'].includes(t.status));
+        const pool = tenants.filter(t => ['Active', 'Notice', 'Overdue'].includes(t.status));
         if (pool.length === 0) return 0;
-        const paid = pool.filter(t =>
-            (t.paymentHistory || []).some(p => p.date.startsWith(currentMonthPrefix) && p.status === 'Paid'),
-        ).length;
-        return Math.round((paid / pool.length) * 100);
+
+        const compliant = pool.filter(t => {
+            const dueDay = getRentDueDay(t);
+            const graceDays = getRentGraceDays(t);
+            const lateStartDay = dueDay + graceDays;
+
+            const paidThisMonth = (t.paymentHistory || [])
+                .filter(p => p.date.startsWith(currentMonthPrefix) && p.status === 'Paid')
+                // Use the earliest paid entry for "habit" classification this month.
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            if (!paidThisMonth.length) return false;
+            const payDate = new Date(paidThisMonth[0].date);
+            const payDom = payDate.getDate();
+            return payDom <= lateStartDay;
+        }).length;
+
+        return Math.round((compliant / pool.length) * 100);
     }, [tenants, currentMonthPrefix]);
 
     const retentionRate = useMemo(() => {
@@ -196,21 +211,41 @@ const TenantInsights: React.FC = () => {
         let lateLong = 0;
         let def = 0;
         const billable = tenants.filter(t => ['Active', 'Notice', 'Overdue'].includes(t.status));
+
         for (const t of billable) {
-            const paidThisMonth = (t.paymentHistory || []).filter(
-                p => p.date.startsWith(currentMonthPrefix) && p.status === 'Paid',
-            );
+            const dueDay = getRentDueDay(t);
+            const graceDays = getRentGraceDays(t);
+            const lateStartDay = dueDay + graceDays;
+
+            const paidThisMonth = (t.paymentHistory || [])
+                .filter(p => p.date.startsWith(currentMonthPrefix) && p.status === 'Paid')
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            const todayDom = new Date().getDate();
+
+            // No paid entry this month: classify by how far we are into late window.
             if (!paidThisMonth.length) {
-                if (t.status === 'Overdue') def++;
+                if (t.status === 'Overdue' && todayDom > lateStartDay) {
+                    def++;
+                    continue;
+                }
+
+                const daysLatePotential = todayDom - lateStartDay;
+                if (daysLatePotential <= 0) onTime++;
+                else if (daysLatePotential <= 7) lateShort++;
                 else lateLong++;
                 continue;
             }
-            const payDate = new Date(paidThisMonth[0].date);
-            const day = payDate.getDate();
-            if (day <= 7) onTime++;
-            else if (day <= 14) lateShort++;
+
+            // Paid entry exists: classify based on when the rent was actually paid this month.
+            const payDom = new Date(paidThisMonth[0].date).getDate();
+            const daysLateActual = payDom - lateStartDay;
+
+            if (daysLateActual <= 0) onTime++;
+            else if (daysLateActual <= 7) lateShort++;
             else lateLong++;
         }
+
         const sum = onTime + lateShort + lateLong + def || 1;
         const pct = (n: number) => Math.round((n / sum) * 100);
         return {
