@@ -296,10 +296,25 @@ export const ApplicationFormModal: React.FC<{
             }
         }
 
+        const activePropertyResolved = properties.find(p => p.id === selectedPropertyId);
+        const activeUnitResolved = activePropertyResolved?.units?.find(u => u.id === selectedUnitId);
+
+        const resolvedPropertyName = activePropertyResolved?.name ?? formData.propertyName ?? formData.property ?? '';
+        const resolvedUnitNumber = activeUnitResolved?.unitNumber ?? formData.unit ?? '';
+
+        const resolvedRent = activeUnitResolved?.rent ?? activePropertyResolved?.defaultMonthlyRent ?? formData.rentAmount ?? 0;
+
         onSave({
             ...formData,
             propertyId: selectedPropertyId,
-            unitId: selectedUnitId
+            // Ensure UI allocation checks (ActiveTenants tenantFullyAllocated) evaluate correctly.
+            propertyName: resolvedPropertyName,
+            property: resolvedPropertyName, // legacy
+            unitId: selectedUnitId,
+            unit: resolvedUnitNumber,
+            // Tenant allocation implies they should show under Active Tenants.
+            status: formData.recordType === 'Tenant' ? 'Active' : formData.status,
+            rentAmount: resolvedRent,
         });
     };
 
