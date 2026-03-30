@@ -1224,7 +1224,7 @@ const Applications: React.FC = () => {
                                     <div className="flex justify-between items-start mb-3">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold border border-gray-200 uppercase">
-                                                {String(record.name || '?').trim().charAt(0)}
+                                                {record.avatar ? String(record.avatar).charAt(0) : (record.name?.charAt(0) ?? '?')}
                                             </div>
                                             <div>
                                                 <h3 className="font-bold text-gray-800">{record.name}</h3>

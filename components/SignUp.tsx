@@ -148,24 +148,86 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
 
                 displayName = pickFirstWord(displayName) || (user.email ? pickFirstWord(user.email.split('@')[0]) : '') || 'User';
 
-                const loggedIn: StaffProfile = {
-                    id: user.id,
-                    name: displayName,
-                    role: (staffRow?.role ?? resolvedRole) as StaffProfile['role'],
-                    email: (user.email ?? staffRow?.email ?? email) as string,
-                    phone: (staffRow?.phone ?? phone) as string,
-                    branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
-                    status: (staffRow?.status ?? 'Active') as any,
-                    avatar: displayName.split(' ').map((n: string) => n[0]).join('') || 'U',
-                    salaryConfig: persistedStaff?.salaryConfig ?? { type: 'Monthly', amount: 0 },
-                    bankDetails: persistedStaff?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
-                    payrollInfo: persistedStaff?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
-                    leaveBalance: persistedStaff?.leaveBalance ?? { annual: 0 },
-                    commissions: persistedStaff?.commissions ?? [],
-                    deductions: persistedStaff?.deductions ?? [],
-                    attendanceRecord: persistedStaff?.attendanceRecord ?? {},
-                    passwordHash: '',
-                };
+                // Portals rely on role-specific fields (Tenant needs unit/rent/paymentHistory, etc.).
+                // Keep `name` as the canonical full name for internal matching; headers use public.profiles first_name.
+                let loggedIn: any = null;
+                const uid = user.id;
+                if (resolvedRole === 'Tenant') {
+                    loggedIn = {
+                        id: uid,
+                        name: fullName,
+                        role: 'Tenant',
+                        username: '',
+                        email: (user.email ?? email) as string,
+                        phone: (staffRow?.phone ?? phone) as string,
+                        idNumber: (idNumber ?? '') as string,
+                        status: 'Active' as const,
+                        unit: '',
+                        rentAmount: 0,
+                        onboardingDate: new Date().toISOString().split('T')[0],
+                        paymentHistory: [],
+                        outstandingBills: [],
+                        outstandingFines: [],
+                        maintenanceRequests: [],
+                        authUserId: uid,
+                    } as any;
+                } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
+                    loggedIn = {
+                        id: uid,
+                        name: fullName,
+                        role: resolvedRole,
+                        username: '',
+                        email: (user.email ?? email) as string,
+                        phone: (staffRow?.phone ?? phone) as string,
+                        idNumber: (idNumber ?? '') as string,
+                        status: 'Active' as const,
+                        branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
+                    } as any;
+                } else if (resolvedRole === 'Investor') {
+                    loggedIn = {
+                        id: uid,
+                        name: fullName,
+                        role: 'Investor',
+                        username: '',
+                        email: (user.email ?? email) as string,
+                        phone: (staffRow?.phone ?? phone) as string,
+                        idNumber: (idNumber ?? '') as string,
+                        status: 'Active' as const,
+                        joinDate: new Date().toISOString().split('T')[0],
+                    } as any;
+                } else if (resolvedRole === 'Contractor') {
+                    loggedIn = {
+                        id: uid,
+                        name: fullName,
+                        role: 'Contractor',
+                        username: '',
+                        email: (user.email ?? email) as string,
+                        phone: (staffRow?.phone ?? phone) as string,
+                        idNumber: (idNumber ?? '') as string,
+                        status: 'Active' as const,
+                        specialty: specialty || 'General',
+                    } as any;
+                } else {
+                    // Staff roles: Field Agent, Caretaker, etc.
+                    loggedIn = {
+                        id: uid,
+                        name: fullName,
+                        role: (staffRow?.role ?? resolvedRole) as StaffProfile['role'],
+                        email: (user.email ?? staffRow?.email ?? email) as string,
+                        phone: (staffRow?.phone ?? phone) as string,
+                        branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
+                        status: (staffRow?.status ?? 'Active') as any,
+                        avatar: displayName.split(' ').map((n: string) => n[0]).join('') || 'U',
+                        salaryConfig: persistedStaff?.salaryConfig ?? { type: 'Monthly', amount: 0 },
+                        bankDetails: persistedStaff?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
+                        payrollInfo: persistedStaff?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
+                        leaveBalance: persistedStaff?.leaveBalance ?? { annual: 0 },
+                        commissions: persistedStaff?.commissions ?? [],
+                        deductions: persistedStaff?.deductions ?? [],
+                        attendanceRecord: persistedStaff?.attendanceRecord ?? {},
+                        passwordHash: '',
+                    } as StaffProfile;
+                }
 
                 // Mirror signup into Supabase-backed app_state lists so "Registration -> Users" shows them.
                 // This does not change UI behavior; it just ensures the user is reflected in the admin module.

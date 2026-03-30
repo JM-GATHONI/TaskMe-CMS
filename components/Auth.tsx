@@ -137,6 +137,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 displayName = (staffRow?.name ?? user.email ?? 'User') as string;
             }
 
+            const fullNameForRecord: string = String(
+                profFull || staffRow?.name || (user.user_metadata as any)?.full_name || user.email || 'User',
+            );
+
             // Permanent UX: always greet by first name.
             displayName = pickFirstWord(displayName) || (user.email ? pickFirstWord(user.email.split('@')[0]) : '') || 'User';
 
@@ -169,24 +173,101 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 // non-blocking
             }
 
-            const loggedIn: StaffProfile = {
-                id: user.id,
-                name: displayName,
-                role: (staffRow?.role ?? resolvedRole) as StaffProfile['role'],
-                email: (user.email ?? staffRow?.email ?? 'unknown@example.com') as string,
-                phone: (staffRow?.phone ?? '') as string,
-                branch: (staffRow?.branch ?? (user.user_metadata as any)?.branch ?? 'Headquarters') as any,
-                status: (staffRow?.status ?? 'Active') as any,
-                avatar: displayName.split(' ').map((n: string) => n[0]).join('') || 'U',
-                salaryConfig: persistedStaff?.salaryConfig ?? { type: 'Monthly', amount: 0 },
-                bankDetails: persistedStaff?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
-                payrollInfo: persistedStaff?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
-                leaveBalance: persistedStaff?.leaveBalance ?? { annual: 0 },
-                commissions: persistedStaff?.commissions ?? [],
-                deductions: persistedStaff?.deductions ?? [],
-                attendanceRecord: persistedStaff?.attendanceRecord ?? {},
-                passwordHash: '',
-            };
+            // Build the right "currentUser" object per role (portals rely on role-specific fields).
+            let loggedIn: any = null;
+            const uid = user.id;
+            const meta: any = user.user_metadata ?? {};
+
+            if (resolvedRole === 'Tenant') {
+                const existingTenant = tenants.find(t => t.id === uid);
+                loggedIn = existingTenant
+                    ? { ...existingTenant, role: 'Tenant' }
+                    : {
+                        id: uid,
+                        name: fullNameForRecord,
+                        username: '',
+                        email: (user.email ?? '') as string,
+                        phone: String(meta.phone ?? '') as string,
+                        idNumber: String(meta.id_number ?? '') as string,
+                        status: 'Active' as const,
+                        unit: '',
+                        rentAmount: 0,
+                        onboardingDate: new Date().toISOString().split('T')[0],
+                        paymentHistory: [],
+                        outstandingBills: [],
+                        outstandingFines: [],
+                        maintenanceRequests: [],
+                        role: 'Tenant',
+                        authUserId: uid,
+                    };
+            } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
+                const existingLandlord = landlords.find(l => l.id === uid);
+                loggedIn = existingLandlord
+                    ? { ...existingLandlord, role: resolvedRole }
+                    : {
+                        id: uid,
+                        name: fullNameForRecord,
+                        username: '',
+                        email: (user.email ?? '') as string,
+                        phone: String(meta.phone ?? '') as string,
+                        idNumber: String(meta.id_number ?? '') as string,
+                        status: 'Active' as const,
+                        branch: (staffRow?.branch ?? meta.branch ?? 'Headquarters') as any,
+                        role: resolvedRole,
+                    };
+            } else if (resolvedRole === 'Investor') {
+                const existingInvestor = renovationInvestors.find(i => i.id === uid);
+                loggedIn = existingInvestor
+                    ? { ...existingInvestor, role: 'Investor' }
+                    : {
+                        id: uid,
+                        name: fullNameForRecord,
+                        username: '',
+                        email: (user.email ?? '') as string,
+                        phone: String(meta.phone ?? '') as string,
+                        idNumber: String(meta.id_number ?? '') as string,
+                        status: 'Active' as const,
+                        joinDate: new Date().toISOString().split('T')[0],
+                        role: 'Investor',
+                    };
+            } else if (resolvedRole === 'Contractor') {
+                const existingVendor = vendors.find(v => v.id === uid);
+                loggedIn = existingVendor
+                    ? { ...(existingVendor as any), role: 'Contractor' }
+                    : {
+                        id: uid,
+                        name: fullNameForRecord,
+                        username: '',
+                        email: (user.email ?? '') as string,
+                        phone: String(meta.phone ?? '') as string,
+                        idNumber: String(meta.id_number ?? '') as string,
+                        role: 'Contractor',
+                        status: 'Active' as const,
+                    };
+            } else {
+                // Staff roles: Field Agent, Caretaker, Accountants, etc.
+                const existingStaff = staff.find(s => s.id === uid);
+                loggedIn = existingStaff
+                    ? { ...existingStaff, role: resolvedRole }
+                    : {
+                        id: uid,
+                        name: fullNameForRecord,
+                        role: resolvedRole,
+                        email: (user.email ?? staffRow?.email ?? 'unknown@example.com') as string,
+                        phone: (staffRow?.phone ?? meta.phone ?? '') as string,
+                        branch: (staffRow?.branch ?? meta.branch ?? 'Headquarters') as any,
+                        status: (staffRow?.status ?? 'Active') as any,
+                        avatar: String(fullNameForRecord).split(' ').map((n: string) => n[0]).join('') || 'U',
+                        salaryConfig: persistedStaff?.salaryConfig ?? { type: 'Monthly', amount: 0 },
+                        bankDetails: persistedStaff?.bankDetails ?? { bankName: '', accountNumber: '', kraPin: '', defaultMethod: 'Bank' },
+                        payrollInfo: persistedStaff?.payrollInfo ?? { baseSalary: 0, nextPaymentDate: '' },
+                        leaveBalance: persistedStaff?.leaveBalance ?? { annual: 0 },
+                        commissions: persistedStaff?.commissions ?? [],
+                        deductions: persistedStaff?.deductions ?? [],
+                        attendanceRecord: persistedStaff?.attendanceRecord ?? {},
+                        passwordHash: '',
+                    };
+            }
 
             // Attach persisted profile picture (stored in app_state user lists) so it "sticks" across re-login.
             const anyId = user.id;
@@ -207,7 +288,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 const meta: any = user.user_metadata ?? {};
                 const base: any = {
                     id: uid,
-                    name: displayName || user.email || 'User',
+                    name: fullNameForRecord || user.email || 'User',
                     username: '',
                     email: (user.email ?? '') as string,
                     phone: (staffRow?.phone ?? meta.phone ?? '') as string,

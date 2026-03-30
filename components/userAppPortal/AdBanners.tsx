@@ -16,7 +16,6 @@ const AdBanners: React.FC = () => {
         // 1) For Rent: use live marketplace listings (auto-synced from vacant units in DataContext).
         const rent = (marketplaceListings || [])
             .filter(l => l.type === 'Rent' && l.status === 'Published')
-            .slice(0, 2)
             .map(l => ({
                 id: `rent-${l.id}`,
                 title: l.title || `${l.propertyName} - ${l.unitNumber}`,
@@ -24,12 +23,12 @@ const AdBanners: React.FC = () => {
                 price: `KES ${Number(l.price ?? 0).toLocaleString()}`,
                 image: (l.images && l.images.length > 0 ? l.images[0] : null) || fallbackRentImg,
                 type: 'For Rent',
+                shareLink: (l.pinLocationUrl || l.location || '').toString(),
             }));
 
         // 2) Investment: use live active funds from R-REITs.
         const investment = (funds || [])
             .filter(f => f.status === 'Active' || f.status === 'Closing Soon')
-            .slice(0, 2)
             .map(f => ({
                 id: `fund-${f.id}`,
                 title: f.name,
@@ -37,6 +36,7 @@ const AdBanners: React.FC = () => {
                 price: `Target APY: ${f.targetApy}`,
                 image: f.projectPic || fallbackInvImg,
                 type: 'Investment',
+                shareLink: `${window.location.origin}${window.location.pathname}#/user-app-portal/refer-earn`,
             }));
 
         // 3) Fallback: real uploaded marketing creatives (if no listings/funds yet).
@@ -51,14 +51,33 @@ const AdBanners: React.FC = () => {
                 type: t.type === 'Investment' ? 'Investment' : 'For Rent',
             }));
 
-        const combined = [...rent, ...investment];
+                const combined = [...rent, ...investment];
         if (combined.length > 0) return combined;
         return templates;
     })();
 
-    const handleDownload = (bannerTitle: string) => {
-        const contact = customContact.trim() ? customContact : 'Contact Office';
-        alert(`Generating PDF for "${bannerTitle}" with contact info: ${contact}... (Mock Download)`);
+    const buildShareText = (banner: any) => {
+        const contact = customContact.trim() ? customContact.trim() : 'Contact Office';
+        const base = `${banner.type}: ${banner.title}\n${banner.subtitle}\n${banner.price}`;
+        return `${base}\n\nContact: ${contact}`;
+    };
+
+    const handleWhatsAppShare = (banner: any) => {
+        const text = buildShareText(banner);
+        const link = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        window.open(link, '_blank', 'noopener,noreferrer');
+    };
+
+    const handleCopyLink = async (url: string) => {
+        const safe = String(url ?? '').trim();
+        if (!safe) return alert('No link available for this opportunity.');
+        try {
+            await navigator.clipboard.writeText(safe);
+            alert('Link copied.');
+        } catch {
+            // Fallback when clipboard permissions are blocked.
+            window.prompt('Copy this link:', safe);
+        }
     };
 
     return (
@@ -97,17 +116,27 @@ const AdBanners: React.FC = () => {
                             </div>
                         </div>
                         
-                        <div className="p-4 flex justify-between items-center bg-gray-50">
+                        <div className="p-4 flex flex-col gap-2 justify-between items-stretch bg-gray-50">
                             <div>
                                 <p className="text-xs text-gray-500 uppercase font-bold">Price / Return</p>
                                 <p className="text-lg font-bold text-primary">{banner.price}</p>
                             </div>
-                            <button 
-                                onClick={() => handleDownload(banner.title)}
-                                className="flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-colors text-sm font-bold shadow-sm"
-                            >
-                                <Icon name="download" className="w-4 h-4 mr-2" /> Download Poster
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handleWhatsAppShare(banner)}
+                                    className="flex-1 flex items-center justify-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-bold shadow-sm"
+                                >
+                                    <Icon name="communication" className="w-4 h-4 mr-2" /> WhatsApp
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyLink(banner.shareLink)}
+                                    className="flex items-center justify-center px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-bold shadow-sm"
+                                >
+                                    <Icon name="map-pin" className="w-4 h-4 mr-2" /> Copy Link
+                                </button>
+                            </div>
                         </div>
                         
                         {/* Overlay showing customization preview */}
