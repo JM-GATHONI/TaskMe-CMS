@@ -681,12 +681,16 @@ const AppRecordPaymentModal: React.FC<{
     onClose: () => void;
     onRecord: (amount: number, method: string, reference: string, date: string) => void;
 }> = ({ record, onClose, onRecord }) => {
-    const [amount, setAmount] = useState(String(Number(record.rentAmount || 0) + Number(record.depositPaid || 0)));
+    const rent = Number(record.rentAmount || 0);
+    const deposit = Number(record.depositPaid || 0);
+    const depositForApp = record.recordType === 'Application' ? (deposit > 0 ? deposit : rent) : deposit;
+    const [amount, setAmount] = useState(String(rent + depositForApp));
     const [method, setMethod] = useState('Cash');
-    // Default reference so payment can be completed without extra friction.
-    const [reference, setReference] = useState(`REF-${Date.now()}`);
+    const [reference, setReference] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const handleSubmit = () => {
+    const handleSubmit = (e?: React.MouseEvent) => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
         const val = parseFloat(amount);
         if (!Number.isFinite(val) || val <= 0) return alert('Enter a valid amount.');
         if (!reference.trim()) return alert('Reference is required.');
@@ -709,8 +713,8 @@ const AppRecordPaymentModal: React.FC<{
                     <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2 border rounded" />
                 </div>
                 <div className="flex justify-end gap-2 mt-5">
-                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded">Cancel</button>
-                    <button onClick={handleSubmit} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Record</button>
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-100 rounded">Cancel</button>
+                    <button type="button" onClick={handleSubmit} className="px-4 py-2 bg-green-600 text-white rounded font-bold">Record</button>
                 </div>
             </div>
         </div>
@@ -813,7 +817,12 @@ const ProfileHubModal: React.FC<{
     onEdit: () => void;
     onMove?: () => void;
     onDelete?: () => void;
-}> = ({ record, onClose, onManualPay, onStkPay, onEdit, onMove, onDelete }) => {
+    onApprove?: () => void;
+    isApproved?: boolean;
+    canApprove?: boolean;
+}> = ({ record, onClose, onManualPay, onStkPay, onEdit, onMove, onDelete, onApprove, isApproved = false, canApprove = false }) => {
+    const isApp = record.recordType === 'Application';
+    const payDisabled = isApp && !isApproved;
     return (
         <div className="fixed inset-0 bg-black/60 z-[2150] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
@@ -827,10 +836,28 @@ const ProfileHubModal: React.FC<{
                     </button>
                 </div>
 
+                {isApp && (
+                    <div className="mt-1">
+                        <button
+                            type="button"
+                            onClick={onApprove}
+                            disabled={!canApprove || isApproved}
+                            className={`w-full py-3 rounded-lg font-bold transition-colors shadow-sm ${
+                                isApproved
+                                    ? 'bg-green-50 text-green-800 border border-green-200 cursor-not-allowed'
+                                    : 'bg-primary text-white hover:bg-primary-dark border border-primary/20'
+                            } ${(!canApprove || isApproved) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            {isApproved ? 'Approved' : 'Approve then Pay'}
+                        </button>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 mt-2">
                     <button
                         type="button"
                         onClick={onManualPay}
+                        disabled={payDisabled}
                         className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
                     >
                         Record Manual Pay
@@ -838,6 +865,7 @@ const ProfileHubModal: React.FC<{
                     <button
                         type="button"
                         onClick={onStkPay}
+                        disabled={payDisabled}
                         className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md transition-colors"
                     >
                         M-Pesa Push
@@ -883,6 +911,62 @@ const Applications: React.FC = () => {
     const handleEdit = (record: UnifiedRecord) => {
         setSelectedRecord(record);
         setIsModalOpen(true);
+    };
+
+    const handleApproveApplication = (record: UnifiedRecord) => {
+        if (record.recordType !== 'Application' || !record.id) return;
+
+        if (!record.propertyId || !record.unitId) {
+            alert('Select a property and unit before approving.');
+            return;
+        }
+
+        const prop = properties.find(p => p.id === record.propertyId);
+        const unit = prop?.units?.find(u => u.id === record.unitId);
+
+        if (!prop || !unit) {
+            alert('Could not find property/unit to approve this application.');
+            return;
+        }
+
+        const resolvedPropertyName = (record.propertyName || record.property || prop.name || '').toString();
+        const resolvedUnitNumber = (record.unit || unit.unitNumber || '').toString();
+        const rentAmount = Number(record.rentAmount || unit.rent || prop.defaultMonthlyRent || 0);
+        const depositPaidRaw = Number((record as any).depositPaid || 0);
+        const depositPaid = depositPaidRaw > 0 ? depositPaidRaw : (rentAmount > 0 ? rentAmount : 0);
+
+        if (rentAmount <= 0 || depositPaid <= 0) {
+            alert('Rent and deposit must be set before approving.');
+            return;
+        }
+
+        updateApplication(record.id, {
+            status: 'Approved',
+            propertyName: resolvedPropertyName,
+            property: resolvedPropertyName, // legacy
+            unit: resolvedUnitNumber,
+            unitId: record.unitId,
+            propertyId: record.propertyId,
+            rentAmount,
+            depositPaid,
+        } as any);
+
+        setProfileHubRecord(prev =>
+            prev && prev.id === record.id
+                ? ({
+                    ...prev,
+                    status: 'Approved',
+                    displayStatus: 'Approved',
+                    propertyId: record.propertyId,
+                    unitId: record.unitId,
+                    propertyName: resolvedPropertyName,
+                    property: resolvedPropertyName,
+                    unit: resolvedUnitNumber,
+                    rentAmount,
+                    depositPaid,
+                } as any)
+                : prev,
+        );
     };
 
     const handleMoveClick = (tenant: TenantProfile) => {
@@ -1013,9 +1097,9 @@ const Applications: React.FC = () => {
         return byPhone.authUserId && isUuid(byPhone.authUserId) ? byPhone.authUserId : (isUuid(byPhone.id) ? byPhone.id : null);
     };
 
-    const applyPaidState = (record: UnifiedRecord, amount: number, reference: string, method: string) => {
+    const applyPaidState = (record: UnifiedRecord, amount: number, reference: string, method: string, date?: string) => {
         const payment = {
-            date: new Date().toISOString().split('T')[0],
+            date: (date && String(date).trim()) ? String(date).trim() : new Date().toISOString().split('T')[0],
             amount: `KES ${Number(amount || 0).toLocaleString()}`,
             status: 'Paid' as const,
             method,
@@ -1034,19 +1118,8 @@ const Applications: React.FC = () => {
             const app = applications.find(a => a.id === record.id) ?? (record as any as TenantApplication);
             if (!app) return;
 
-            // Per requirement: only activate an Approved application.
-            if (app.status !== 'Approved') {
-                alert('This application must be Approved before you can record rent + deposit payment.');
-                return;
-            }
-
-            const rentAmount = Number(app.rentAmount || 0);
-            const depositPaid = Number(app.depositPaid || 0);
-            const expectedTotal = rentAmount + depositPaid;
-
-            // This conversion requires the first payment to include rent+deposit.
-            if (expectedTotal > 0 && Number(amount || 0) + 0.00001 < expectedTotal) {
-                alert(`First payment must cover rent + deposit (expected KES ${expectedTotal.toLocaleString()}).`);
+            if (String(app.status ?? '') !== 'Approved') {
+                alert('Please approve the application first, then record the rent + deposit payment.');
                 return;
             }
 
@@ -1059,6 +1132,18 @@ const Applications: React.FC = () => {
             const unit = prop?.units?.find(u => u.id === app.unitId);
             if (!prop || !unit) {
                 alert('Could not find the property/unit for this application.');
+                return;
+            }
+
+            const rentAmount = Number(app.rentAmount || unit.rent || prop.defaultMonthlyRent || 0);
+            let depositPaid = Number(app.depositPaid || 0);
+            if (depositPaid <= 0 && rentAmount > 0) depositPaid = rentAmount; // default 1-month deposit
+
+            const expectedTotalResolved = rentAmount + depositPaid;
+
+            // This conversion requires the first payment to include rent+deposit.
+            if (expectedTotalResolved > 0 && Number(amount || 0) + 0.01 < expectedTotalResolved) {
+                alert(`First payment must cover rent + deposit (expected KES ${expectedTotalResolved.toLocaleString()}).`);
                 return;
             }
 
@@ -1087,7 +1172,7 @@ const Applications: React.FC = () => {
                 propertyName: app.propertyName || prop.name,
                 unitId: app.unitId,
                 unit: app.unit || unit.unitNumber,
-                rentAmount: Number(app.rentAmount || unit.rent || 0),
+                rentAmount: rentAmount,
                 rentDueDate: app.rentDueDate,
                 rentGraceDays: app.rentGraceDays,
                 depositPaid,
@@ -1321,10 +1406,18 @@ const Applications: React.FC = () => {
                     record={profileHubRecord}
                     onClose={() => setProfileHubRecord(null)}
                     onManualPay={() => {
+                        if (profileHubRecord.recordType === 'Application' && String((profileHubRecord as any).status ?? '') !== 'Approved') {
+                            alert('Please approve the application first.');
+                            return;
+                        }
                         setProfileHubRecord(null);
                         setManualPayRecord(profileHubRecord);
                     }}
                     onStkPay={() => {
+                        if (profileHubRecord.recordType === 'Application' && String((profileHubRecord as any).status ?? '') !== 'Approved') {
+                            alert('Please approve the application first.');
+                            return;
+                        }
                         setProfileHubRecord(null);
                         setStkPayRecord(profileHubRecord);
                     }}
@@ -1344,6 +1437,9 @@ const Applications: React.FC = () => {
                         setProfileHubRecord(null);
                         handleDelete(profileHubRecord);
                     }}
+                    onApprove={() => handleApproveApplication(profileHubRecord)}
+                    isApproved={profileHubRecord.recordType === 'Application' ? String((profileHubRecord as any).status ?? '') === 'Approved' : true}
+                    canApprove={profileHubRecord.recordType === 'Application' ? !!profileHubRecord.propertyId && !!profileHubRecord.unitId : false}
                 />
             )}
             
@@ -1359,8 +1455,8 @@ const Applications: React.FC = () => {
                 <AppRecordPaymentModal
                     record={manualPayRecord}
                     onClose={() => setManualPayRecord(null)}
-                    onRecord={(amount, method, reference, _date) => {
-                        applyPaidState(manualPayRecord, amount, reference, method);
+                    onRecord={(amount, method, reference, date) => {
+                        applyPaidState(manualPayRecord, amount, reference, method, date);
                         setManualPayRecord(null);
                     }}
                 />
