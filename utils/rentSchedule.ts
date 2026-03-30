@@ -40,16 +40,52 @@ export function getMonthlyRentStatus(
     opts?: { lateFeePerDay?: number; isRentPaidThisMonth?: boolean },
 ): MonthlyRentStatus {
     const lateFeePerDay = opts?.lateFeePerDay ?? DEFAULT_LATE_PER_DAY;
-    const dueDay = getRentDueDay(tenant);
-    const grace = getRentGraceDays(tenant);
-    const lateStartsOnDay = dueDay + grace;
     const today = new Date();
     const dom = today.getDate();
 
-    let paid = opts?.isRentPaidThisMonth;
-    if (paid === undefined) {
-        const prefix = today.toISOString().slice(0, 7);
-        paid = (tenant.paymentHistory || []).some(p => p.date.startsWith(prefix) && p.status === 'Paid');
+    // Requirement alignment:
+    // - Last due date is effectively the last rent payment date (activation uses first payment).
+    // - Next due date is always the 1st of the next month after last due date.
+    // - Late fees only accrue after (nextDueDate + graceDays).
+    const paidDates = (tenant.paymentHistory || [])
+        .filter(p => p.status === 'Paid' && !!p.date)
+        .map(p => String(p.date));
+
+    const latestPaidDateStr =
+        paidDates.length > 0 ? paidDates.reduce((max, d) => (d > max ? d : max), paidDates[0]) : null;
+
+    // Prefer the latest rent payment date for "last due date", but fall back to onboardingDate if paymentHistory is empty.
+    const onboardingDateStr = tenant.onboardingDate ? String(tenant.onboardingDate) : null;
+    const chosenLastDueStr =
+        latestPaidDateStr && onboardingDateStr
+            ? onboardingDateStr > latestPaidDateStr
+                ? onboardingDateStr
+                : latestPaidDateStr
+            : (latestPaidDateStr ?? onboardingDateStr ?? null);
+
+    const lastDueDate = chosenLastDueStr ? new Date(chosenLastDueStr) : today;
+    lastDueDate.setHours(0, 0, 0, 0);
+
+    const nextDueDate = new Date(lastDueDate);
+    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    nextDueDate.setDate(1);
+    nextDueDate.setHours(0, 0, 0, 0);
+
+    const nextPeriodPrefix = nextDueDate.toISOString().slice(0, 7);
+    const todayPrefix = today.toISOString().slice(0, 7);
+
+    const grace = getRentGraceDays(tenant);
+    const dueDay = 1; // per requirement: next due date is always 1st of next month
+    const lateStartsOnDay = dueDay + grace; // late starts on (1 + graceDays) day-of-month
+
+    let paidForNextDuePeriod = opts?.isRentPaidThisMonth;
+    if (paidForNextDuePeriod === undefined) {
+        paidForNextDuePeriod = (tenant.paymentHistory || []).some(
+            p => p.date.startsWith(nextPeriodPrefix) && p.status === 'Paid',
+        );
+    } else {
+        // Only trust the caller's "isRentPaidThisMonth" when it refers to the same period we are calculating.
+        if (todayPrefix !== nextPeriodPrefix) paidForNextDuePeriod = false;
     }
 
     const allocated =
@@ -58,7 +94,18 @@ export function getMonthlyRentStatus(
         !!String(tenant.unit ?? '').trim() &&
         !!String(tenant.propertyName ?? '').trim();
 
-    if (!allocated || paid || tenant.status === 'Vacated') {
+    if (!allocated || paidForNextDuePeriod || tenant.status === 'Vacated') {
+        return {
+            dueDay,
+            graceDays: grace,
+            lateStartsOnDay,
+            daysLateThisMonth: 0,
+            automatedLateFine: 0,
+        };
+    }
+
+    // Only accrue late fees during the month of the *next due date*.
+    if (todayPrefix !== nextPeriodPrefix) {
         return {
             dueDay,
             graceDays: grace,

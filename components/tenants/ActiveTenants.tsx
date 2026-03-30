@@ -1347,23 +1347,49 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     };
 
     // Days in Arrears & Automated Fine Logic
+    // Requirement:
+    // - Last due date drives the cycle.
+    // - Next due date is the 1st of the next month.
+    // - Late fees only accrue after (next due date + grace period) *and* only if next period rent isn't paid.
     const currentDate = new Date();
     const currentMonthName = currentDate.toLocaleString('default', { month: 'long' });
     const currentMonthIso = currentDate.toISOString().slice(0, 7);
+    const penaltyPerDay = 100;
 
-    // Check payment status based on history for current month
-    const amountPaidThisMonth = tenant.paymentHistory
-        .filter(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid')
+    const graceDays = Number(tenant.rentGraceDays ?? 5);
+    const safeGraceDays = Math.min(28, Math.max(0, Number.isFinite(graceDays) ? graceDays : 5));
+    const dueDay = 1; // per requirement, next due date is always the 1st
+    const lateStartsOnDay = dueDay + safeGraceDays; // fines start when dom > lateStartsOnDay
+
+    const paidDates = (tenant.paymentHistory || [])
+        .filter(p => p.status === 'Paid' && !!p.date)
+        .map(p => String(p.date));
+
+    const latestPaidDateStr = paidDates.length > 0
+        ? paidDates.reduce((max, d) => (d > max ? d : max), paidDates[0])
+        : (tenant.onboardingDate ? String(tenant.onboardingDate) : null);
+
+    const lastDueDate = latestPaidDateStr ? new Date(latestPaidDateStr) : currentDate;
+    lastDueDate.setHours(0, 0, 0, 0);
+
+    const nextDueDate = new Date(lastDueDate);
+    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    nextDueDate.setDate(1);
+    nextDueDate.setHours(0, 0, 0, 0);
+
+    const nextPeriodIso = nextDueDate.toISOString().slice(0, 7);
+
+    // Check payment status for the "next due period".
+    const amountPaidThisPeriod = tenant.paymentHistory
+        .filter(p => p.date.startsWith(nextPeriodIso) && p.status === 'Paid')
         .reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
 
-    const isFullyPaid = amountPaidThisMonth >= (tenant.rentAmount || 0);
+    const isFullyPaid = amountPaidThisPeriod >= (tenant.rentAmount || 0);
 
-    // Penalty Calculation
-    const dueDay = tenant.rentDueDate || 5;
-    const daysLate = Math.max(0, currentDate.getDate() - dueDay);
-    const penaltyPerDay = 100;
-    // Apply penalty only if overdue AND past due date
-    const automatedLateFine = (!isFullyPaid && currentDate.getDate() > dueDay) ? daysLate * penaltyPerDay : 0;
+    const inNextDueMonth = currentMonthIso === nextPeriodIso;
+    const dom = currentDate.getDate();
+    const daysLate = (!isFullyPaid && inNextDueMonth && dom > lateStartsOnDay) ? (dom - lateStartsOnDay) : 0;
+    const automatedLateFine = daysLate > 0 ? daysLate * penaltyPerDay : 0;
 
     // Derived Financials
     const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.
@@ -1383,12 +1409,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     
     const balanceDue = Math.max(0, totalExpected - amountPaidThisMonth);
 
-    const nextDueDate = new Date();
-    nextDueDate.setDate(tenant.rentDueDate || 5);
-    if (nextDueDate < new Date()) nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-   
-    const lastDueDate = new Date(nextDueDate);
-    lastDueDate.setMonth(lastDueDate.getMonth() - 1);
+    // nextDueDate & lastDueDate are now derived above to match the automated late fine rule.
 
     // Check for client-initiated vacation notices
     useEffect(() => {
