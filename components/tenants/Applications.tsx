@@ -683,7 +683,8 @@ const AppRecordPaymentModal: React.FC<{
 }> = ({ record, onClose, onRecord }) => {
     const [amount, setAmount] = useState(String(Number(record.rentAmount || 0) + Number(record.depositPaid || 0)));
     const [method, setMethod] = useState('Cash');
-    const [reference, setReference] = useState('');
+    // Default reference so payment can be completed without extra friction.
+    const [reference, setReference] = useState(`REF-${Date.now()}`);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const handleSubmit = () => {
         const val = parseFloat(amount);
@@ -1032,6 +1033,12 @@ const Applications: React.FC = () => {
         if (record.recordType === 'Application' && record.id) {
             const app = applications.find(a => a.id === record.id) ?? (record as any as TenantApplication);
             if (!app) return;
+
+            // Per requirement: only activate an Approved application.
+            if (app.status !== 'Approved') {
+                alert('This application must be Approved before you can record rent + deposit payment.');
+                return;
+            }
 
             const rentAmount = Number(app.rentAmount || 0);
             const depositPaid = Number(app.depositPaid || 0);
