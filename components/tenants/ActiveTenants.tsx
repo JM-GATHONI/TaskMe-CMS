@@ -1386,12 +1386,6 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const currentDate = new Date();
     const currentMonthName = currentDate.toLocaleString('default', { month: 'long' });
     const currentMonthIso = currentDate.toISOString().slice(0, 7);
-    const penaltyPerDay = 100;
-
-    const graceDays = Number(tenant.rentGraceDays ?? 5);
-    const safeGraceDays = Math.min(28, Math.max(0, Number.isFinite(graceDays) ? graceDays : 5));
-    const dueDay = 1; // per requirement, next due date is always the 1st
-    const lateStartsOnDay = dueDay + safeGraceDays; // fines start when dom > lateStartsOnDay
 
     const paidDates = (tenant.paymentHistory || [])
         .filter(p => p.status === 'Paid' && !!p.date)
@@ -1422,10 +1416,9 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     const isFullyPaid = amountPaidThisPeriod >= (tenant.rentAmount || 0);
 
-    const inNextDueMonth = currentMonthIso === nextPeriodIso;
-    const dom = currentDate.getDate();
-    const daysLate = (!isFullyPaid && inNextDueMonth && dom > lateStartsOnDay) ? (dom - lateStartsOnDay) : 0;
-    const automatedLateFine = daysLate > 0 ? daysLate * penaltyPerDay : 0;
+    const rentStat = getMonthlyRentStatus(tenant, { isRentPaidThisMonth: isFullyPaid });
+    const daysLate = rentStat.daysLateThisMonth;
+    const automatedLateFine = rentStat.automatedLateFine;
 
     // Derived Financials
     const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.

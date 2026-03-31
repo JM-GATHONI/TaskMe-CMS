@@ -75,7 +75,7 @@ export function getMonthlyRentStatus(
     const todayPrefix = today.toISOString().slice(0, 7);
 
     const grace = getRentGraceDays(tenant);
-    const dueDay = 1; // per requirement: next due date is always 1st of next month
+    const dueDay = getRentDueDay(tenant);
     const lateStartsOnDay = dueDay + grace; // late starts on (1 + graceDays) day-of-month
 
     let paidForNextDuePeriod = opts?.isRentPaidThisMonth;
