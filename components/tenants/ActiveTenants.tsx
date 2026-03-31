@@ -1417,6 +1417,8 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const amountPaidThisPeriod = tenant.paymentHistory
         .filter(p => p.date.startsWith(nextPeriodIso) && p.status === 'Paid')
         .reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
+    // Keep legacy variable name used in several UI sections.
+    const amountPaidThisMonth = amountPaidThisPeriod;
 
     const isFullyPaid = amountPaidThisPeriod >= (tenant.rentAmount || 0);
 
