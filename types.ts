@@ -92,7 +92,13 @@ export interface TenantProfile {
   /** Grace days after due day before late fees accrue. Default 5 (due 1 + 5 → fines from day 6). */
   rentGraceDays?: number;
   depositPaid?: number;
+  /** Next rent due date derived from successful payments. */
+  nextDueDate?: string;
   onboardingDate: string;
+  /** Carried from application docs flow (signed checkbox + uploaded signed lease). */
+  leaseSigned?: boolean;
+  /** Lease start date (defaults to signing date unless edited). */
+  leaseStartDate?: string;
   leaseEnd?: string;
   leaseType?: 'Fixed' | 'Open';
   paymentHistory: {
@@ -242,6 +248,10 @@ export interface TenantApplication {
   depositPaid?: number;
   /** When true, a signed lease document must be uploaded. */
   leaseSigned?: boolean;
+  /** Lease start date (defaults to signing date unless edited). */
+  leaseStartDate?: string;
+  /** Lease expiry date (defaults to 1 year after lease start unless edited). */
+  leaseEnd?: string;
   /** When set, links this application to an auth.users user for STK payment polling. */
   authUserId?: string;
   documents?: Array<{ name: string; type: string; url: string }>;

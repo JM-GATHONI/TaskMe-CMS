@@ -6,6 +6,7 @@ import Icon from '../Icon';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
+import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
 import { printSection } from '../../utils/exportHelper';
 import { ManageOffboardingModal } from './Offboarding';
 
@@ -276,7 +277,12 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     const updates: Partial<TenantProfile> = {
                         paymentHistory: [newPayment, ...currentHistory],
                     };
+                    const cycle = computeRentPaymentCycleUpdate(t, amt, newPayment.date);
+                    updates.nextDueDate = cycle.nextDueDateIso;
                     if (t.status === 'Pending') updates.status = 'Active';
+                    if (Number(t.depositPaid || 0) <= 0 && amt >= Number(t.rentAmount || 0)) {
+                        updates.depositPaid = Number(t.rentAmount || 0);
+                    }
                     updateTenant(tenantId, updates);
 
                     const msg = `Tenant ${t.name} paid KES ${amt.toLocaleString()} via M-Pesa.`;
@@ -1411,10 +1417,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const amountPaidThisPeriod = tenant.paymentHistory
         .filter(p => p.date.startsWith(nextPeriodIso) && p.status === 'Paid')
         .reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
-    // Keep legacy variable name used in several UI sections.
-    const amountPaidThisMonth = amountPaidThisPeriod;
+    const amountPaidThisMonth = tenant.paymentHistory
+        .filter(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid')
+        .reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
 
-    const isFullyPaid = amountPaidThisPeriod >= (tenant.rentAmount || 0);
+    const isFullyPaid = amountPaidThisMonth >= (tenant.rentAmount || 0);
 
     const rentStat = getMonthlyRentStatus(tenant, { isRentPaidThisMonth: isFullyPaid });
     const daysLate = rentStat.daysLateThisMonth;
@@ -1422,13 +1429,14 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     // Derived Financials
     const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.
+    const depositDue = Number(tenant.depositPaid || 0) > 0 ? 0 : Number(tenant.rentAmount || 0);
     const recurrentBills = Object.values(tenant.recurringBills || {}).reduce((a: number, b) => a + (b as number), 0);
     const pendingBills = (tenant.outstandingBills || []).filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.amount, 0);
     const fines = (tenant.outstandingFines || []).filter(f => f.type !== 'Late Rent' && f.status === 'Pending').reduce((sum, f) => sum + f.amount, 0);
     
     // Total Expected = Rent + Recurrent + Bills + Fines + Automated Fine
     // Note: If rent is partially paid, we show total expected and subtract paid in UI
-    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine;
+    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDue;
     
     // Total Paid is amountPaidThisMonth (assuming bills are paid separately or included in general pot for this visual)
     // For simplicity in this view, we just show Balance = Expected - Paid
@@ -1591,14 +1599,24 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     };
 
     const handleRecordPayment = (amount: number, method: string, reference: string, date: string) => {
+        const normalizedRef = String(reference || '').trim() || `MAN-${Date.now()}`;
         const newPayment = {
             date: date,
             amount: `KES ${Number(amount ?? 0).toLocaleString()}`,
             status: 'Paid' as const,
             method: method,
-            reference: reference
+            reference: normalizedRef
         };
-        updateTenant(tenant.id, { paymentHistory: [newPayment, ...tenant.paymentHistory] });
+        const cycle = computeRentPaymentCycleUpdate(tenant, Number(amount || 0), date);
+        const updates: Partial<TenantProfile> = {
+            paymentHistory: [newPayment, ...tenant.paymentHistory],
+            nextDueDate: cycle.nextDueDateIso,
+        };
+        if (tenant.status === 'Pending') updates.status = 'Active';
+        if (Number(tenant.depositPaid || 0) <= 0 && Number(amount || 0) >= Number(tenant.rentAmount || 0)) {
+            updates.depositPaid = Number(tenant.rentAmount || 0);
+        }
+        updateTenant(tenant.id, updates);
         setActiveModal(null);
         alert("Payment recorded successfully.");
     };
@@ -1633,6 +1651,17 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${tenant.status === 'Active' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
                                 {tenant.status === 'Active' ? '● Active' : '● ' + tenant.status}
                             </span>
+                            <button
+                                type="button"
+                                className={`text-xs px-2 py-1 rounded font-bold shadow-sm border ${
+                                    tenant.leaseSigned
+                                        ? 'bg-green-100 text-green-800 border-green-200'
+                                        : 'bg-amber-100 text-amber-800 border-amber-200'
+                                }`}
+                                title="Lease status from Applications documents flow"
+                            >
+                                {tenant.leaseSigned ? 'Lease Signed' : 'Lease Not Signed'}
+                            </button>
                             
                             {/* Updated Status Sticker Logic */}
                             {isFullyPaid ? (
@@ -1683,7 +1712,13 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                         </div>
                         <div>
                             <p className="text-xs text-gray-400 font-bold uppercase">Lease Type</p>
-                            <p className="text-sm font-semibold text-gray-700">{tenant.leaseType}</p>
+                            <p className="text-sm font-semibold text-gray-700">{tenant.leaseType || 'Fixed'}</p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Start: {tenant.leaseStartDate ? new Date(tenant.leaseStartDate).toLocaleDateString() : 'Not set'}
+                            </p>
+                            <p className="text-[11px] text-gray-500">
+                                Expiry: {tenant.leaseEnd ? new Date(tenant.leaseEnd).toLocaleDateString() : 'Not set'}
+                            </p>
                         </div>
                         <div className="flex flex-col items-start">
                             <p className="text-xs text-gray-400 font-bold uppercase">Lease Doc</p>
@@ -1706,7 +1741,9 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                         </div>
                         <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                             <p className="text-xs text-gray-400 font-bold uppercase">Next Due Date</p>
-                            <p className="font-bold text-gray-700">{nextDueDate.toLocaleDateString()}</p>
+                            <p className="font-bold text-gray-700">
+                                {tenant.nextDueDate ? new Date(tenant.nextDueDate).toLocaleDateString() : nextDueDate.toLocaleDateString()}
+                            </p>
                         </div>
                     </div>
                 </div>

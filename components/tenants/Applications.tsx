@@ -130,8 +130,26 @@ export const ApplicationFormModal: React.FC<{
         rentStartDate: record?.rentStartDate || record?.onboardingDate || new Date().toISOString().split('T')[0],
         rentDueDate: record?.rentDueDate ?? 1,
         rentGraceDays: record?.rentGraceDays ?? 5,
+        leaseStartDate: (record as any)?.leaseStartDate || new Date().toISOString().split('T')[0],
+        leaseEnd: (record as any)?.leaseEnd || (() => {
+            const d = new Date();
+            d.setFullYear(d.getFullYear() + 1);
+            return d.toISOString().split('T')[0];
+        })(),
         source: record?.source || 'Walk-in'
     });
+
+    const ensureLeaseDates = (prev: any) => {
+        const hasStart = !!String(prev.leaseStartDate || '').trim();
+        const startIso = hasStart ? String(prev.leaseStartDate) : new Date().toISOString().split('T')[0];
+        let endIso = String(prev.leaseEnd || '').trim();
+        if (!endIso) {
+            const end = new Date(startIso);
+            end.setFullYear(end.getFullYear() + 1);
+            endIso = end.toISOString().split('T')[0];
+        }
+        return { ...prev, leaseStartDate: startIso, leaseEnd: endIso };
+    };
 
     // Rent Due Calculation State
     const [rentDue, setRentDue] = useState(0);
@@ -304,8 +322,9 @@ export const ApplicationFormModal: React.FC<{
 
         const resolvedRent = activeUnitResolved?.rent ?? activePropertyResolved?.defaultMonthlyRent ?? formData.rentAmount ?? 0;
 
+        const payload = leaseSigned ? ensureLeaseDates(formData) : formData;
         onSave({
-            ...formData,
+            ...payload,
             propertyId: selectedPropertyId,
             // Ensure UI allocation checks (ActiveTenants tenantFullyAllocated) evaluate correctly.
             propertyName: resolvedPropertyName,
@@ -325,7 +344,11 @@ export const ApplicationFormModal: React.FC<{
             const next = { name, type, url };
             if (idx >= 0) docs[idx] = next;
             else docs.push(next);
-            return { ...prev, documents: docs };
+            let out: any = { ...prev, documents: docs };
+            if (type === 'Signed Lease Agreement' && !!prev.leaseSigned) {
+                out = ensureLeaseDates(out);
+            }
+            return out;
         });
     };
 
@@ -624,13 +647,41 @@ export const ApplicationFormModal: React.FC<{
                                          <input
                                              type="checkbox"
                                              checked={!!formData.leaseSigned}
-                                             onChange={(e) => setFormData(prev => ({ ...prev, leaseSigned: e.target.checked }))}
+                                             onChange={(e) =>
+                                                 setFormData(prev => (e.target.checked
+                                                     ? ensureLeaseDates({ ...prev, leaseSigned: true })
+                                                     : { ...prev, leaseSigned: false }))
+                                             }
                                          />
                                          Lease signed
                                      </label>
                                      <p className="text-xs text-gray-500 mt-1">
                                          If checked, a signed lease document must be uploaded below; otherwise the lease is treated as unsigned.
                                      </p>
+                                     {!!formData.leaseSigned && (
+                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                                             <div>
+                                                 <label className="block text-xs font-bold text-gray-500 mb-1">Lease Start Date</label>
+                                                 <input
+                                                     type="date"
+                                                     name="leaseStartDate"
+                                                     value={String((formData as any).leaseStartDate || '')}
+                                                     onChange={handleChange}
+                                                     className="w-full p-2 border rounded bg-white"
+                                                 />
+                                             </div>
+                                             <div>
+                                                 <label className="block text-xs font-bold text-gray-500 mb-1">Lease Expiry Date</label>
+                                                 <input
+                                                     type="date"
+                                                     name="leaseEnd"
+                                                     value={String((formData as any).leaseEnd || '')}
+                                                     onChange={handleChange}
+                                                     className="w-full p-2 border rounded bg-white"
+                                                 />
+                                             </div>
+                                         </div>
+                                     )}
                                  </div>
                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      {[
@@ -1184,6 +1235,17 @@ const Applications: React.FC = () => {
                 rentGraceDays: app.rentGraceDays,
                 depositPaid,
                 onboardingDate: new Date().toISOString().split('T')[0],
+                nextDueDate: (() => {
+                    const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
+                    const d = new Date();
+                    d.setMonth(d.getMonth() + 1);
+                    d.setDate(dueDay);
+                    d.setHours(0, 0, 0, 0);
+                    return d.toISOString().split('T')[0];
+                })(),
+                leaseSigned: !!app.leaseSigned,
+                leaseStartDate: app.leaseStartDate,
+                leaseEnd: app.leaseEnd,
                 paymentHistory: [payment],
                 outstandingBills: [],
                 outstandingFines: [],
