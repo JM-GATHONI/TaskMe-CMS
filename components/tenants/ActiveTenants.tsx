@@ -81,6 +81,38 @@ const getArrearsText = (tenant: TenantProfile) => {
     return 'Rent Due (Arrears)';
 };
 
+// --- Error Boundary to protect Tenant Detail view ---
+class TenantDetailErrorBoundary extends React.Component<{ tenant: TenantProfile; onBack: () => void }, { hasError: boolean }> {
+    constructor(props: { tenant: TenantProfile; onBack: () => void }) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error: any, info: any) {
+        console.warn('[ActiveTenants] TenantDetailView crashed', error, info);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="space-y-4 p-6">
+                    <button onClick={this.props.onBack} className="text-sm text-primary font-bold hover:underline">
+                        ← Back to List
+                    </button>
+                    <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800">
+                        There was a problem loading this tenant profile. Please return to the list and try again or refresh the page.
+                    </div>
+                </div>
+            );
+        }
+        return <TenantDetailView tenant={this.props.tenant} onBack={this.props.onBack} />;
+    }
+}
+
 // --- Simple Initiate Modal for Active Tenants context ---
 const InitiateOffboardingModal: React.FC<{ 
     tenant: TenantProfile;
@@ -1369,6 +1401,8 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         ? paidDates.reduce((max, d) => (d > max ? d : max), paidDates[0])
         : (tenant.onboardingDate ? String(tenant.onboardingDate) : null);
 
+    // Anchor the "cycle" last due date on the latest paid date (for fines),
+    // but display the "Last Due Date" in UI as the first rent+deposit payment/onboarding.
     const lastDueDate = latestPaidDateStr ? new Date(latestPaidDateStr) : currentDate;
     lastDueDate.setHours(0, 0, 0, 0);
 
@@ -1408,6 +1442,13 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     // So 'rentDue' here is strictly current month rent.
     
     const balanceDue = Math.max(0, totalExpected - amountPaidThisMonth);
+
+    // First rent+deposit payment (or onboarding) – used for display-only "Last Due Date".
+    const firstPaidDateStr = paidDates.length > 0
+        ? paidDates.reduce((min, d) => (d < min ? d : min), paidDates[0])
+        : (tenant.onboardingDate ? String(tenant.onboardingDate) : null);
+    const firstDueDate = firstPaidDateStr ? new Date(firstPaidDateStr) : lastDueDate;
+    firstDueDate.setHours(0, 0, 0, 0);
 
     // nextDueDate & lastDueDate are now derived above to match the automated late fine rule.
 
@@ -1666,7 +1707,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     <div className="grid grid-cols-2 gap-4 mt-6 border-t pt-4">
                         <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                             <p className="text-xs text-gray-400 font-bold uppercase">Last Due Date</p>
-                            <p className="font-bold text-gray-700">{lastDueDate.toLocaleDateString()}</p>
+                            <p className="font-bold text-gray-700">{firstDueDate.toLocaleDateString()}</p>
                         </div>
                         <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                             <p className="text-xs text-gray-400 font-bold uppercase">Next Due Date</p>
@@ -2046,7 +2087,7 @@ const ActiveTenants: React.FC = () => {
     // If a tenant is selected via URL, show detailed view
     const specificTenant = tenants.find(t => t.id === selectedTenantId);
     if (specificTenant) {
-        return <TenantDetailView tenant={specificTenant} onBack={handleBackToList} />;
+        return <TenantDetailErrorBoundary tenant={specificTenant} onBack={handleBackToList} />;
     }
 
     // Otherwise, show list view
@@ -2141,7 +2182,13 @@ const ActiveTenants: React.FC = () => {
                     const pendingFines = !isAllocated
                         ? 0
                         : (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0);
-                    const totalDue = rentDue + pendingBills + pendingFines + automatedLateFine;
+
+                    // If deposit has not yet been paid for an allocated tenant, treat one month's rent as deposit due.
+                    const depositComponent = !isAllocated
+                        ? 0
+                        : (tenant.depositPaid && tenant.depositPaid > 0 ? 0 : (tenant.rentAmount || 0));
+
+                    const totalDue = rentDue + pendingBills + pendingFines + automatedLateFine + depositComponent;
 
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);

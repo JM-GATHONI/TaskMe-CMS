@@ -904,8 +904,15 @@ const Applications: React.FC = () => {
     const [profileHubRecord, setProfileHubRecord] = useState<UnifiedRecord | null>(null);
 
     const handleAddNew = () => {
-        setSelectedRecord({ recordType: 'Application', displayStatus: 'New' });
-        setIsModalOpen(true);
+        // Redirect to primary registration flow for Tenants (Registration > Users),
+        // treating this button as a shortcut to the main registration module.
+        try {
+            window.location.hash = '#/registration/users?category=tenants';
+        } catch {
+            // Fallback: keep legacy behavior if hash navigation is unavailable
+            setSelectedRecord({ recordType: 'Application', displayStatus: 'New' });
+            setIsModalOpen(true);
+        }
     };
 
     const handleEdit = (record: UnifiedRecord) => {

@@ -1228,7 +1228,14 @@ const FieldAgents: React.FC = () => {
                         <Icon name="search" className="w-5 h-5 text-gray-400 absolute left-3 top-3.5" />
                     </div>
                     <button 
-                        onClick={() => setIsAddAgentModalOpen(true)}
+                        onClick={() => {
+                            // Shortcut to primary Field Agent registration (Registration > Users > Field Agents)
+                            try {
+                                window.location.hash = '#/registration/users?category=field';
+                            } catch {
+                                setIsAddAgentModalOpen(true);
+                            }
+                        }}
                         className="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-black transition-transform active:scale-95 flex items-center"
                     >
                         <Icon name="plus" className="w-5 h-5 mr-2" /> New Agent

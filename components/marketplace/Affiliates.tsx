@@ -351,7 +351,13 @@ const Affiliates: React.FC = () => {
                     <p className="text-lg text-gray-500 mt-1">Manage partners, freelancers, and influencers driving growth.</p>
                 </div>
                 <button 
-                    onClick={() => setIsInviteModalOpen(true)}
+                    onClick={() => {
+                        try {
+                            window.location.hash = '#/registration/users?category=affiliates';
+                        } catch {
+                            setIsInviteModalOpen(true);
+                        }
+                    }}
                     className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 shadow-md flex items-center transition-transform active:scale-95"
                 >
                     <Icon name="plus" className="w-4 h-4 mr-2" /> Invite Affiliate
@@ -367,7 +373,13 @@ const Affiliates: React.FC = () => {
                     <h3 className="text-lg font-bold text-gray-700">No Affiliates Yet</h3>
                     <p className="text-gray-500 max-w-md text-center mt-2">Start your referral program by inviting freelancers, agents, or influencers to promote your properties.</p>
                     <button 
-                        onClick={() => setIsInviteModalOpen(true)}
+                        onClick={() => {
+                            try {
+                                window.location.hash = '#/registration/users?category=affiliates';
+                            } catch {
+                                setIsInviteModalOpen(true);
+                            }
+                        }}
                         className="mt-6 text-purple-600 font-bold hover:underline"
                     >
                         Send First Invite
@@ -384,7 +396,13 @@ const Affiliates: React.FC = () => {
                     ))}
                     
                     <button 
-                        onClick={() => setIsInviteModalOpen(true)}
+                        onClick={() => {
+                            try {
+                                window.location.hash = '#/registration/users?category=affiliates';
+                            } catch {
+                                setIsInviteModalOpen(true);
+                            }
+                        }}
                         className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center p-8 text-gray-400 hover:border-purple-500 hover:text-purple-500 transition-all min-h-[200px] bg-gray-50 hover:bg-white"
                     >
                         <Icon name="plus" className="w-10 h-10 mb-2 opacity-50" />

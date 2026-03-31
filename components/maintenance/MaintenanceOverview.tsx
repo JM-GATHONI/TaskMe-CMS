@@ -148,7 +148,17 @@ const MaintenanceOverview: React.FC = () => {
                     <p className="text-lg text-gray-500 mt-1">Central command for all property maintenance operations.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => setIsVendorModalOpen(true)} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 shadow-sm flex items-center">
+                    <button
+                        onClick={() => {
+                            try {
+                                // Treat Add Vendor as shortcut to Contractors registration
+                                window.location.hash = '#/registration/users?category=contractors';
+                            } catch {
+                                setIsVendorModalOpen(true);
+                            }
+                        }}
+                        className="px-4 py-2 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 shadow-sm flex items-center"
+                    >
                         <Icon name="plus" className="w-4 h-4 mr-2" /> Add Vendor
                     </button>
                     <button onClick={() => setIsTaskModalOpen(true)} className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg shadow-lg hover:bg-black transition-transform active:scale-95 flex items-center">

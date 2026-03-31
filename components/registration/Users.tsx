@@ -116,7 +116,10 @@ const UserForm: React.FC<{
         assignedPropertyId: (existingUser?.fullObject as StaffProfile)?.assignedPropertyId || '',
         referrerId: (existingUser?.fullObject as RenovationInvestor)?.referrerId || '',
         referrerType: (existingUser?.fullObject as RenovationInvestor)?.referrerType || 'Agent',
-        specialty: (existingUser?.fullObject as Vendor)?.specialty || ''
+        specialty: (existingUser?.fullObject as Vendor)?.specialty || '',
+        // Field Agent specific
+        branch: (existingUser?.fullObject as StaffProfile)?.branch || '',
+        targetSalary: (existingUser?.fullObject as any)?.payrollInfo?.baseSalary?.toString?.() || ''
     });
     const [isSaving, setIsSaving] = useState(false);
 
@@ -147,6 +150,7 @@ const UserForm: React.FC<{
     const isInvestor = category.id === 'investors' || formData.role === 'Investor';
     const isContractor = category.id === 'contractors' || formData.role === 'Contractor';
     const isAffiliate = category.id === 'affiliates' || formData.role === 'Affiliate';
+    const isFieldAgent = category.id === 'field' || formData.role === 'Field Agent';
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1500] p-4 backdrop-blur-sm" onClick={onClose}>
@@ -258,6 +262,31 @@ const UserForm: React.FC<{
                                 </div>
                             </>
                         )}
+                        {isFieldAgent && (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Branch</label>
+                                    <input
+                                        name="branch"
+                                        value={formData.branch}
+                                        onChange={handleChange}
+                                        placeholder="e.g. Main Branch"
+                                        className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Target Salary (KES)</label>
+                                    <input
+                                        name="targetSalary"
+                                        type="number"
+                                        value={formData.targetSalary}
+                                        onChange={handleChange}
+                                        placeholder="0"
+                                        className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none"
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -362,6 +391,31 @@ const Users: React.FC = () => {
         { id: 'affiliates', title: 'Affiliates', roles: ['Affiliate'], color: 'bg-pink-500', icon: 'branch' },
         { id: 'contractors', title: 'Contractors', roles: ['Contractor'], color: 'bg-gray-500', icon: 'tools' },
     ], [systemRoleNames]);
+
+    // Allow deep links like "#/registration/users?category=tenants" to pre-select a user category.
+    useEffect(() => {
+        const applyCategoryFromHash = () => {
+            try {
+                const hash = window.location.hash || '';
+                const idx = hash.indexOf('?');
+                if (idx === -1) return;
+                const query = hash.slice(idx + 1);
+                const params = new URLSearchParams(query);
+                const cat = params.get('category');
+                if (!cat) return;
+                const exists = categories.some(c => c.id === cat);
+                if (exists) {
+                    setActiveCategoryId(cat);
+                }
+            } catch {
+                // Ignore hash parsing errors; fall back to default category behavior.
+            }
+        };
+
+        applyCategoryFromHash();
+        window.addEventListener('hashchange', applyCategoryFromHash);
+        return () => window.removeEventListener('hashchange', applyCategoryFromHash);
+    }, [categories]);
 
     // Derived State
     const activeCategory = categories.find(c => c.id === activeCategoryId) || categories[0];
@@ -539,8 +593,11 @@ const Users: React.FC = () => {
                 addStaff({ 
                     ...commonFieldsWithId, 
                     role: rest.role, 
-                    branch: 'Headquarters', 
-                    payrollInfo: { baseSalary: 0, nextPaymentDate: '' }, 
+                    branch: rest.branch || 'Headquarters', 
+                    payrollInfo: { 
+                        baseSalary: Number(rest.targetSalary || 0) || 0, 
+                        nextPaymentDate: '' 
+                    }, 
                     leaveBalance: { annual: 0 },
                     assignedPropertyId // For Caretakers
                 } as StaffProfile);

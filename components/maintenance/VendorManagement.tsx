@@ -86,7 +86,16 @@ const VendorManagement: React.FC = () => {
                 ))}
                 
                 {/* Add New Card Placeholder */}
-                <button className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-all p-8 min-h-[300px]">
+                <button
+                    onClick={() => {
+                        try {
+                            window.location.hash = '#/registration/users?category=contractors';
+                        } catch {
+                            // No modal fallback defined here, keep button inert on failure.
+                        }
+                    }}
+                    className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-all p-8 min-h-[300px]"
+                >
                     <Icon name="plus" className="w-12 h-12 mb-4 opacity-50" />
                     <span className="font-bold">Add New Vendor</span>
                 </button>
