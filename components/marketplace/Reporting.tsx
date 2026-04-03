@@ -62,6 +62,25 @@ const KpiCard: React.FC<{ title: string; value: string; subtext: string; color: 
 const MarketplaceReporting: React.FC = () => {
     const { leads, marketplaceListings } = useData();
     const [timeRange, setTimeRange] = useState('All Time');
+    const [listingTypeFilter, setListingTypeFilter] = useState<'All' | 'Rent' | 'Sale' | 'AirBnB'>('All');
+    const [listingSearch, setListingSearch] = useState('');
+
+    // Active listings from real Supabase-backed state
+    const activeListings = useMemo(() => {
+        return marketplaceListings
+            .filter(l => l.status === 'Published')
+            .filter(l => listingTypeFilter === 'All' || l.type === listingTypeFilter)
+            .filter(l => {
+                if (!listingSearch.trim()) return true;
+                const q = listingSearch.toLowerCase();
+                return (
+                    l.title?.toLowerCase().includes(q) ||
+                    l.propertyName?.toLowerCase().includes(q) ||
+                    l.location?.toLowerCase().includes(q) ||
+                    l.unitNumber?.toLowerCase().includes(q)
+                );
+            });
+    }, [marketplaceListings, listingTypeFilter, listingSearch]);
 
     // --- ANALYTICS CALCULATIONS ---
 
@@ -258,6 +277,116 @@ const MarketplaceReporting: React.FC = () => {
                     color="#f59e0b" 
                     icon="marketplace" 
                 />
+            </div>
+
+            {/* Active Listings Breakdown */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800">Active Listings</h3>
+                        <p className="text-sm text-gray-400 mt-0.5">Live published listings from Supabase — {activeListings.length} of {marketplaceListings.filter(l => l.status === 'Published').length} shown</p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                        {(['All', 'Rent', 'Sale', 'AirBnB'] as const).map(t => (
+                            <button
+                                key={t}
+                                onClick={() => setListingTypeFilter(t)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${listingTypeFilter === t ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                {t}
+                            </button>
+                        ))}
+                        <input
+                            type="text"
+                            placeholder="Search listings..."
+                            value={listingSearch}
+                            onChange={e => setListingSearch(e.target.value)}
+                            className="pl-3 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-primary/20 w-44"
+                        />
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm text-left">
+                        <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
+                            <tr>
+                                <th className="px-4 py-3">Property / Unit</th>
+                                <th className="px-4 py-3">Type</th>
+                                <th className="px-4 py-3">Location</th>
+                                <th className="px-4 py-3 text-right">Price (KES)</th>
+                                <th className="px-4 py-3 text-center">Leads</th>
+                                <th className="px-4 py-3">Date Listed</th>
+                                <th className="px-4 py-3 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {activeListings.map(listing => {
+                                const listingLeads = leads.filter(l =>
+                                    l.listingTitle === listing.title ||
+                                    l.listingTitle?.includes(listing.propertyName)
+                                ).length;
+                                const typeColors: Record<string, string> = {
+                                    Rent: 'bg-blue-100 text-blue-700',
+                                    Sale: 'bg-green-100 text-green-700',
+                                    AirBnB: 'bg-orange-100 text-orange-700',
+                                };
+                                return (
+                                    <tr key={listing.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-4 py-3">
+                                            <p className="font-semibold text-gray-800 truncate max-w-[180px]">{listing.title || listing.propertyName}</p>
+                                            <p className="text-xs text-gray-400">Unit {listing.unitNumber}</p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${typeColors[listing.type] || 'bg-gray-100 text-gray-600'}`}>
+                                                {listing.type}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-600 text-xs truncate max-w-[140px]">{listing.location || '—'}</td>
+                                        <td className="px-4 py-3 text-right font-bold text-gray-800">
+                                            {listing.price ? listing.price.toLocaleString() : '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <span className={`font-bold ${listingLeads > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                                {listingLeads}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-500 text-xs">
+                                            {listing.dateCreated ? new Date(listing.dateCreated).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">
+                                                Published
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {activeListings.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                                        {marketplaceListings.filter(l => l.status === 'Published').length === 0
+                                            ? 'No published listings yet. Add properties with vacant units or publish listings from the Listings module.'
+                                            : 'No listings match the current filter.'}
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Summary footer */}
+                {activeListings.length > 0 && (
+                    <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex gap-6 text-xs text-gray-500">
+                        <span>Rent: <strong className="text-gray-700">{activeListings.filter(l => l.type === 'Rent').length}</strong></span>
+                        <span>Sale: <strong className="text-gray-700">{activeListings.filter(l => l.type === 'Sale').length}</strong></span>
+                        <span>AirBnB: <strong className="text-gray-700">{activeListings.filter(l => l.type === 'AirBnB').length}</strong></span>
+                        <span className="ml-auto">
+                            Avg Price: <strong className="text-gray-700">
+                                KES {activeListings.length > 0 ? Math.round(activeListings.reduce((s, l) => s + (l.price || 0), 0) / activeListings.length).toLocaleString() : '0'}
+                            </strong>
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Charts Section */}
