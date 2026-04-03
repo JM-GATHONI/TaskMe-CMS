@@ -15,10 +15,29 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointE
 type TimeFilter = 'Week' | 'Month' | 'Quarter' | 'Year';
 
 const Income: React.FC = () => {
-    const { tenants, tasks, properties } = useData();
+    const { tenants, tasks, properties, commissionRules } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('Month');
     const [categoryFilter, setCategoryFilter] = useState<RevenueStreamCategory | 'All'>('All');
+
+    // --- Resolve commission rates from Settings > Rates & Rules ---
+    // Falls back to defaults (10% mgmt, 15% maintenance) if no matching rule configured.
+    const rentCommissionRate = useMemo(() => {
+        const rule = commissionRules.find(r => r.trigger === 'Rent Collection');
+        if (!rule) return 0.10;
+        return rule.rateType === '%' ? rule.rateValue / 100 : null; // null = fixed KES handled per-entry
+    }, [commissionRules]);
+
+    const rentCommissionFixed = useMemo(() => {
+        const rule = commissionRules.find(r => r.trigger === 'Rent Collection');
+        return (rule && rule.rateType === 'KES') ? rule.rateValue : null;
+    }, [commissionRules]);
+
+    const maintenanceMarkupRate = useMemo(() => {
+        const rule = commissionRules.find(r => r.trigger === 'Property Management Referral');
+        if (!rule) return 0.15;
+        return rule.rateType === '%' ? rule.rateValue / 100 : 0.15;
+    }, [commissionRules]);
 
     // --- CORE LOGIC: Generate Ledger from Live Data ---
     const ledger = useMemo(() => {
@@ -29,14 +48,17 @@ const Income: React.FC = () => {
             t.paymentHistory.forEach((p, index) => {
                 if (p.status === 'Paid') {
                     const amount = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
+                    const agency = rentCommissionFixed !== null
+                        ? rentCommissionFixed
+                        : amount * (rentCommissionRate ?? 0.10);
                     entries.push({
                         id: `rent-${t.id}-${index}`,
                         date: p.date,
                         property: `${t.propertyName} - ${t.unit}`,
                         description: `Rent Collection: ${t.name}`,
                         totalAmount: amount,
-                        agencyAmount: amount * 0.10, // 10% Commission
-                        landlordAmount: amount * 0.90,
+                        agencyAmount: agency,
+                        landlordAmount: amount - agency,
                         category: 'Agency Management Commission',
                         type: 'Income'
                     });
@@ -67,7 +89,8 @@ const Income: React.FC = () => {
         tasks.forEach(task => {
             if ((task.status === TaskStatus.Completed || task.status === TaskStatus.Closed) && task.costs) {
                 const totalCost = (task.costs.labor || 0) + (task.costs.materials || 0) + (task.costs.travel || 0);
-                const markup = totalCost * 0.15;
+                const markup = totalCost * maintenanceMarkupRate;
+                const markupPct = Math.round(maintenanceMarkupRate * 100);
                 entries.push({
                     id: `maint-markup-${task.id}`,
                     date: new Date(task.dueDate).toISOString().split('T')[0],
@@ -76,14 +99,14 @@ const Income: React.FC = () => {
                     totalAmount: markup + totalCost,
                     agencyAmount: markup,
                     landlordAmount: 0,
-                    category: 'Maintenance Interest (15%)',
+                    category: `Maintenance Interest (${markupPct}%)` as RevenueStreamCategory,
                     type: 'Income'
                 });
             }
         });
 
         return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [tenants, tasks, properties]);
+    }, [tenants, tasks, properties, rentCommissionRate, rentCommissionFixed, maintenanceMarkupRate]);
 
     // --- FILTERING ---
     const filteredLedger = useMemo(() => {
@@ -141,16 +164,61 @@ const Income: React.FC = () => {
         }]
     };
 
-    const trendData = {
-        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'], // Simplified labels
-        datasets: [{
-            label: 'Revenue Trend',
-            data: [totals.gross * 0.2, totals.gross * 0.3, totals.gross * 0.25, totals.gross * 0.25], // Mock distribution
-            borderColor: '#10b981',
-            tension: 0.4,
-            fill: false
-        }]
-    };
+    // --- REAL TREND DATA grouped by selected time period ---
+    const trendData = useMemo(() => {
+        const now = new Date();
+        const buckets: Record<string, number> = {};
+
+        if (timeFilter === 'Week') {
+            // Group by day of week (Mon–Sun)
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            days.forEach(d => (buckets[d] = 0));
+            filteredLedger.forEach(e => {
+                const d = new Date(e.date);
+                const dayIdx = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
+                buckets[days[dayIdx]] += e.agencyAmount;
+            });
+        } else if (timeFilter === 'Month') {
+            // Group by week number within the month (W1–W5)
+            for (let w = 1; w <= 5; w++) buckets[`W${w}`] = 0;
+            filteredLedger.forEach(e => {
+                const day = new Date(e.date).getDate();
+                const week = `W${Math.ceil(day / 7)}`;
+                if (buckets[week] !== undefined) buckets[week] += e.agencyAmount;
+            });
+        } else if (timeFilter === 'Quarter') {
+            // Group by month name (last 3 months)
+            const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            for (let i = 2; i >= 0; i--) {
+                const m = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                buckets[monthNames[m.getMonth()]] = 0;
+            }
+            filteredLedger.forEach(e => {
+                const label = monthNames[new Date(e.date).getMonth()];
+                if (buckets[label] !== undefined) buckets[label] += e.agencyAmount;
+            });
+        } else {
+            // Year: group by month
+            const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            monthNames.forEach(m => (buckets[m] = 0));
+            filteredLedger.forEach(e => {
+                const label = monthNames[new Date(e.date).getMonth()];
+                buckets[label] += e.agencyAmount;
+            });
+        }
+
+        return {
+            labels: Object.keys(buckets),
+            datasets: [{
+                label: 'Agency Revenue (KES)',
+                data: Object.values(buckets),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16,185,129,0.1)',
+                tension: 0.4,
+                fill: true,
+            }]
+        };
+    }, [filteredLedger, timeFilter]);
 
     const REVENUE_CATEGORIES: RevenueStreamCategory[] = [
         'Agency Management Commission', 'Fines & Penalties', 'Late Payment Fine', 'Bills', 

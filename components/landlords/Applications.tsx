@@ -318,9 +318,13 @@ const StatCard: React.FC<{ title: string; value: number; color: string; icon: st
 const Applications: React.FC = () => {
     const { 
         landlordApplications, landlords, properties,
-        addLandlordApplication, updateLandlordApplication, deleteLandlordApplication, 
-        addLandlord, updateLandlord, deleteLandlord 
-    } = useData(); 
+        addLandlordApplication, updateLandlordApplication, deleteLandlordApplication,
+        addLandlord, updateLandlord, deleteLandlord,
+        checkPermission
+    } = useData();
+
+    const canEdit   = checkPermission('Landlords', 'edit');
+    const canDelete = checkPermission('Landlords', 'delete');
     
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState<'All' | 'Active' | 'Pending' | 'Approved' | 'Rejected'>('All');
@@ -604,20 +608,24 @@ const Applications: React.FC = () => {
                                                     Details
                                                 </button>
                                             )}
-                                            <button 
-                                                onClick={() => handleEdit(app)} 
-                                                className="text-gray-600 hover:text-blue-600 px-2 py-1 rounded hover:bg-gray-100"
-                                                title="Edit"
-                                            >
-                                                <Icon name="settings" className="w-4 h-4" />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDelete(app)} 
-                                                className="text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
-                                                title="Delete"
-                                            >
-                                                <Icon name="close" className="w-4 h-4" />
-                                            </button>
+                                            {canEdit && (
+                                                <button
+                                                    onClick={() => handleEdit(app)}
+                                                    className="text-gray-600 hover:text-blue-600 px-2 py-1 rounded hover:bg-gray-100"
+                                                    title="Edit"
+                                                >
+                                                    <Icon name="settings" className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                            {canDelete && (
+                                                <button
+                                                    onClick={() => handleDelete(app)}
+                                                    className="text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
+                                                    title="Delete"
+                                                >
+                                                    <Icon name="close" className="w-4 h-4" />
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

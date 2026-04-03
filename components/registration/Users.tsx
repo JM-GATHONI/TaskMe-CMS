@@ -332,8 +332,13 @@ const Users: React.FC = () => {
         addLandlord, updateLandlord, deleteLandlord,
         addTenant, updateTenant, deleteTenant,
         addRenovationInvestor, updateRenovationInvestor, deleteRenovationInvestor,
-        addVendor, updateVendor, deleteVendor
+        addVendor, updateVendor, deleteVendor,
+        checkPermission
     } = useData();
+
+    const canCreate = checkPermission('Users', 'create');
+    const canEdit   = checkPermission('Users', 'edit');
+    const canDelete = checkPermission('Users', 'delete');
     
     // UI State
     const [activeCategoryId, setActiveCategoryId] = useState('system');
@@ -717,12 +722,14 @@ const Users: React.FC = () => {
                              />
                              <Icon name="search" className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                         </div>
-                        <button 
-                            onClick={() => { setEditUser(null); setIsFormVisible(true); }} 
-                            className="bg-[#9D1F15] hover:bg-[#7A1810] text-white px-4 py-2 rounded text-sm font-bold flex items-center whitespace-nowrap transition-colors"
-                        >
-                            <Icon name="plus" className="w-4 h-4 mr-2" /> Add User
-                        </button>
+                        {canCreate && (
+                            <button
+                                onClick={() => { setEditUser(null); setIsFormVisible(true); }}
+                                className="bg-[#9D1F15] hover:bg-[#7A1810] text-white px-4 py-2 rounded text-sm font-bold flex items-center whitespace-nowrap transition-colors"
+                            >
+                                <Icon name="plus" className="w-4 h-4 mr-2" /> Add User
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -770,26 +777,32 @@ const Users: React.FC = () => {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
-                                                <button 
-                                                    onClick={() => { setEditUser(user); setIsFormVisible(true); }}
-                                                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
-                                                >
-                                                    <Icon name="settings" className="w-3 h-3 mr-1" /> Edit
-                                                </button>
-                                                
-                                                <button 
-                                                    onClick={() => setResetUser(user)}
-                                                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
-                                                >
-                                                    <Icon name="keys" className="w-3 h-3 mr-1" /> Set Pwd
-                                                </button>
+                                                {canEdit && (
+                                                    <button
+                                                        onClick={() => { setEditUser(user); setIsFormVisible(true); }}
+                                                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
+                                                    >
+                                                        <Icon name="settings" className="w-3 h-3 mr-1" /> Edit
+                                                    </button>
+                                                )}
 
-                                                <button 
-                                                    onClick={() => handleDeleteUser(user)}
-                                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
-                                                >
-                                                    <Icon name="trash" className="w-3 h-3 mr-1" /> Del
-                                                </button>
+                                                {canEdit && (
+                                                    <button
+                                                        onClick={() => setResetUser(user)}
+                                                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
+                                                    >
+                                                        <Icon name="keys" className="w-3 h-3 mr-1" /> Set Pwd
+                                                    </button>
+                                                )}
+
+                                                {canDelete && (
+                                                    <button
+                                                        onClick={() => handleDeleteUser(user)}
+                                                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center transition-colors"
+                                                    >
+                                                        <Icon name="trash" className="w-3 h-3 mr-1" /> Del
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>

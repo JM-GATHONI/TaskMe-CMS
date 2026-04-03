@@ -79,7 +79,8 @@ const MessageCaretakerModal: React.FC<{ caretaker: StaffProfile; onClose: () => 
 };
 
 const Caretakers: React.FC = () => {
-    const { staff, tasks, properties, addMessage, deleteStaff } = useData();
+    const { staff, tasks, properties, addMessage, deleteStaff, checkPermission } = useData();
+    const canDelete = checkPermission('Users', 'delete');
 
     // Modal State
     const [scheduleCaretaker, setScheduleCaretaker] = useState<StaffProfile | null>(null);
@@ -200,12 +201,14 @@ const Caretakers: React.FC = () => {
                                     >
                                         Message
                                     </button>
-                                    <button
-                                        onClick={() => handleDeleteCaretaker(caretaker)}
-                                        className="px-4 py-2 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded hover:bg-red-100 transition-colors"
-                                    >
-                                        Delete
-                                    </button>
+                                    {canDelete && (
+                                        <button
+                                            onClick={() => handleDeleteCaretaker(caretaker)}
+                                            className="px-4 py-2 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded hover:bg-red-100 transition-colors"
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

@@ -785,6 +785,19 @@ const ReferralLanding: React.FC = () => {
     const [callbackType, setCallbackType] = useState('General');
     const [currentPage, setCurrentPage] = useState<PageType>('Home'); // Home acts as the main landing, Properties/Funds act as filtered views if needed, About is separate.
     const [referrerCode, setReferrerCode] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    const buildShareLink = (type: 'unit' | 'fund', id: string) => {
+        const base = `${window.location.origin}${window.location.pathname}#/user-app-portal/referral-landing`;
+        const ref = referrerCode ? `&ref=${referrerCode}` : '';
+        return `${base}?${type}=${encodeURIComponent(id)}${ref}`;
+    };
+
+    const handleCopyLink = (type: 'unit' | 'fund', id: string) => {
+        navigator.clipboard.writeText(buildShareLink(type, id));
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     // Registration Modal State
     const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
@@ -949,12 +962,24 @@ const ReferralLanding: React.FC = () => {
                                                     <Icon name="map-pin" className="w-3 h-3 mr-1" /> Open map pin
                                                 </a>
                                             )}
-                                            <button 
-                                                onClick={() => setSelectedUnit(unit)}
-                                                className="w-full mt-auto py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-all shadow-md flex justify-center items-center group-hover:bg-primary"
-                                            >
-                                                Book Now
-                                            </button>
+                                            <div className="mt-auto flex gap-2">
+                                                <button
+                                                    onClick={() => setSelectedUnit(unit)}
+                                                    className="flex-1 py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition-all shadow-md flex justify-center items-center group-hover:bg-primary"
+                                                >
+                                                    Book Now
+                                                </button>
+                                                <button
+                                                    onClick={() => handleCopyLink('unit', unit.id)}
+                                                    title="Copy shareable link"
+                                                    className="px-3 py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-all shadow-sm flex items-center justify-center"
+                                                >
+                                                    {copiedId === unit.id
+                                                        ? <Icon name="check" className="w-4 h-4 text-green-600" />
+                                                        : <Icon name="copy" className="w-4 h-4" />
+                                                    }
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 )) : (
@@ -1038,12 +1063,24 @@ const ReferralLanding: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            <button 
-                                                onClick={() => setSelectedFund(fund)}
-                                                className="w-full mt-auto py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-colors shadow-md flex justify-center items-center gap-2 group-hover:bg-primary"
-                                            >
-                                                Start Investing <Icon name="chevron-down" className="w-4 h-4 -rotate-90" />
-                                            </button>
+                                            <div className="mt-auto flex gap-2">
+                                                <button
+                                                    onClick={() => setSelectedFund(fund)}
+                                                    className="flex-1 py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-colors shadow-md flex justify-center items-center gap-2 group-hover:bg-primary"
+                                                >
+                                                    Start Investing <Icon name="chevron-down" className="w-4 h-4 -rotate-90" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleCopyLink('fund', fund.id)}
+                                                    title="Copy shareable link"
+                                                    className="px-4 py-4 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-2xl transition-all shadow-sm flex items-center justify-center"
+                                                >
+                                                    {copiedId === fund.id
+                                                        ? <Icon name="check" className="w-4 h-4 text-green-600" />
+                                                        : <Icon name="copy" className="w-4 h-4" />
+                                                    }
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

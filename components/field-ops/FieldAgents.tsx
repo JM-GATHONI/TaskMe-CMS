@@ -1110,7 +1110,8 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
 };
 
 const FieldAgents: React.FC = () => {
-    const { staff, properties, tasks, addStaff, deleteStaff, tenants, landlords } = useData();
+    const { staff, properties, tasks, addStaff, deleteStaff, tenants, landlords, checkPermission } = useData();
+    const canDelete = checkPermission('Users', 'delete');
     const [selectedAgent, setSelectedAgent] = useState<StaffProfile | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddAgentModalOpen, setIsAddAgentModalOpen] = useState(false);
@@ -1297,13 +1298,15 @@ const FieldAgents: React.FC = () => {
                                 stats={stats}
                                 onClick={() => setSelectedAgent(agent)}
                             />
-                            <button
-                                onClick={(e) => handleDeleteAgent(agent, e)}
-                                title="Delete agent"
-                                className="absolute top-2 left-2 z-20 opacity-0 group-hover/wrap:opacity-100 transition-opacity bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 shadow-lg"
-                            >
-                                <Icon name="close" className="w-3 h-3" />
-                            </button>
+                            {canDelete && (
+                                <button
+                                    onClick={(e) => handleDeleteAgent(agent, e)}
+                                    title="Delete agent"
+                                    className="absolute top-2 left-2 z-20 opacity-0 group-hover/wrap:opacity-100 transition-opacity bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 shadow-lg"
+                                >
+                                    <Icon name="close" className="w-3 h-3" />
+                                </button>
+                            )}
                         </div>
                     );
                 })}
