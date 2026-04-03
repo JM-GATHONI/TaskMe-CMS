@@ -71,30 +71,45 @@ export const communicationApi = {
     },
 
     /**
-     * Send WhatsApp Message (WhatsApp Business API)
+     * Send WhatsApp Message via Meta Cloud API (send-whatsapp Edge Function)
      */
     sendWhatsApp: async (to: string, content: string): Promise<SendResult> => {
         console.log(`[API Push] Sending WhatsApp... To: ${to}`);
-        await delay(1000);
-
-        return { 
-            success: true, 
-            messageId: `wa-${Date.now()}`,
-            providerRef: `wa-${Date.now()}`
-        };
+        try {
+            const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+                body: { to, content },
+            });
+            if (error) throw error;
+            if ((data as any)?.success === false) {
+                // WhatsApp not yet configured — return informative non-blocking result
+                return {
+                    success: false,
+                    error: (data as any)?.error || 'WhatsApp not configured',
+                    messageId: `wa-pending-${Date.now()}`,
+                };
+            }
+            return {
+                success: true,
+                messageId: (data as any)?.messageId || `wa-${Date.now()}`,
+                providerRef: (data as any)?.providerRef,
+            };
+        } catch (e: any) {
+            console.warn('[sendWhatsApp] Edge function error:', e.message);
+            return { success: false, error: e.message || 'WhatsApp send failed' };
+        }
     },
 
     /**
-     * Send In-App Notification (Firebase/OneSignal)
+     * Send In-App Notification — stored in Supabase; delivery via Realtime subscription
      */
     sendInApp: async (userId: string, content: string): Promise<SendResult> => {
-        console.log(`[API Push] Sending Push Notification... User: ${userId}`);
-        await delay(500);
-
-        return { 
-            success: true, 
-            messageId: `pn-${Date.now()}`,
-            providerRef: `fcm-${Date.now()}`
+        console.log(`[API Push] Sending In-App message... User: ${userId}`);
+        // Actual delivery is handled by Supabase Realtime (DataContext subscription).
+        // This function records intent; the message is persisted by addMessage() in the caller.
+        return {
+            success: true,
+            messageId: `inapp-${Date.now()}`,
+            providerRef: `supabase-realtime`,
         };
     },
 
