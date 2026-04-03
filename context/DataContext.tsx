@@ -134,6 +134,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const queryClient = useQueryClient();
 
+    // ── Supabase Realtime: In-App message delivery ───────────────────────────
+    // Subscribes to changes on the app_state row that stores messages.
+    // When the row is updated (e.g. by another session sending a message),
+    // the local messages state is refreshed automatically.
+    useEffect(() => {
+        const channel = supabase
+            .channel('realtime-messages')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'app',
+                    table: 'app_state',
+                    filter: `key=eq.tm_messages_v11`,
+                },
+                (payload) => {
+                    const incoming = payload.new?.value;
+                    if (Array.isArray(incoming)) {
+                        // Merge: keep local messages not yet in the incoming set
+                        setMessages(prev => {
+                            const existingIds = new Set(prev.map((m: any) => m.id));
+                            const fresh = incoming.filter((m: any) => !existingIds.has(m.id));
+                            return fresh.length > 0 ? [...fresh, ...prev] : prev;
+                        });
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const {
         data: rolesData,
         isLoading: rolesLoading,
@@ -274,14 +307,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // ... (Keep existing update functions) ...
     const addTenant = (t: TenantProfile) => setTenants(prev => [t, ...prev]);
     const updateTenant = (id: string, d: Partial<TenantProfile>) => setTenants(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
-    const deleteTenant = (id: string) => setTenants(prev => prev.filter(t => t.id !== id));
+    const deleteTenant = (id: string) => {
+        const prevTenants = tenants;
+        setTenants(prev => prev.filter(t => t.id !== id));
+        (async () => {
+            console.log('[Supabase] tenant delete', { id });
+            const { error } = await supabase.from('tenants').delete().eq('id', id);
+            if (error) {
+                console.warn('[Supabase] tenant delete error (may not exist in normalized table):', error.message);
+                // Don't rollback – app_state is the source of truth and was already updated
+            }
+        })();
+    };
     const addProperty = (p: Property) => setProperties(prev => [p, ...prev]);
     const updateProperty = (id: string, d: Partial<Property>) => setProperties(prev => prev.map(p => p.id === id ? { ...p, ...d } : p));
     const deleteProperty = (id: string) => setProperties(prev => prev.filter(p => p.id !== id));
     const addUnitToProperty = (propId: string, unit: Unit) => setProperties(prev => prev.map(p => p.id === propId ? { ...p, units: [...p.units, unit] } : p));
     const addLandlord = (u: User) => setLandlords(prev => [u, ...prev]);
     const updateLandlord = (id: string, d: Partial<User>) => setLandlords(prev => prev.map(u => u.id === id ? {...u, ...d} : u));
-    const deleteLandlord = (id: string) => setLandlords(prev => prev.filter(u => u.id !== id));
+    const deleteLandlord = (id: string) => {
+        const prevLandlords = landlords;
+        setLandlords(prev => prev.filter(u => u.id !== id));
+        (async () => {
+            console.log('[Supabase] landlord delete', { id });
+            const { error } = await supabase.from('landlords').delete().eq('id', id);
+            if (error) {
+                console.warn('[Supabase] landlord delete error (may not exist in normalized table):', error.message);
+            }
+        })();
+    };
     const addTask = (t: Task) => setTasks(prev => [t, ...prev]);
     const updateTask = (id: string, d: Partial<Task>) => setTasks(prev => prev.map(t => t.id === id ? {...t, ...d} : t));
     const addQuotation = (q: Quotation) => setQuotations(prev => [q, ...prev]);
@@ -294,7 +348,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const deleteLandlordApplication = (id: string) => setLandlordApplications(prev => prev.filter(a => a.id !== id));
     const addStaff = (s: StaffProfile) => setStaff(prev => [s, ...prev]);
     const updateStaff = (id: string, d: Partial<StaffProfile>) => setStaff(prev => prev.map(s => s.id === id ? {...s, ...d} : s));
-    const deleteStaff = (id: string) => setStaff(prev => prev.filter(s => s.id !== id));
+    const deleteStaff = (id: string) => {
+        const prevStaff = staff;
+        setStaff(prev => prev.filter(s => s.id !== id));
+        (async () => {
+            console.log('[Supabase] staff delete', { id });
+            // Delete from app.staff_profiles; auth.users record is left to Supabase Admin cleanup
+            const { error } = await supabase.schema('app').from('staff_profiles').delete().eq('id', id);
+            if (error) {
+                console.warn('[Supabase] staff delete error (may not exist in normalized table):', error.message);
+            }
+        })();
+    };
     const addFine = (f: FineRule) => setFines(prev => [f, ...prev]);
     const updateFine = (id: string, d: Partial<FineRule>) => setFines(prev => prev.map(f => f.id === id ? {...f, ...d} : f));
     const deleteFine = (id: string) => setFines(prev => prev.filter(f => f.id !== id));
@@ -545,14 +610,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const syncWebsiteLeads = async () => {
         try {
             const newLeads = await websiteApi.fetchLeads();
-            setLeads(prev => {
-                // simple dedup based on ID if we had real IDs, here we just append but in prod check dups
-                const existingIds = new Set(prev.map(l => l.id));
-                const filteredNew = newLeads.filter(l => !existingIds.has(l.id));
-                return [...filteredNew, ...prev];
-            });
+            if (newLeads.length > 0) {
+                setLeads(prev => {
+                    const existingIds = new Set(prev.map(l => l.id));
+                    const fresh = newLeads.filter(l => !existingIds.has(l.id));
+                    return fresh.length > 0 ? [...fresh, ...prev] : prev;
+                });
+            }
         } catch (e) {
-            console.error("Failed to sync leads", e);
+            console.error('[DataContext] syncWebsiteLeads failed:', e);
         }
     };
 
@@ -561,13 +627,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateFundiJob = (id: string, d: Partial<FundiJob>) => setFundiJobs(prev => prev.map(j => j.id === id ? { ...j, ...d } : j));
     
     const syncFundiJobs = async () => {
-        // Production safety: do NOT call websiteApi.fetchFundiJobs() (it generates mock/random jobs).
-        // fundiJobs should come from the Supabase-backed app_state (tm_fundi_jobs_v11).
         try {
-            // Force re-fetch of the app_state value so the UI reflects any real updates.
+            // Primary source: Supabase app_state (populated by fundi-job-submit Edge Function)
             queryClient.invalidateQueries({ queryKey: ['app_state', 'tm_fundi_jobs_v11'] });
+
+            // Secondary source: website API (if VITE_WEBSITE_API_URL is configured)
+            const newJobs = await websiteApi.fetchFundiJobs();
+            if (newJobs.length > 0) {
+                setFundiJobs(prev => {
+                    const existingIds = new Set(prev.map(j => j.id));
+                    const fresh = newJobs.filter(j => !existingIds.has(j.id));
+                    return fresh.length > 0 ? [...fresh, ...prev] : prev;
+                });
+            }
         } catch (e) {
-            console.error("Failed to refresh fundi jobs", e);
+            console.error('[DataContext] syncFundiJobs failed:', e);
         }
     };
 

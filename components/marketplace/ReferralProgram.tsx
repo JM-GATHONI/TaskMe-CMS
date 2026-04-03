@@ -4,8 +4,9 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 
 const ReferralProgram: React.FC = () => {
-    const { leads, rfTransactions, currentUser, commissionRules } = useData();
+    const { leads, rfTransactions, currentUser, commissionRules, properties } = useData();
     const [copied, setCopied] = useState(false);
+    const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
 
     const referralLeads = useMemo(
         () => (leads || []).filter(l => l.source === 'Referral'),
@@ -75,6 +76,29 @@ const ReferralProgram: React.FC = () => {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const vacantUnits = useMemo(() =>
+        properties.flatMap(p => p.units
+            .filter(u => u.status === 'Vacant')
+            .map(u => ({
+                id: u.id,
+                title: `${u.unitNumber} at ${p.name}`,
+                rent: u.rent || p.defaultMonthlyRent || 0,
+                location: p.subLocation || p.location || p.zone || '',
+            }))
+        )
+    , [properties]);
+
+    const buildShareLink = (type: 'unit' | 'fund', id: string) => {
+        const base = `${window.location.origin}${window.location.pathname}#/user-app-portal/referral-landing`;
+        return `${base}?${type}=${encodeURIComponent(id)}&ref=${referralCode}`;
+    };
+
+    const handleCopyShare = (type: 'unit' | 'fund', id: string) => {
+        navigator.clipboard.writeText(buildShareLink(type, id));
+        setCopiedShareId(id);
+        setTimeout(() => setCopiedShareId(null), 2000);
+    };
+
     return (
         <div className="space-y-8 max-w-5xl mx-auto">
             <div className="text-center mb-8">
@@ -117,6 +141,30 @@ const ReferralProgram: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Shareable Vacancy Links */}
+            {vacantUnits.length > 0 && (
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-1">Share Vacant Units</h3>
+                    <p className="text-xs text-gray-500 mb-4">Copy a direct link to any vacant unit — your referral code is embedded automatically.</p>
+                    <div className="space-y-2 max-h-52 overflow-y-auto">
+                        {vacantUnits.map(u => (
+                            <div key={u.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-medium text-gray-800 truncate">{u.title}</p>
+                                    <p className="text-xs text-gray-500">KES {u.rent.toLocaleString()} / mo · {u.location}</p>
+                                </div>
+                                <button
+                                    onClick={() => handleCopyShare('unit', u.id)}
+                                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${copiedShareId === u.id ? 'bg-green-100 text-green-700' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+                                >
+                                    {copiedShareId === u.id ? 'Copied!' : 'Copy Link'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

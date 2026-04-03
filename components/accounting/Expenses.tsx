@@ -65,7 +65,9 @@ const RecordExpenseModal: React.FC<{ onClose: () => void; onSave: (bill: Partial
 };
 
 const Expenses: React.FC = () => {
-    const { staff, bills, addBill, updateBill, deleteBill } = useData();
+    const { staff, bills, addBill, updateBill, deleteBill, checkPermission } = useData();
+    const canPay    = checkPermission('Financials', 'pay');
+    const canDelete = checkPermission('Financials', 'delete');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState<string>('All');
@@ -166,8 +168,17 @@ const Expenses: React.FC = () => {
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Top Category</p>
-                    <h3 className="text-3xl font-extrabold text-blue-600 mt-2">Salaries</h3>
-                    <p className="text-xs text-gray-500 mt-1">45% of total spend</p>
+                    {(() => {
+                        const allTotal = Object.values(categoryData).reduce((s, v) => s + v, 0);
+                        const [topCat, topAmt] = Object.entries(categoryData).sort((a, b) => b[1] - a[1])[0] ?? ['—', 0];
+                        const pct = allTotal > 0 ? Math.round((topAmt / allTotal) * 100) : 0;
+                        return (
+                            <>
+                                <h3 className="text-3xl font-extrabold text-blue-600 mt-2 truncate">{topCat}</h3>
+                                <p className="text-xs text-gray-500 mt-1">{pct}% of total spend</p>
+                            </>
+                        );
+                    })()}
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pending Bills</p>
@@ -240,10 +251,10 @@ const Expenses: React.FC = () => {
                                         </td>
                                         <td className="px-4 py-3 text-right font-bold text-red-600">KES {entry.totalAmount.toLocaleString()}</td>
                                         <td className="px-4 py-3 text-right">
-                                            {entry.id.startsWith('bill') && (
+                                            {entry.id.startsWith('bill') && canPay && (
                                                 <button onClick={() => handlePayBill(entry.id)} className="text-blue-600 hover:underline text-xs font-bold mr-3">Pay</button>
                                             )}
-                                            {entry.id.startsWith('bill') && (
+                                            {entry.id.startsWith('bill') && canDelete && (
                                                 <button onClick={() => deleteBill(entry.id)} className="text-gray-400 hover:text-red-500"><Icon name="close" className="w-4 h-4"/></button>
                                             )}
                                         </td>

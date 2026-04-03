@@ -1,0 +1,142 @@
+/**
+ * send-sms — Provider-agnostic SMS Edge Function
+ *
+ * Supported providers (set SMS_PROVIDER env var):
+ *   "africastalking"  → Africa's Talking (recommended for Kenya)
+ *   "twilio"          → Twilio
+ *   (unset/other)     → Logs the message and returns a queued response
+ *
+ * Required env vars per provider:
+ *
+ * Africa's Talking:
+ *   SMS_PROVIDER=africastalking
+ *   AT_API_KEY=<your-api-key>
+ *   AT_USERNAME=<your-username>          (default: "sandbox" for testing)
+ *   AT_SENDER_ID=<optional-sender-id>   (e.g. TASKME)
+ *
+ * Twilio:
+ *   SMS_PROVIDER=twilio
+ *   TWILIO_ACCOUNT_SID=<your-account-sid>
+ *   TWILIO_AUTH_TOKEN=<your-auth-token>
+ *   TWILIO_FROM_NUMBER=<e.g. +1234567890>
+ */
+
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+
+  let body: { to: string; content: string; senderId?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const { to, content, senderId } = body;
+  if (!to || !content) {
+    return new Response(JSON.stringify({ error: 'Missing required fields: to, content' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const env = Deno.env.toObject();
+  const provider = (env.SMS_PROVIDER || '').toLowerCase();
+
+  try {
+    // ── Africa's Talking ──────────────────────────────────────────────────────
+    if (provider === 'africastalking') {
+      const apiKey = env.AT_API_KEY;
+      const username = env.AT_USERNAME || 'sandbox';
+      const from = senderId || env.AT_SENDER_ID || undefined;
+
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: 'AT_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const params = new URLSearchParams({ username, to, message: content });
+      if (from) params.append('from', from);
+
+      const atRes = await fetch('https://api.africastalking.com/version1/messaging', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'apiKey': apiKey,
+        },
+        body: params.toString(),
+      });
+
+      const atJson = await atRes.json();
+
+      if (!atRes.ok || atJson.SMSMessageData?.Recipients?.[0]?.status !== 'Success') {
+        const errMsg = atJson.SMSMessageData?.Recipients?.[0]?.status || atJson.error || 'Africa\'s Talking send failed';
+        console.error('[send-sms AT] Error:', errMsg);
+        return new Response(JSON.stringify({ error: errMsg }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const recipient = atJson.SMSMessageData.Recipients[0];
+      return new Response(JSON.stringify({
+        success: true,
+        messageId: recipient.messageId,
+        providerRef: `AT-${recipient.messageId}`,
+        provider: 'africastalking',
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ── Twilio ────────────────────────────────────────────────────────────────
+    if (provider === 'twilio') {
+      const accountSid = env.TWILIO_ACCOUNT_SID;
+      const authToken = env.TWILIO_AUTH_TOKEN;
+      const from = env.TWILIO_FROM_NUMBER;
+
+      if (!accountSid || !authToken || !from) {
+        return new Response(JSON.stringify({ error: 'Twilio env vars not fully configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const twilioRes = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: to, From: from, Body: content }).toString(),
+        }
+      );
+
+      const twilioJson = await twilioRes.json();
+
+      if (!twilioRes.ok) {
+        console.error('[send-sms Twilio] Error:', twilioJson.message);
+        return new Response(JSON.stringify({ error: twilioJson.message || 'Twilio send failed' }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        messageId: twilioJson.sid,
+        providerRef: `TWILIO-${twilioJson.sid}`,
+        provider: 'twilio',
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ── No provider configured — queue/log mode ───────────────────────────────
+    console.log(`[send-sms] No SMS_PROVIDER configured. Message queued. To: ${to}, Content: ${content}`);
+    return new Response(JSON.stringify({
+      success: true,
+      messageId: `sms-queued-${Date.now()}`,
+      providerRef: 'queued',
+      provider: 'none',
+      note: 'Set SMS_PROVIDER env var (africastalking or twilio) to enable real delivery.',
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+  } catch (err: any) {
+    console.error('[send-sms] Unexpected error:', err);
+    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+});

@@ -1110,10 +1110,17 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
 };
 
 const FieldAgents: React.FC = () => {
-    const { staff, properties, tasks, addStaff, tenants, landlords } = useData();
+    const { staff, properties, tasks, addStaff, deleteStaff, tenants, landlords, checkPermission } = useData();
+    const canDelete = checkPermission('Users', 'delete');
     const [selectedAgent, setSelectedAgent] = useState<StaffProfile | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isAddAgentModalOpen, setIsAddAgentModalOpen] = useState(false);
+
+    const handleDeleteAgent = (agent: StaffProfile, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm(`Permanently delete ${agent.name}? This cannot be undone.`)) return;
+        deleteStaff(agent.id);
+    };
 
     const agents = useMemo(() => 
         staff.filter(s => s.role === 'Field Agent' && s.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -1285,12 +1292,22 @@ const FieldAgents: React.FC = () => {
                 {agents.map(agent => {
                     const stats = getAgentStats(agent.id, agent.name);
                     return (
-                        <AgentCard 
-                            key={agent.id} 
-                            agent={agent} 
-                            stats={stats} 
-                            onClick={() => setSelectedAgent(agent)} 
-                        />
+                        <div key={agent.id} className="relative group/wrap">
+                            <AgentCard
+                                agent={agent}
+                                stats={stats}
+                                onClick={() => setSelectedAgent(agent)}
+                            />
+                            {canDelete && (
+                                <button
+                                    onClick={(e) => handleDeleteAgent(agent, e)}
+                                    title="Delete agent"
+                                    className="absolute top-2 left-2 z-20 opacity-0 group-hover/wrap:opacity-100 transition-opacity bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 shadow-lg"
+                                >
+                                    <Icon name="close" className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
                     );
                 })}
             </div>

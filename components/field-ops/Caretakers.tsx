@@ -79,11 +79,17 @@ const MessageCaretakerModal: React.FC<{ caretaker: StaffProfile; onClose: () => 
 };
 
 const Caretakers: React.FC = () => {
-    const { staff, tasks, properties, addMessage } = useData();
-    
+    const { staff, tasks, properties, addMessage, deleteStaff, checkPermission } = useData();
+    const canDelete = checkPermission('Users', 'delete');
+
     // Modal State
     const [scheduleCaretaker, setScheduleCaretaker] = useState<StaffProfile | null>(null);
     const [messageCaretaker, setMessageCaretaker] = useState<StaffProfile | null>(null);
+
+    const handleDeleteCaretaker = (caretaker: StaffProfile) => {
+        if (!window.confirm(`Permanently delete ${caretaker.name}? This cannot be undone.`)) return;
+        deleteStaff(caretaker.id);
+    };
 
     const caretakers = useMemo(() => staff.filter(s => s.role === 'Caretaker'), [staff]);
 
@@ -127,6 +133,15 @@ const Caretakers: React.FC = () => {
                     const caretakerTasks = tasks.filter(t => t.assignedTo === caretaker.name);
                     const openTasks = caretakerTasks.filter(t => t.status !== 'Completed' && t.status !== 'Closed').length;
 
+                    const now = new Date();
+                    const weekStart = new Date(now);
+                    weekStart.setDate(now.getDate() - now.getDay());
+                    weekStart.setHours(0, 0, 0, 0);
+                    const weeklyTaskCount = caretakerTasks.filter(t => {
+                        const due = t.dueDate ? new Date(t.dueDate) : null;
+                        return due && due >= weekStart && due <= now;
+                    }).length;
+
                     return (
                         <div key={caretaker.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                             <div className="flex flex-col md:flex-row justify-between items-start gap-6">
@@ -153,7 +168,7 @@ const Caretakers: React.FC = () => {
                                     </div>
                                     <div>
                                         <p className="text-xs text-gray-400 uppercase font-bold">Reports (Wk)</p>
-                                        <p className="text-2xl font-bold text-gray-800">5</p>
+                                        <p className="text-2xl font-bold text-gray-800">{weeklyTaskCount}</p>
                                     </div>
                                 </div>
 
@@ -174,18 +189,26 @@ const Caretakers: React.FC = () => {
                                 </div>
                                 
                                 <div className="flex flex-col gap-2">
-                                     <button 
+                                     <button
                                         onClick={() => setScheduleCaretaker(caretaker)}
                                         className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-xs font-bold rounded hover:bg-gray-50 transition-colors"
                                     >
                                         View Schedule
                                     </button>
-                                     <button 
+                                     <button
                                         onClick={() => setMessageCaretaker(caretaker)}
                                         className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded hover:bg-blue-700 transition-colors"
                                     >
                                         Message
                                     </button>
+                                    {canDelete && (
+                                        <button
+                                            onClick={() => handleDeleteCaretaker(caretaker)}
+                                            className="px-4 py-2 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded hover:bg-red-100 transition-colors"
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

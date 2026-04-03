@@ -1267,7 +1267,7 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
 // --- DETAIL VIEW ---
 
 const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> = ({ tenant, onBack }) => {
-    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill } = useData();
+    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties } = useData();
     const [chatInput, setChatInput] = useState('');
     const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
     const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
@@ -1383,6 +1383,12 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const handleLeaseDownload = () => {
         alert("Downloading Lease Document...");
     };
+
+    // Placement fee: first month rent goes to agency as placement fee
+    const tenantProperty = properties.find(p => p.id === tenant.propertyId);
+    const onboardingMonth = tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null;
+    const currentMonthIsoNow = new Date().toISOString().slice(0, 7);
+    const isPlacementFeeMonth = !!(tenantProperty?.placementFee) && onboardingMonth === currentMonthIsoNow;
 
     // Days in Arrears & Automated Fine Logic
     // Requirement:
@@ -1839,6 +1845,16 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <span>KES {Number(totalExpected ?? 0).toLocaleString()}</span>
                         </div>
                     </div>
+
+                    {isPlacementFeeMonth && (
+                        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                            <span className="font-bold mt-0.5">⚠</span>
+                            <div>
+                                <p className="font-bold">Placement Fee Month</p>
+                                <p>This tenant's first month rent (KES {Number(tenant.rentAmount ?? 0).toLocaleString()}) is directed to the agency as a placement fee. Management commission and MRI tax do not apply this month.</p>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="flex justify-between items-center text-green-600">
                         <span className="font-medium">Amount Paid (This Month)</span>
