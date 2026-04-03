@@ -65,13 +65,17 @@ const Overview: React.FC = () => {
             return acc + paid;
         }, 0);
 
-        // 2. Expenses (Bills Paid + Maintenance Costs)
+        // 2. Expenses (Bills Paid + Maintenance Costs — completed/closed tasks only)
         const billExpenses = bills.reduce((acc, b) => acc + (b.status === 'Paid' ? b.amount : 0), 0);
-        const taskExpenses = tasks.reduce((acc, t) => acc + ((t.costs?.labor || 0) + (t.costs?.materials || 0) + (t.costs?.travel || 0)), 0);
+        const taskExpenses = tasks
+            .filter(t => t.status === 'Completed' || t.status === 'Closed')
+            .reduce((acc, t) => acc + ((t.costs?.labor || 0) + (t.costs?.materials || 0) + (t.costs?.travel || 0)), 0);
         const totalExpenses = billExpenses + taskExpenses;
 
-        // 3. Receivables (Arrears)
-        const receivables = tenants.reduce((acc, t) => acc + (t.status === 'Overdue' ? t.rentAmount : 0), 0);
+        // 3. Receivables (overdue rent + pending tenant bills)
+        const overdueRent = tenants.reduce((acc, t) => acc + (t.status === 'Overdue' ? t.rentAmount : 0), 0);
+        const pendingBills = tenants.reduce((acc, t) => acc + t.outstandingBills.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0), 0);
+        const receivables = overdueRent + pendingBills;
 
         // 4. Payables (Unpaid Bills)
         const payables = bills.reduce((acc, b) => acc + (b.status === 'Unpaid' || b.status === 'Overdue' ? b.amount : 0), 0);
@@ -80,7 +84,21 @@ const Overview: React.FC = () => {
         const netProfit = totalRevenue - totalExpenses;
         const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-        return { totalRevenue, totalExpenses, receivables, payables, netProfit, margin };
+        // 6. Arrears percentage (overdue tenants / active tenants)
+        const activeTenants = tenants.filter(t => t.status !== 'Vacated' && t.status !== 'Evicted' && t.status !== 'Blacklisted');
+        const arrearsPct = activeTenants.length > 0
+            ? Math.round((tenants.filter(t => t.status === 'Overdue').length / activeTenants.length) * 100)
+            : 0;
+
+        // 7. Financial Health Score (0–100)
+        const profitabilityScore = Math.min(40, Math.max(0, Math.round((margin / 100) * 40)));
+        const coverageRatio = receivables / (payables || 1);
+        const liquidityScore = Math.min(30, Math.round(Math.min(coverageRatio, 3) / 3 * 30));
+        const paidTenantCount = tenants.filter(t => t.status === 'Active').length;
+        const reliabilityScore = activeTenants.length > 0 ? Math.round((paidTenantCount / activeTenants.length) * 30) : 15;
+        const healthScore = Math.min(100, profitabilityScore + liquidityScore + reliabilityScore);
+
+        return { totalRevenue, totalExpenses, receivables, payables, netProfit, margin, arrearsPct, healthScore };
     }, [tenants, bills, tasks]);
 
     // --- Monthly Cashflow Calculation ---
@@ -183,16 +201,16 @@ const Overview: React.FC = () => {
                             <Icon name="shield" className="w-5 h-5 text-green-400" />
                         </div>
                         <div className="mt-4 flex items-baseline">
-                            <span className="text-5xl font-extrabold text-white">92</span>
+                            <span className="text-5xl font-extrabold text-white">{stats.healthScore}</span>
                             <span className="text-lg text-gray-400 ml-1">/100</span>
                         </div>
                         <div className="mt-4">
                             <div className="flex justify-between text-xs text-gray-400 mb-1">
                                 <span>Stability</span>
-                                <span>Excellent</span>
+                                <span>{stats.healthScore >= 80 ? 'Excellent' : stats.healthScore >= 60 ? 'Good' : stats.healthScore >= 40 ? 'Fair' : 'Poor'}</span>
                             </div>
                             <div className="w-full bg-gray-700 rounded-full h-1.5">
-                                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: '92%' }}></div>
+                                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${stats.healthScore}%` }}></div>
                             </div>
                         </div>
                     </div>
@@ -210,7 +228,7 @@ const Overview: React.FC = () => {
                 <KpiCard 
                     title="Accounts Receivable" 
                     value={`KES ${(stats.receivables/1000).toFixed(1)}K`} 
-                    subtext="5% Arrears" 
+                    subtext={`${stats.arrearsPct}% Arrears`} 
                     trend="down" 
                     color="text-blue-600" 
                     icon="arrears" 
