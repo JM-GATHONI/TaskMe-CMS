@@ -546,10 +546,144 @@ const StaffFormModal: React.FC<{
     );
 };
 
+// Eligible system roles that can be imported from Registration > Users
+const IMPORTABLE_ROLES: string[] = ['Super Admin', 'Branch Manager', 'Accountant', 'Field Agent', 'Caretaker'];
+
+const ImportUsersModal: React.FC<{
+    allStaff: StaffProfile[];
+    targetUnit: BusinessUnit;
+    onClose: () => void;
+    onImport: (selected: StaffProfile[]) => void;
+}> = ({ allStaff, targetUnit, onClose, onImport }) => {
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [search, setSearch] = useState('');
+
+    // Eligible: importable roles, not already in this department
+    const eligible = useMemo(() =>
+        allStaff.filter(s =>
+            IMPORTABLE_ROLES.includes(s.role) &&
+            s.department !== targetUnit &&
+            (s.name.toLowerCase().includes(search.toLowerCase()) ||
+             s.role.toLowerCase().includes(search.toLowerCase()) ||
+             (s.email || '').toLowerCase().includes(search.toLowerCase()))
+        )
+    , [allStaff, targetUnit, search]);
+
+    const toggle = (id: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAll = () => {
+        if (selected.size === eligible.length) {
+            setSelected(new Set());
+        } else {
+            setSelected(new Set(eligible.map(s => s.id)));
+        }
+    };
+
+    const handleConfirm = () => {
+        const toImport = eligible.filter(s => selected.has(s.id));
+        if (toImport.length === 0) return alert('Select at least one user to import.');
+        onImport(toImport);
+    };
+
+    const roleTag = (role: string) => {
+        const colors: Record<string, string> = {
+            'Super Admin': 'bg-purple-100 text-purple-700',
+            'Branch Manager': 'bg-blue-100 text-blue-700',
+            'Accountant': 'bg-indigo-100 text-indigo-700',
+            'Field Agent': 'bg-green-100 text-green-700',
+            'Caretaker': 'bg-orange-100 text-orange-700',
+        };
+        return colors[role] || 'bg-gray-100 text-gray-600';
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1600] p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b">
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-800">Import Users → {targetUnit}</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">Eligible: System Users, Field Agents, Caretakers not already in this department.</p>
+                    </div>
+                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
+                </div>
+
+                <div className="px-6 py-3 border-b">
+                    <input
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search by name, role or email…"
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
+                    />
+                </div>
+
+                <div className="px-6 py-3 border-b flex items-center justify-between text-xs text-gray-500 font-bold uppercase">
+                    <span>{eligible.length} eligible user(s)</span>
+                    {eligible.length > 0 && (
+                        <button onClick={toggleAll} className="text-primary hover:underline">
+                            {selected.size === eligible.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                    )}
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                    {eligible.length === 0 ? (
+                        <p className="px-6 py-10 text-center text-gray-400 text-sm">
+                            No eligible users found. All system users, agents and caretakers are either already in this department or don't exist yet.
+                        </p>
+                    ) : eligible.map(s => (
+                        <label key={s.id} className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={selected.has(s.id)}
+                                onChange={() => toggle(s.id)}
+                                className="w-4 h-4 accent-primary"
+                            />
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                                {s.name.charAt(0)}
+                            </div>
+                            <div className="flex-grow min-w-0">
+                                <p className="font-semibold text-gray-800 text-sm truncate">{s.name}</p>
+                                <p className="text-xs text-gray-500 truncate">{s.email || s.phone || '—'}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${roleTag(s.role)}`}>{s.role}</span>
+                                {s.department && (
+                                    <span className="text-xs text-gray-400">Currently: {s.department}</span>
+                                )}
+                            </div>
+                        </label>
+                    ))}
+                </div>
+
+                <div className="flex justify-between items-center px-6 py-4 border-t bg-gray-50 rounded-b-2xl">
+                    <span className="text-sm text-gray-600">{selected.size} selected</span>
+                    <div className="flex gap-3">
+                        <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 bg-white border rounded-lg hover:bg-gray-50">Cancel</button>
+                        <button
+                            onClick={handleConfirm}
+                            disabled={selected.size === 0}
+                            className="px-5 py-2 text-sm font-bold bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-40 transition-colors"
+                        >
+                            Import {selected.size > 0 ? `(${selected.size})` : ''}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const StaffManagement: React.FC = () => {
     const { staff, addStaff, updateStaff } = useData();
     const [selectedUnit, setSelectedUnit] = useState<BusinessUnit | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [staffForPayslip, setStaffForPayslip] = useState<StaffProfile | null>(null);
     const [staffForDeductions, setStaffForDeductions] = useState<StaffProfile | null>(null);
     const [staffForAttendance, setStaffForAttendance] = useState<StaffProfile | null>(null);
@@ -564,6 +698,12 @@ const StaffManagement: React.FC = () => {
         }
         setIsAddModalOpen(false);
         setEditingStaff(null);
+    };
+
+    const handleImportUsers = (selected: StaffProfile[]) => {
+        selected.forEach(s => updateStaff(s.id, { department: selectedUnit! }));
+        setIsImportModalOpen(false);
+        alert(`${selected.length} user(s) imported into ${selectedUnit}.`);
     };
 
     const handleUpdateStaffData = (updatedStaff: StaffProfile) => {
@@ -624,12 +764,20 @@ const StaffManagement: React.FC = () => {
                     </p>
                 </div>
                 {selectedUnit && (
-                    <button 
-                        onClick={handleAddClick}
-                        className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark shadow-sm flex items-center"
-                    >
-                        <Icon name="plus" className="w-4 h-4 mr-2" /> Add Staff
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="px-5 py-2 bg-white border border-primary text-primary font-semibold rounded-md hover:bg-primary/5 shadow-sm flex items-center transition-colors"
+                        >
+                            <Icon name="download" className="w-4 h-4 mr-2" /> Import from Users
+                        </button>
+                        <button
+                            onClick={handleAddClick}
+                            className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark shadow-sm flex items-center"
+                        >
+                            <Icon name="plus" className="w-4 h-4 mr-2" /> Add Staff
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -752,12 +900,21 @@ const StaffManagement: React.FC = () => {
             )}
 
             {/* Modals */}
+            {isImportModalOpen && selectedUnit && (
+                <ImportUsersModal
+                    allStaff={staff}
+                    targetUnit={selectedUnit}
+                    onClose={() => setIsImportModalOpen(false)}
+                    onImport={handleImportUsers}
+                />
+            )}
+
             {isAddModalOpen && selectedUnit && (
-                <StaffFormModal 
-                    unit={selectedUnit} 
+                <StaffFormModal
+                    unit={selectedUnit}
                     existingStaff={editingStaff || undefined}
-                    onClose={() => { setIsAddModalOpen(false); setEditingStaff(null); }} 
-                    onSave={handleSaveStaff} 
+                    onClose={() => { setIsAddModalOpen(false); setEditingStaff(null); }}
+                    onSave={handleSaveStaff}
                 />
             )}
 
