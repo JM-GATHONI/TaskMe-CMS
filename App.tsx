@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { supabase } from './utils/supabaseClient';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -184,6 +185,11 @@ const AppContent: React.FC = () => {
   
   const { currentUser, setCurrentUser, roles } = useData();
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+  };
+
   useEffect(() => {
     const handleHashChange = () => {
       setCurrentPath(window.location.hash || '#/dashboard');
@@ -255,7 +261,7 @@ const AppContent: React.FC = () => {
                   </div>
                   <h2 className="text-xl font-bold text-gray-800 mb-2">Account Suspended</h2>
                   <p className="text-gray-500 mb-6">Your account is currently inactive. Please contact support.</p>
-                  <button onClick={() => setCurrentUser(null)} className="px-6 py-2 bg-gray-800 text-white font-bold rounded-lg hover:bg-black">Logout</button>
+                  <button onClick={handleLogout} className="px-6 py-2 bg-gray-800 text-white font-bold rounded-lg hover:bg-black">Logout</button>
               </div>
           </div>
       );
@@ -640,7 +646,7 @@ const AppContent: React.FC = () => {
         <Header 
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
             isSidebarOpen={isSidebarOpen} 
-            onLogout={() => setCurrentUser(null)}
+            onLogout={handleLogout}
         />
         <Sidebar 
             activeRoute={currentPath} 
