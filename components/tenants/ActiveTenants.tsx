@@ -891,16 +891,43 @@ const BillManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => void
     const [rate, setRate] = useState<string>('');
     const [calculatedAmount, setCalculatedAmount] = useState(0);
 
+    // --- Prorated billing state (Water only) ---
+    type BillingMode = 'flat' | 'prorated';
+    interface ProratedTier { from: number; to: number | null; rate: number; }
+    const [billingMode, setBillingMode] = useState<BillingMode>('flat');
+    const [tiers, setTiers] = useState<ProratedTier[]>([
+        { from: 1, to: 6, rate: 50 },
+        { from: 7, to: 50, rate: 88 },
+        { from: 51, to: null, rate: 100 },
+    ]);
+
+    const calcProrated = (units: number, tierList: ProratedTier[]): number => {
+        const sorted = [...tierList].sort((a, b) => a.from - b.from);
+        let total = 0;
+        let remaining = units;
+        for (const tier of sorted) {
+            if (remaining <= 0) break;
+            const tierSize = tier.to === null ? remaining : (tier.to - tier.from + 1);
+            const apply = Math.min(tierSize, remaining);
+            total += apply * tier.rate;
+            remaining -= apply;
+        }
+        return Math.round(total * 100) / 100;
+    };
+
     useEffect(() => {
         const p = parseFloat(prevRead) || 0;
         const c = parseFloat(currRead) || 0;
-        const r = parseFloat(rate) || 0;
-        if (c > p) {
-            setCalculatedAmount((c - p) * r);
+        const units = c > p ? c - p : 0;
+        if (units <= 0) { setCalculatedAmount(0); return; }
+
+        if (meterType === 'Water' && billingMode === 'prorated') {
+            setCalculatedAmount(calcProrated(units, tiers));
         } else {
-            setCalculatedAmount(0);
+            const r = parseFloat(rate) || 0;
+            setCalculatedAmount(units * r);
         }
-    }, [prevRead, currRead, rate]);
+    }, [prevRead, currRead, rate, billingMode, tiers, meterType]);
 
     const handleSaveRecurring = () => {
         updateTenant(tenant.id, { recurringBills: recurring });
@@ -908,20 +935,31 @@ const BillManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => void
     };
 
     const handleSaveMetered = () => {
-        if(calculatedAmount <= 0) return alert("Invalid amount");
+        if (calculatedAmount <= 0) return alert("Invalid amount. Check readings.");
+        const units = (parseFloat(currRead) || 0) - (parseFloat(prevRead) || 0);
+        const isProratedWater = meterType === 'Water' && billingMode === 'prorated';
+        const tierDesc = isProratedWater
+            ? tiers.map(t => `${t.from}-${t.to ?? '∞'}u@${t.rate}`).join(', ')
+            : '';
         const newBill: BillItem = {
             id: `bill-${Date.now()}`,
             type: meterType,
             amount: calculatedAmount,
             date: new Date().toISOString().split('T')[0],
             status: 'Pending',
-            description: `Metered: ${prevRead} to ${currRead}`,
-            meterReadings: { previous: parseFloat(prevRead), current: parseFloat(currRead), units: parseFloat(currRead)-parseFloat(prevRead), rate: parseFloat(rate), period: new Date().toLocaleDateString('default', { month: 'short' }) }
+            description: isProratedWater
+                ? `Prorated Water (${units} units): ${tierDesc}`
+                : `Metered ${meterType}: ${prevRead} → ${currRead}`,
+            meterReadings: {
+                previous: parseFloat(prevRead),
+                current: parseFloat(currRead),
+                units,
+                rate: isProratedWater ? 0 : parseFloat(rate),
+                period: new Date().toLocaleDateString('default', { month: 'short' })
+            }
         };
-        const currentBills = tenant.outstandingBills || [];
-        const updatedBills = [...currentBills, newBill];
-        updateTenant(tenant.id, { outstandingBills: updatedBills });
-        alert(`${meterType} bill of KES ${calculatedAmount} saved.`);
+        updateTenant(tenant.id, { outstandingBills: [...(tenant.outstandingBills || []), newBill] });
+        alert(`${meterType} bill of KES ${calculatedAmount.toLocaleString()} saved.`);
         setPrevRead(''); setCurrRead(''); setRate('');
     };
 
@@ -973,34 +1011,134 @@ const BillManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => void
 
                     {activeTab === 'Metered' && (
                         <div className="space-y-4">
-                            <p className="text-sm text-gray-500 mb-4">Calculate usage-based bills.</p>
-                            <div className="space-y-3">
-                                <label className="block text-sm font-medium">Utility Type</label>
-                                <select value={meterType} onChange={e => setMeterType(e.target.value)} className="w-full p-2 border rounded bg-white">
+                            <p className="text-sm text-gray-500">Calculate usage-based bills from meter readings.</p>
+
+                            {/* Utility type */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Utility Type</label>
+                                <select
+                                    value={meterType}
+                                    onChange={e => { setMeterType(e.target.value); if (e.target.value !== 'Water') setBillingMode('flat'); }}
+                                    className="w-full p-2 border rounded bg-white"
+                                >
                                     <option>Water</option>
                                     <option>Electricity</option>
                                 </select>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div>
-                                        <label className="block text-xs text-gray-500">Prev. Reading</label>
-                                        <input type="number" value={prevRead} onChange={e => setPrevRead(e.target.value)} className="w-full p-2 border rounded"/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-500">Curr. Reading</label>
-                                        <input type="number" value={currRead} onChange={e => setCurrRead(e.target.value)} className="w-full p-2 border rounded"/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-500">Price / Unit</label>
-                                        <input type="number" value={rate} onChange={e => setRate(e.target.value)} className="w-full p-2 border rounded"/>
-                                    </div>
-                                </div>
-                                <div className="bg-blue-50 p-4 rounded text-center">
-                                    <p className="text-xs text-blue-600 uppercase font-bold">Calculated Total</p>
-                                    <p className="text-2xl font-bold text-blue-900">KES {Number(calculatedAmount ?? 0).toLocaleString()}</p>
-                                    <p className="text-xs text-blue-500 mt-1">{(parseFloat(currRead)||0) - (parseFloat(prevRead)||0)} Units</p>
-                                </div>
-                                <button onClick={handleSaveMetered} className="w-full bg-primary text-white py-2 rounded font-bold hover:bg-primary-dark">Save Bill</button>
                             </div>
+
+                            {/* Billing mode toggle — Water only */}
+                            {meterType === 'Water' && (
+                                <div className="flex bg-gray-100 p-1 rounded-lg w-full">
+                                    {(['flat', 'prorated'] as BillingMode[]).map(m => (
+                                        <button
+                                            key={m}
+                                            onClick={() => setBillingMode(m)}
+                                            className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-all ${billingMode === m ? 'bg-white text-primary shadow' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            {m === 'flat' ? 'Flat Rate' : 'Prorated (Tiered)'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Meter readings (always shown) */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">Prev. Reading (units)</label>
+                                    <input type="number" value={prevRead} onChange={e => setPrevRead(e.target.value)} className="w-full p-2 border rounded" placeholder="0"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">Curr. Reading (units)</label>
+                                    <input type="number" value={currRead} onChange={e => setCurrRead(e.target.value)} className="w-full p-2 border rounded" placeholder="0"/>
+                                </div>
+                            </div>
+
+                            {/* Flat rate input */}
+                            {(meterType !== 'Water' || billingMode === 'flat') && (
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">Price / Unit (KES)</label>
+                                    <input type="number" value={rate} onChange={e => setRate(e.target.value)} className="w-full p-2 border rounded" placeholder="e.g. 88"/>
+                                </div>
+                            )}
+
+                            {/* Prorated tier configuration */}
+                            {meterType === 'Water' && billingMode === 'prorated' && (
+                                <div className="border rounded-lg overflow-hidden">
+                                    <div className="bg-gray-50 px-3 py-2 flex justify-between items-center border-b">
+                                        <p className="text-xs font-bold text-gray-600 uppercase">Tiered Rate Configuration</p>
+                                        <button
+                                            onClick={() => setTiers(prev => [...prev, { from: (prev[prev.length - 1]?.to ?? 0) + 1, to: null, rate: 0 }])}
+                                            className="text-xs text-primary font-bold hover:underline"
+                                        >
+                                            + Add Tier
+                                        </button>
+                                    </div>
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left">From (unit)</th>
+                                                <th className="px-3 py-2 text-left">To (unit)</th>
+                                                <th className="px-3 py-2 text-left">KES / unit</th>
+                                                <th className="px-3 py-2"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {tiers.map((tier, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="px-2 py-1.5">
+                                                        <input
+                                                            type="number" value={tier.from} min={0}
+                                                            onChange={e => setTiers(prev => prev.map((t, i) => i === idx ? { ...t, from: parseInt(e.target.value) || 0 } : t))}
+                                                            className="w-full p-1.5 border rounded text-sm"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <input
+                                                            type="number"
+                                                            value={tier.to ?? ''}
+                                                            placeholder="∞"
+                                                            min={0}
+                                                            onChange={e => setTiers(prev => prev.map((t, i) => i === idx ? { ...t, to: e.target.value === '' ? null : parseInt(e.target.value) } : t))}
+                                                            className="w-full p-1.5 border rounded text-sm"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <input
+                                                            type="number" value={tier.rate} min={0}
+                                                            onChange={e => setTiers(prev => prev.map((t, i) => i === idx ? { ...t, rate: parseFloat(e.target.value) || 0 } : t))}
+                                                            className="w-full p-1.5 border rounded text-sm"
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5 text-center">
+                                                        {tiers.length > 1 && (
+                                                            <button onClick={() => setTiers(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">
+                                                                <Icon name="close" className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    <div className="px-3 py-2 bg-gray-50 border-t text-xs text-gray-500">
+                                        Units consumed: <strong>{Math.max(0, (parseFloat(currRead)||0) - (parseFloat(prevRead)||0))}</strong>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Total */}
+                            <div className="bg-blue-50 p-4 rounded-lg text-center">
+                                <p className="text-xs text-blue-600 uppercase font-bold">Calculated Total</p>
+                                <p className="text-2xl font-bold text-blue-900 mt-1">KES {Number(calculatedAmount).toLocaleString()}</p>
+                                <p className="text-xs text-blue-500 mt-1">
+                                    {Math.max(0, (parseFloat(currRead)||0) - (parseFloat(prevRead)||0))} units
+                                    {meterType === 'Water' && billingMode === 'prorated' ? ' · Tiered rate' : ''}
+                                </p>
+                            </div>
+
+                            <button onClick={handleSaveMetered} className="w-full bg-primary text-white py-2.5 rounded-lg font-bold hover:bg-primary-dark transition-colors">
+                                Save Bill
+                            </button>
                         </div>
                     )}
 
@@ -1822,6 +1960,15 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 <div className="space-y-3 text-sm">
                     {/* Detailed Breakdown */}
                     <div className="p-3 bg-gray-50 rounded-lg space-y-2 border border-gray-100">
+                        {depositDue > 0 && (
+                            <div className="flex justify-between text-blue-700 font-medium">
+                                <span className="flex items-center gap-1">
+                                    Security Deposit
+                                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">New Tenant</span>
+                                </span>
+                                <span>KES {Number(depositDue).toLocaleString()}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between">
                             <span className="text-gray-600">Base Rent ({currentMonthName})</span>
                             <span className="font-medium">KES {Number(rentDue ?? 0).toLocaleString()}</span>
@@ -2231,12 +2378,16 @@ const ActiveTenants: React.FC = () => {
                         ? 0
                         : (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0);
 
-                    // If deposit has not yet been paid for an allocated tenant, treat one month's rent as deposit due.
-                    const depositComponent = !isAllocated
-                        ? 0
-                        : (tenant.depositPaid && tenant.depositPaid > 0 ? 0 : (tenant.rentAmount || 0));
+                    // New tenant = deposit has never been paid yet
+                    const isNewTenant = isAllocated && (!tenant.depositPaid || Number(tenant.depositPaid) === 0);
+                    const depositOwed = isNewTenant ? (tenant.rentAmount || 0) : 0;
 
-                    const totalDue = rentDue + pendingBills + pendingFines + automatedLateFine + depositComponent;
+                    // New tenant: rent + deposit (first obligation bundle)
+                    // Old tenant: rent + outstanding bills + fines + late fees
+                    const totalDue = !isAllocated ? 0
+                        : isNewTenant
+                            ? (tenant.rentAmount || 0) + depositOwed
+                            : rentDue + pendingBills + pendingFines + automatedLateFine;
 
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);
@@ -2285,7 +2436,9 @@ const ActiveTenants: React.FC = () => {
                                         <p className="font-semibold">KES {Number(isAllocated ? (tenant.rentAmount ?? 0) : 0).toLocaleString()}</p>
                                     </div>
                                     <div>
-                                        <p className="text-xs text-gray-400 uppercase font-bold">Total Due</p>
+                                        <p className="text-xs text-gray-400 uppercase font-bold">
+                                            Total Due{isNewTenant ? ' (Rent+Dep)' : ''}
+                                        </p>
                                         <p className={`font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                             KES {Number(totalDue ?? 0).toLocaleString()}
                                         </p>
