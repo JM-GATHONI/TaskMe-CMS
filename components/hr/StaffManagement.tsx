@@ -1,9 +1,8 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { StaffProfile, BusinessUnit, SalaryType, UserRole, StaffDeduction } from '../../types';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
-import { printSection } from '../../utils/exportHelper';
 import { AGENT_TARGET_OPTIONS } from '../../constants';
 
 // --- Card Style ---
@@ -260,16 +259,325 @@ const AttendanceManagerModal: React.FC<{ staff: StaffProfile; onClose: () => voi
     );
 };
 
-const PayslipGeneratorModal: React.FC<{ staff: StaffProfile; onClose: () => void }> = ({ staff, onClose }) => {
-    // This is a simplified version of the modal in PayrollProcessing.tsx to avoid circular dependency loop or huge file.
-    // In a real app, this would be a shared component. For now, we redirect.
-    
-    useEffect(() => {
-        onClose();
-        window.location.hash = '#/hr-payroll/payroll-processing';
-    }, []);
+const PayslipModal: React.FC<{ staff: StaffProfile; onClose: () => void }> = ({ staff, onClose }) => {
+    const { systemSettings, properties, tenants, tasks, offboardingRecords } = useData();
+    const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
 
-    return null;
+    // Replicate target-based salary calculation from PayrollProcessing
+    const payData = useMemo(() => {
+        let basic = staff.salaryConfig?.amount || 0;
+        const commissions = staff.commissions?.reduce((sum, c) => sum + c.amount, 0) || 0;
+        let gross = basic + commissions;
+        let metrics: Record<string, number> | null = null;
+        let avgPerformance = 100;
+
+        if (staff.salaryConfig?.type === 'Target Based' && staff.role === 'Field Agent') {
+            const targetSalary = staff.salaryConfig.amount;
+            const enabledTargets = staff.salaryConfig.activeTargets || [];
+            const assignedProps = properties.filter(p => p.assignedAgentId === staff.id);
+            const assignedPropIds = assignedProps.map(p => p.id);
+            const assignedTenants = tenants.filter(t => t.propertyId && assignedPropIds.includes(t.propertyId));
+            const metricScores: Record<string, number> = {};
+            let scoreSum = 0; let targetCount = 0;
+
+            if (enabledTargets.includes('Rent Collection')) {
+                const total = assignedTenants.length;
+                const paid = assignedTenants.filter(t => t.paymentHistory.some(p => p.date.startsWith(period) && p.status === 'Paid')).length;
+                const rate = total > 0 ? (paid / total) * 100 : 0;
+                metricScores['Rent Collection'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+            if (enabledTargets.includes('Occupancy')) {
+                let total = 0, occupied = 0;
+                assignedProps.forEach(p => { total += p.units.length; occupied += p.units.filter(u => u.status === 'Occupied').length; });
+                const rate = total > 0 ? (occupied / total) * 100 : 0;
+                metricScores['Occupancy'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+            if (enabledTargets.includes('Signed Leases')) {
+                const total = assignedTenants.length;
+                const signed = assignedTenants.filter(t => t.leaseType === 'Fixed').length;
+                const rate = total > 0 ? (signed / total) * 100 : 0;
+                metricScores['Signed Leases'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+            if (enabledTargets.includes('Task Completion')) {
+                const agentTasks = tasks.filter(t => t.assignedTo === staff.name).filter(t => t.dueDate.startsWith(period));
+                const completed = agentTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length;
+                const rate = agentTasks.length > 0 ? (completed / agentTasks.length) * 100 : 100;
+                metricScores['Task Completion'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+            if (enabledTargets.includes('Inventory Checklists')) {
+                const records = offboardingRecords.filter(r => r.moveOutDate.startsWith(period) && assignedPropIds.includes(tenants.find(t => t.id === r.tenantId)?.propertyId || ''));
+                const rate = records.length > 0 ? (records.filter(r => r.inspectionStatus !== 'Pending').length / records.length) * 100 : 100;
+                metricScores['Inventory Checklists'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+            if (enabledTargets.includes('Vacant House Locking')) {
+                const vacant = assignedProps.flatMap(p => p.units.filter(u => u.status === 'Vacant'));
+                const rate = vacant.length > 0 ? (vacant.filter(u => u.isLocked).length / vacant.length) * 100 : 100;
+                metricScores['Vacant House Locking'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+            if (enabledTargets.includes('Deposit Collection')) {
+                const total = assignedTenants.length;
+                const paid = assignedTenants.filter(t => (t.depositPaid || 0) >= (t.rentAmount || 0)).length;
+                const rate = total > 0 ? (paid / total) * 100 : 0;
+                metricScores['Deposit Collection'] = Math.round(rate); scoreSum += rate; targetCount++;
+            }
+
+            avgPerformance = targetCount > 0 ? Math.round(scoreSum / targetCount) : 0;
+            basic = targetSalary * (avgPerformance / 100);
+            gross = basic + commissions;
+            metrics = metricScores;
+        }
+
+        const hasSalary = (staff.salaryConfig?.amount ?? 0) > 0 || (staff.payrollInfo?.baseSalary ?? 0) > 0;
+        const otherDeductions = (staff.deductions || []).reduce((sum, d) => sum + d.amount, 0);
+        let nssf = 0, nhif = 0, housingLevy = 0, paye = 0;
+        if (hasSalary && gross > 0) {
+            nssf = 1080; nhif = 1500; housingLevy = gross * 0.015;
+            paye = Math.max(0, (gross - nssf) * 0.30 - 2400);
+        }
+        const totalDeductions = paye + nhif + nssf + housingLevy + otherDeductions;
+        return { basic, commissions, gross, paye, nhif, nssf, housingLevy, otherDeductions, totalDeductions, net: gross - totalDeductions, metrics, avgPerformance };
+    }, [staff, period, properties, tenants, tasks, offboardingRecords]);
+
+    const companyName = systemSettings?.companyName || 'TaskMe Realty';
+    const companyLogo = systemSettings?.logo;
+
+    const handlePrint = useCallback(() => {
+        const printId = 'payslip-print-area';
+        const el = document.getElementById(printId);
+        if (!el) return;
+        const win = window.open('', '_blank', 'width=800,height=700');
+        if (!win) return;
+        win.document.write(`<!DOCTYPE html><html><head><title>Payslip – ${staff.name}</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:32px;color:#111;font-size:13px}
+  .logo{max-height:60px;max-width:160px}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px}
+  th,td{padding:8px 12px;border:1px solid #e5e7eb;text-align:left}
+  th{background:#f3f4f6;font-weight:700}
+  .right{text-align:right}
+  .net{background:#1e40af;color:#fff;font-size:16px;font-weight:700}
+  h2{margin:0 0 4px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1e40af;padding-bottom:16px;margin-bottom:20px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;background:#dbeafe;color:#1e40af}
+  .perf-bar{height:10px;border-radius:5px;background:#dbeafe;overflow:hidden;display:inline-block;width:120px;vertical-align:middle;margin-left:8px}
+  .perf-fill{height:100%;background:#2563eb;border-radius:5px}
+  @media print{button{display:none}}
+</style></head><body>${el.innerHTML}</body></html>`);
+        win.document.close();
+        win.focus();
+        win.print();
+    }, [staff.name]);
+
+    const handleWhatsApp = useCallback(() => {
+        const [y, m] = period.split('-');
+        const monthName = new Date(Number(y), Number(m) - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+        const lines = [
+            `📄 *PAYSLIP – ${companyName}*`,
+            `Period: ${monthName}`,
+            ``,
+            `*Employee:* ${staff.name}`,
+            `*Role:* ${staff.role}`,
+            `*Branch:* ${staff.branch || 'Headquarters'}`,
+            ``,
+            `*EARNINGS*`,
+            `Basic Salary: KES ${Math.round(payData.basic).toLocaleString()}`,
+            payData.commissions > 0 ? `Commissions: KES ${Math.round(payData.commissions).toLocaleString()}` : '',
+            `Gross Pay: KES ${Math.round(payData.gross).toLocaleString()}`,
+            ``,
+            `*DEDUCTIONS*`,
+            `PAYE: KES ${Math.round(payData.paye).toLocaleString()}`,
+            `NHIF: KES ${payData.nhif.toLocaleString()}`,
+            `NSSF: KES ${payData.nssf.toLocaleString()}`,
+            `Housing Levy: KES ${Math.round(payData.housingLevy).toLocaleString()}`,
+            payData.otherDeductions > 0 ? `Other: KES ${Math.round(payData.otherDeductions).toLocaleString()}` : '',
+            ``,
+            `*NET PAY: KES ${Math.round(payData.net).toLocaleString()}*`,
+            staff.salaryConfig?.type === 'Target Based' ? `\nPerformance Score: ${payData.avgPerformance}%` : '',
+        ].filter(Boolean).join('\n');
+
+        const phone = staff.phone?.replace(/\D/g, '') || '';
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines)}`, '_blank');
+    }, [staff, period, payData, companyName]);
+
+    const fmt = (n: number) => `KES ${Math.round(n).toLocaleString()}`;
+    const [y, m] = period.split('-');
+    const monthLabel = new Date(Number(y), Number(m) - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+    const isTargetBased = staff.salaryConfig?.type === 'Target Based';
+
+    return (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1600] backdrop-blur-sm p-4" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                {/* Modal Header */}
+                <div className="flex justify-between items-center px-6 py-4 border-b sticky top-0 bg-white z-10">
+                    <div className="flex items-center gap-3">
+                        <Icon name="reports" className="w-5 h-5 text-blue-600" />
+                        <h2 className="text-lg font-bold text-gray-900">Payslip Generator</h2>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <input type="month" value={period} onChange={e => setPeriod(e.target.value)}
+                            className="text-sm border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-200 outline-none" />
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><Icon name="close" className="w-5 h-5" /></button>
+                    </div>
+                </div>
+
+                {/* Printable Payslip */}
+                <div id="payslip-print-area" className="p-6 space-y-6">
+                    {/* Company Header */}
+                    <div className="flex justify-between items-start border-b-2 border-blue-700 pb-5">
+                        <div className="flex items-center gap-4">
+                            {companyLogo
+                                ? <img src={companyLogo} alt="logo" className="h-14 w-auto object-contain" />
+                                : <div className="w-14 h-14 bg-blue-700 rounded-xl flex items-center justify-center text-white font-black text-xl">{companyName.charAt(0)}</div>
+                            }
+                            <div>
+                                <h2 className="text-xl font-black text-blue-800">{companyName}</h2>
+                                <p className="text-xs text-gray-500">Official Payslip</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs text-gray-500 uppercase font-bold">Pay Period</p>
+                            <p className="text-lg font-bold text-gray-800">{monthLabel}</p>
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">{staff.salaryConfig?.type || 'Monthly'}</span>
+                        </div>
+                    </div>
+
+                    {/* Employee Info */}
+                    <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
+                        <div>
+                            <p className="text-xs text-gray-400 uppercase font-bold mb-1">Employee Name</p>
+                            <p className="font-bold text-gray-800">{staff.name}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-400 uppercase font-bold mb-1">Role</p>
+                            <p className="font-semibold text-gray-700">{staff.role}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-400 uppercase font-bold mb-1">Department</p>
+                            <p className="text-gray-700">{staff.department || '—'}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-400 uppercase font-bold mb-1">Branch</p>
+                            <p className="text-gray-700">{staff.branch || 'Headquarters'}</p>
+                        </div>
+                        {staff.bankDetails?.accountNumber && (
+                            <div>
+                                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Bank Account</p>
+                                <p className="text-gray-700">{staff.bankDetails.bankName} – ****{staff.bankDetails.accountNumber.slice(-4)}</p>
+                            </div>
+                        )}
+                        {staff.bankDetails?.mpesaNumber && (
+                            <div>
+                                <p className="text-xs text-gray-400 uppercase font-bold mb-1">M-Pesa</p>
+                                <p className="text-gray-700">{staff.bankDetails.mpesaNumber}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* KPI Metrics for Target Based */}
+                    {isTargetBased && payData.metrics && (
+                        <div>
+                            <p className="text-xs text-gray-500 uppercase font-bold mb-3">Performance Metrics — {monthLabel}</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(payData.metrics).map(([key, val]) => (
+                                    <div key={key} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
+                                        <span className="text-xs text-gray-600">{key}</span>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${val}%` }} />
+                                            </div>
+                                            <span className={`text-xs font-bold ${val >= 80 ? 'text-green-600' : val >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>{val}%</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-3 flex items-center justify-between bg-blue-50 rounded-xl px-4 py-3">
+                                <span className="text-sm font-bold text-blue-800">Overall Performance Score</span>
+                                <span className="text-xl font-black text-blue-700">{payData.avgPerformance}%</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Earnings */}
+                    <div>
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-2">Earnings</p>
+                        <table className="w-full text-sm">
+                            <thead><tr className="bg-gray-50"><th className="text-left px-3 py-2 text-gray-600 font-semibold">Description</th><th className="text-right px-3 py-2 text-gray-600 font-semibold">Amount</th></tr></thead>
+                            <tbody>
+                                <tr className="border-b border-gray-100">
+                                    <td className="px-3 py-2 text-gray-700">
+                                        Basic Salary
+                                        {isTargetBased && <span className="ml-2 text-xs text-blue-600">({payData.avgPerformance}% of target)</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-medium">{fmt(payData.basic)}</td>
+                                </tr>
+                                {payData.commissions > 0 && (
+                                    <tr className="border-b border-gray-100">
+                                        <td className="px-3 py-2 text-gray-700">Commissions</td>
+                                        <td className="px-3 py-2 text-right font-medium">{fmt(payData.commissions)}</td>
+                                    </tr>
+                                )}
+                                <tr className="bg-green-50 font-bold">
+                                    <td className="px-3 py-2.5 text-green-800">Gross Pay</td>
+                                    <td className="px-3 py-2.5 text-right text-green-800">{fmt(payData.gross)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Deductions */}
+                    <div>
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-2">Deductions</p>
+                        <table className="w-full text-sm">
+                            <thead><tr className="bg-gray-50"><th className="text-left px-3 py-2 text-gray-600 font-semibold">Description</th><th className="text-right px-3 py-2 text-gray-600 font-semibold">Amount</th></tr></thead>
+                            <tbody>
+                                {[
+                                    { label: 'PAYE (Tax)', val: payData.paye },
+                                    { label: 'NHIF', val: payData.nhif },
+                                    { label: 'NSSF', val: payData.nssf },
+                                    { label: 'Housing Levy (1.5%)', val: payData.housingLevy },
+                                ].map(({ label, val }) => val > 0 && (
+                                    <tr key={label} className="border-b border-gray-100">
+                                        <td className="px-3 py-2 text-gray-700">{label}</td>
+                                        <td className="px-3 py-2 text-right font-medium text-red-600">({fmt(val)})</td>
+                                    </tr>
+                                ))}
+                                {(staff.deductions || []).map(d => (
+                                    <tr key={d.id} className="border-b border-gray-100">
+                                        <td className="px-3 py-2 text-gray-700">{d.name} <span className="text-xs text-gray-400">({d.category})</span></td>
+                                        <td className="px-3 py-2 text-right font-medium text-red-600">({fmt(d.amount)})</td>
+                                    </tr>
+                                ))}
+                                <tr className="bg-red-50 font-bold">
+                                    <td className="px-3 py-2.5 text-red-800">Total Deductions</td>
+                                    <td className="px-3 py-2.5 text-right text-red-800">({fmt(payData.totalDeductions)})</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Net Pay */}
+                    <div className="bg-blue-700 rounded-xl px-6 py-4 flex justify-between items-center">
+                        <span className="text-white font-bold text-lg">NET PAY</span>
+                        <span className="text-white font-black text-2xl">{fmt(payData.net)}</span>
+                    </div>
+
+                    <p className="text-xs text-gray-400 text-center">Generated on {new Date().toLocaleDateString()} · {companyName}</p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="px-6 py-4 border-t bg-gray-50 flex gap-3 justify-end sticky bottom-0">
+                    <button onClick={handleWhatsApp}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors shadow-sm">
+                        <Icon name="message" className="w-4 h-4" /> Share via WhatsApp
+                    </button>
+                    <button onClick={handlePrint}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 text-white font-semibold rounded-xl hover:bg-blue-800 transition-colors shadow-sm">
+                        <Icon name="reports" className="w-4 h-4" /> Download PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const StaffFormModal: React.FC<{ 
@@ -919,9 +1227,9 @@ const StaffManagement: React.FC = () => {
             )}
 
             {staffForPayslip && (
-                <PayslipGeneratorModal 
-                    staff={staffForPayslip} 
-                    onClose={() => setStaffForPayslip(null)} 
+                <PayslipModal
+                    staff={staffForPayslip}
+                    onClose={() => setStaffForPayslip(null)}
                 />
             )}
 

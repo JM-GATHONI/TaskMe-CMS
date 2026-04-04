@@ -6,6 +6,11 @@
  *
  * Endpoint: POST /functions/v1/receive-lead
  *
+ * Security: Set RECEIVE_LEAD_SECRET env var in Supabase → Edge Functions → Secrets.
+ * Configure the same value in your website's outgoing webhook header:
+ *   X-Webhook-Signature: <your-secret>
+ * If not set, the check is skipped (not recommended for production).
+ *
  * Request body (JSON):
  * {
  *   tenantName: string;      // Required — full name of the lead
@@ -25,19 +30,41 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// CORS: set CORS_ALLOWED_ORIGINS env var to restrict origins (comma-separated).
+// Leave unset (or '*') to allow all origins — lock this down in production.
+const _CORS_RAW = Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "*";
+const _CORS_WILDCARD = _CORS_RAW === "*";
+const _CORS_LIST = _CORS_WILDCARD ? [] : _CORS_RAW.split(",").map((s) => s.trim());
+function buildCors(origin: string | null): Record<string, string> {
+  const ao = _CORS_WILDCARD ? "*" : (origin && _CORS_LIST.includes(origin) ? origin : "");
+  return {
+    "Access-Control-Allow-Origin": ao,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-signature",
+    ...(ao && ao !== "*" ? { Vary: "Origin" } : {}),
+  };
+}
 
 serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+  const cors = buildCors(req.headers.get('Origin'));
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: cors });
+
+  // Webhook source validation — reject requests without the correct shared secret.
+  const webhookSecret = Deno.env.get('RECEIVE_LEAD_SECRET');
+  if (webhookSecret) {
+    const sig = req.headers.get('X-Webhook-Signature');
+    if (sig !== webhookSecret) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+  }
 
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = Deno.env.toObject();
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return new Response(JSON.stringify({ error: 'Server misconfiguration: missing Supabase env vars' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
@@ -48,7 +75,7 @@ serve(async (req: Request) => {
     body = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
@@ -56,7 +83,7 @@ serve(async (req: Request) => {
 
   if (!tenantName || typeof tenantName !== 'string' || !tenantName.trim()) {
     return new Response(JSON.stringify({ error: 'Missing required field: tenantName' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
@@ -71,7 +98,7 @@ serve(async (req: Request) => {
   if (readError) {
     console.error('[receive-lead] Failed to read app_state:', readError);
     return new Response(JSON.stringify({ error: 'Failed to read leads state' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
@@ -102,12 +129,12 @@ serve(async (req: Request) => {
   if (writeError) {
     console.error('[receive-lead] Failed to write lead:', writeError);
     return new Response(JSON.stringify({ error: 'Failed to save lead' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  console.log(`[receive-lead] New lead received: ${newLead.id} — ${newLead.tenantName}`);
+  console.log(`[receive-lead] New lead received: ${newLead.id}`);
   return new Response(JSON.stringify({ ok: true, id: newLead.id }), {
-    status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
   });
 });

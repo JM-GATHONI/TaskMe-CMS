@@ -281,6 +281,23 @@ export interface LandlordApplication {
 
 export type BusinessUnit = 'Management' | 'Administration' | 'Security' | 'Rental Management' | 'R-Reits' | 'Cleaning' | 'Maintenance';
 export type SalaryType = 'Monthly' | 'Target Based' | 'Commission' | 'Per Project';
+export type LeaveType = 'Annual' | 'Sick' | 'Maternity' | 'Paternity' | 'Emergency' | 'Unpaid';
+export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export interface LeaveRequest {
+  id: string;
+  staffId: string;
+  staffName: string;
+  type: LeaveType;
+  startDate: string;
+  endDate: string;
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  requestedDate: string;
+  approvedBy?: string;
+  notes?: string;
+}
 
 export interface StaffProfile {
   id: string;
@@ -316,6 +333,7 @@ export interface StaffProfile {
   commissions?: Array<{ date: string; amount: number; source: string }>;
   deductions?: StaffDeduction[];
   attendanceRecord?: Record<string, number[]>; // YYYY-MM -> array of absent days
+  leaveRequests?: LeaveRequest[];
   businessUnitAssignment?: string;
   passwordHash?: string;
   assignedPropertyId?: string;

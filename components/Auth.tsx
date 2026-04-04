@@ -33,6 +33,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const [view, setView] = useState<AuthView>('login');
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [loginAttempts, setLoginAttempts] = useState(0);
+    const [lockedUntil, setLockedUntil] = useState<number | null>(null);
 
     // Form States
     const [loginData, setLoginData] = useState({ identifier: '', password: '' });
@@ -42,6 +44,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (lockedUntil !== null && Date.now() < lockedUntil) {
+            const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+            alert(`Too many failed login attempts. Please wait ${remaining} seconds before trying again.`);
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -72,7 +80,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             });
 
             if (error || !data.user) {
-                alert(error?.message ?? 'Login failed');
+                const next = loginAttempts + 1;
+                setLoginAttempts(next);
+                if (next >= 5) {
+                    setLockedUntil(Date.now() + 5 * 60 * 1000);
+                    alert('Too many failed login attempts. Your account is locked for 5 minutes.');
+                } else {
+                    alert(error?.message ?? 'Login failed');
+                }
                 return;
             }
 
@@ -371,6 +386,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 console.warn('Failed to backfill signed-in user into app_state lists (non-blocking)', e);
             }
 
+            setLoginAttempts(0);
+            setLockedUntil(null);
             onLogin(loggedIn);
         } finally {
             setIsLoading(false);

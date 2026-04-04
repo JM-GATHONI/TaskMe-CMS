@@ -23,25 +23,35 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// CORS: set CORS_ALLOWED_ORIGINS env var to restrict origins (comma-separated).
+// Leave unset (or '*') to allow all origins — lock this down in production.
+const _CORS_RAW = Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "*";
+const _CORS_WILDCARD = _CORS_RAW === "*";
+const _CORS_LIST = _CORS_WILDCARD ? [] : _CORS_RAW.split(",").map((s) => s.trim());
+function buildCors(origin: string | null): Record<string, string> {
+  const ao = _CORS_WILDCARD ? "*" : (origin && _CORS_LIST.includes(origin) ? origin : "");
+  return {
+    "Access-Control-Allow-Origin": ao,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    ...(ao && ao !== "*" ? { Vary: "Origin" } : {}),
+  };
+}
 
 serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+  const cors = buildCors(req.headers.get('Origin'));
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: cors });
 
   let body: { to: string; content: string; senderId?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   const { to, content, senderId } = body;
   if (!to || !content) {
-    return new Response(JSON.stringify({ error: 'Missing required fields: to, content' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ error: 'Missing required fields: to, content' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   const env = Deno.env.toObject();
@@ -55,7 +65,7 @@ serve(async (req: Request) => {
       const from = senderId || env.AT_SENDER_ID || undefined;
 
       if (!apiKey) {
-        return new Response(JSON.stringify({ error: 'AT_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: 'AT_API_KEY not configured' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
 
       const params = new URLSearchParams({ username, to, message: content });
@@ -76,7 +86,7 @@ serve(async (req: Request) => {
       if (!atRes.ok || atJson.SMSMessageData?.Recipients?.[0]?.status !== 'Success') {
         const errMsg = atJson.SMSMessageData?.Recipients?.[0]?.status || atJson.error || 'Africa\'s Talking send failed';
         console.error('[send-sms AT] Error:', errMsg);
-        return new Response(JSON.stringify({ error: errMsg }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: errMsg }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
 
       const recipient = atJson.SMSMessageData.Recipients[0];
@@ -85,7 +95,7 @@ serve(async (req: Request) => {
         messageId: recipient.messageId,
         providerRef: `AT-${recipient.messageId}`,
         provider: 'africastalking',
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // ── Twilio ────────────────────────────────────────────────────────────────
@@ -95,7 +105,7 @@ serve(async (req: Request) => {
       const from = env.TWILIO_FROM_NUMBER;
 
       if (!accountSid || !authToken || !from) {
-        return new Response(JSON.stringify({ error: 'Twilio env vars not fully configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: 'Twilio env vars not fully configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
 
       const twilioRes = await fetch(
@@ -114,7 +124,7 @@ serve(async (req: Request) => {
 
       if (!twilioRes.ok) {
         console.error('[send-sms Twilio] Error:', twilioJson.message);
-        return new Response(JSON.stringify({ error: twilioJson.message || 'Twilio send failed' }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: twilioJson.message || 'Twilio send failed' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
       }
 
       return new Response(JSON.stringify({
@@ -122,21 +132,21 @@ serve(async (req: Request) => {
         messageId: twilioJson.sid,
         providerRef: `TWILIO-${twilioJson.sid}`,
         provider: 'twilio',
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     // ── No provider configured — queue/log mode ───────────────────────────────
-    console.log(`[send-sms] No SMS_PROVIDER configured. Message queued. To: ${to}, Content: ${content}`);
+    console.log(`[send-sms] No SMS_PROVIDER configured. Message queued.`);
     return new Response(JSON.stringify({
       success: true,
       messageId: `sms-queued-${Date.now()}`,
       providerRef: 'queued',
       provider: 'none',
       note: 'Set SMS_PROVIDER env var (africastalking or twilio) to enable real delivery.',
-    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
     console.error('[send-sms] Unexpected error:', err);
-    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 });

@@ -17,27 +17,37 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// CORS: set CORS_ALLOWED_ORIGINS env var to restrict origins (comma-separated).
+// Leave unset (or '*') to allow all origins — lock this down in production.
+const _CORS_RAW = Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "*";
+const _CORS_WILDCARD = _CORS_RAW === "*";
+const _CORS_LIST = _CORS_WILDCARD ? [] : _CORS_RAW.split(",").map((s) => s.trim());
+function buildCors(origin: string | null): Record<string, string> {
+  const ao = _CORS_WILDCARD ? "*" : (origin && _CORS_LIST.includes(origin) ? origin : "");
+  return {
+    "Access-Control-Allow-Origin": ao,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    ...(ao && ao !== "*" ? { Vary: "Origin" } : {}),
+  };
+}
 
 const GRAPH_API_VERSION = 'v19.0';
 
 serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+  const cors = buildCors(req.headers.get('Origin'));
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: cors });
 
   let body: { to: string; content: string; type?: 'text' | 'template'; templateName?: string; templateLang?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   const { to, content, type = 'text' } = body;
   if (!to || !content) {
-    return new Response(JSON.stringify({ error: 'Missing required fields: to, content' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ error: 'Missing required fields: to, content' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   const { WHATSAPP_API_KEY, WHATSAPP_PHONE_NUMBER_ID } = Deno.env.toObject();
@@ -48,7 +58,7 @@ serve(async (req: Request) => {
       success: false,
       error: 'WhatsApp not configured. Set WHATSAPP_API_KEY and WHATSAPP_PHONE_NUMBER_ID in Supabase secrets.',
       note: 'Get these from Meta Developer Console → WhatsApp → API Setup.',
-    }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }), { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   // Normalize phone number — must be in E.164 format without leading +
@@ -85,7 +95,7 @@ serve(async (req: Request) => {
       console.error('[send-whatsapp] Meta API error:', errMsg, metaJson);
       return new Response(JSON.stringify({ error: errMsg, detail: metaJson.error }), {
         status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...cors, 'Content-Type': 'application/json' },
       });
     }
 
@@ -95,13 +105,13 @@ serve(async (req: Request) => {
       messageId: msgId,
       providerRef: `WA-${msgId}`,
       provider: 'meta-cloud-api',
-    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
     console.error('[send-whatsapp] Unexpected error:', err);
     return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 });
