@@ -65,7 +65,7 @@ const RecordExpenseModal: React.FC<{ onClose: () => void; onSave: (bill: Partial
 };
 
 const Expenses: React.FC = () => {
-    const { staff, bills, addBill, updateBill, deleteBill, checkPermission } = useData();
+    const { staff, bills, addBill, updateBill, deleteBill, checkPermission, properties, tenants, tasks, offboardingRecords } = useData();
     const canPay    = checkPermission('Financials', 'pay');
     const canDelete = checkPermission('Financials', 'delete');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,19 +89,73 @@ const Expenses: React.FC = () => {
         }
     };
 
+    // Helper: compute effective gross salary for a staff member.
+    // For Target Based staff the gross = targetSalary × (avgPerformanceScore / 100).
+    // For all other types the gross = salaryConfig.amount (stored base salary).
+    const computeEffectiveGross = useMemo(() => {
+        const period = new Date().toISOString().slice(0, 7); // current YYYY-MM
+        return (s: typeof staff[0]): number => {
+            const baseAmount = s.salaryConfig?.amount || s.payrollInfo?.baseSalary || 0;
+            if (s.salaryConfig?.type !== 'Target Based' || s.role !== 'Field Agent') return baseAmount;
+
+            const targetSalary = baseAmount;
+            const enabledTargets = s.salaryConfig.activeTargets || [];
+            const assignedProps = properties.filter(p => p.assignedAgentId === s.id);
+            const assignedPropIds = assignedProps.map(p => p.id);
+            const assignedTenants = tenants.filter(t => t.propertyId && assignedPropIds.includes(t.propertyId));
+            let scoreSum = 0, targetCount = 0;
+
+            if (enabledTargets.includes('Rent Collection')) {
+                const total = assignedTenants.length;
+                const paid = assignedTenants.filter(t => t.paymentHistory.some(p => p.date.startsWith(period) && p.status === 'Paid')).length;
+                scoreSum += total > 0 ? (paid / total) * 100 : 0; targetCount++;
+            }
+            if (enabledTargets.includes('Occupancy')) {
+                let total = 0, occupied = 0;
+                assignedProps.forEach(p => { total += p.units.length; occupied += p.units.filter(u => u.status === 'Occupied').length; });
+                scoreSum += total > 0 ? (occupied / total) * 100 : 0; targetCount++;
+            }
+            if (enabledTargets.includes('Signed Leases')) {
+                const total = assignedTenants.length;
+                scoreSum += total > 0 ? (assignedTenants.filter(t => t.leaseType === 'Fixed').length / total) * 100 : 0; targetCount++;
+            }
+            if (enabledTargets.includes('Task Completion')) {
+                const agentTasks = tasks.filter(t => t.assignedTo === s.name && t.dueDate.startsWith(period));
+                scoreSum += agentTasks.length > 0 ? (agentTasks.filter(t => t.status === 'Completed' || t.status === 'Closed').length / agentTasks.length) * 100 : 100; targetCount++;
+            }
+            if (enabledTargets.includes('Inventory Checklists')) {
+                const records = offboardingRecords.filter(r => r.moveOutDate.startsWith(period) && assignedPropIds.includes(tenants.find(t => t.id === r.tenantId)?.propertyId || ''));
+                scoreSum += records.length > 0 ? (records.filter(r => r.inspectionStatus !== 'Pending').length / records.length) * 100 : 100; targetCount++;
+            }
+            if (enabledTargets.includes('Vacant House Locking')) {
+                const vacant = assignedProps.flatMap(p => p.units.filter(u => u.status === 'Vacant'));
+                scoreSum += vacant.length > 0 ? (vacant.filter(u => u.isLocked).length / vacant.length) * 100 : 100; targetCount++;
+            }
+            if (enabledTargets.includes('Deposit Collection')) {
+                const total = assignedTenants.length;
+                scoreSum += total > 0 ? (assignedTenants.filter(t => (t.depositPaid || 0) >= (t.rentAmount || 0)).length / total) * 100 : 0; targetCount++;
+            }
+
+            const avgPerformance = targetCount > 0 ? scoreSum / targetCount : 0;
+            return Math.round(targetSalary * (avgPerformance / 100));
+        };
+    }, [staff, properties, tenants, tasks, offboardingRecords]);
+
     // --- Generate Unified Expense Ledger ---
     const expensesLedger = useMemo(() => {
         const ledger: LedgerEntry[] = [];
-        // 1. Salaries
+        // 1. Salaries — use target-achieved gross for Target Based staff
         staff.forEach(s => {
             if (s.status === 'Active') {
+                const effectiveGross = computeEffectiveGross(s);
+                const isTargetBased = s.salaryConfig?.type === 'Target Based';
                 ledger.push({
                     id: `salary-${s.id}`,
                     date: s.payrollInfo.nextPaymentDate,
                     property: s.branch || 'Headquarters',
-                    description: `Salary: ${s.name}`,
-                    totalAmount: s.payrollInfo.baseSalary,
-                    agencyAmount: 0, 
+                    description: `Salary: ${s.name}${isTargetBased ? ' (Target Based)' : ''}`,
+                    totalAmount: effectiveGross,
+                    agencyAmount: 0,
                     landlordAmount: 0,
                     category: 'Salary',
                     type: 'Expense'
@@ -123,7 +177,7 @@ const Expenses: React.FC = () => {
             });
         });
         return ledger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [staff, bills]);
+    }, [staff, bills, computeEffectiveGross]);
 
     const filteredExpenses = useMemo(() => {
         return expensesLedger.filter(item => {
