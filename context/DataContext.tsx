@@ -11,38 +11,37 @@ const isSupabaseEnabled = !!supabase;
 
 function useSupabaseBackedState<T>(
   emptyValue: T,
-  key: string
+  key: string,
+  options?: { skipPersist?: boolean }
 ): [T, React.Dispatch<React.SetStateAction<T>>, { loading: boolean; error: string | null }] {
   const [value, setValue] = useState<T>(emptyValue);
   const queryClient = useQueryClient();
 
+  // staleTime: Infinity means once the batch loader (or a previous fetch) has
+  // populated this cache, this queryFn is never called again — it's always fresh.
+  // If the batch RPC is unavailable, cache is empty, so staleTime doesn't apply
+  // and this queryFn runs as a fallback individual fetch.
   const {
     data: fetchedValue,
     isLoading,
     error,
-  } = useQuery({
+  } = useQuery<T>({
     queryKey: ['app_state', key],
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
     queryFn: async () => {
-      // Guard: verify session is valid before querying.
-      // Without this, an expired session causes RLS to silently return null
-      // (no error, no data), which gets cached as empty state.
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('SESSION_EXPIRED');
-
-      console.log('[Supabase] app_state load', { key });
+      console.log('[Supabase] app_state individual load (batch miss)', { key });
       const { data, error } = await supabase
         .schema('app')
         .from('app_state')
         .select('value')
         .eq('key', key)
         .maybeSingle();
-
       if (error) throw error;
-      if (data && data.value !== null && data.value !== undefined) {
-        return data.value as T;
-      }
-      return emptyValue;
+      return (data?.value ?? emptyValue) as T;
     },
   });
 
@@ -54,6 +53,14 @@ function useSupabaseBackedState<T>(
 
   const upsertMutation = useMutation({
     mutationFn: async (next: T) => {
+      if (options?.skipPersist) return next;
+      // Guard: verify session before writing. Without this, an expired JWT
+      // causes the upsert to silently fail (RLS rejects it), leaving auth
+      // users created but their app_state profile records never written.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('SESSION_EXPIRED: Please log in again to save changes.');
+      }
       console.log('[Supabase] app_state upsert', { key });
       const { error } = await supabase
         .schema('app')
@@ -63,9 +70,14 @@ function useSupabaseBackedState<T>(
         console.warn(`Error persisting Supabase state for key "${key}"`, error);
         throw error;
       }
+      return next;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['app_state', key] });
+    onSuccess: (next) => {
+      queryClient.setQueryData(['app_state', key], next);
+      queryClient.setQueryData<Record<string, unknown>>(['all_app_state'], (old) => {
+        if (!old) return old;
+        return { ...old, [key]: next };
+      });
     },
   });
 
@@ -127,18 +139,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 'tm_system_settings_v11');
     const [scheduledReports, setScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>([], 'tm_scheduled_reports_v11');
     const [taxRecords, setTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>([], 'tm_tax_records_v11');
-    const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11');
+    // skipPersist: listings are auto-derived from properties on every load.
+    // Persisting them causes statement timeouts on large datasets.
+    const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11', { skipPersist: true });
     const [leads, setLeads, leadsStatus] = useSupabaseBackedState<Lead[]>([], 'tm_leads_v11');
     const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
     const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
 
-    const isDataLoading =
-      tenantsStatus.loading ||
-      propertiesStatus.loading ||
-      staffStatus.loading ||
-      rolesStatus.loading;
-
     const queryClient = useQueryClient();
+
+    // ── Master batch loader ─────────────────────────────────────────────────
+    // Single RPC replaces 38+ individual Supabase queries on startup.
+    // Results are distributed to individual query caches via setQueryData,
+    // which triggers re-renders in every useSupabaseBackedState hook.
+    const { data: allAppState, isLoading: batchLoading } =
+      useQuery<Record<string, unknown>>({
+        queryKey: ['all_app_state'],
+        staleTime: 5 * 60 * 1000,
+        retry: 2,
+        queryFn: async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('SESSION_EXPIRED');
+          console.log('[Supabase] batch load all app_state');
+          const { data, error } = await supabase
+            .schema('app')
+            .rpc('load_all_app_state');
+          if (error) throw error;
+          return (data as Record<string, unknown>) ?? {};
+        },
+      });
+
+    // Distribute batch results to every individual query cache
+    useEffect(() => {
+      if (allAppState) {
+        Object.entries(allAppState).forEach(([k, v]) => {
+          if (v !== null && v !== undefined) {
+            queryClient.setQueryData(['app_state', k], v);
+          }
+        });
+      }
+    }, [allAppState, queryClient]);
+
+    // Gate on batch OR core individual queries (individual queries run as fallback
+    // when batch RPC is unavailable — they each report their own loading state)
+    const isDataLoading = batchLoading || tenantsStatus.loading || propertiesStatus.loading || staffStatus.loading || rolesStatus.loading;
 
     // ── Supabase Realtime: In-App message delivery ───────────────────────────
     // Subscribes to changes on the app_state row that stores messages.

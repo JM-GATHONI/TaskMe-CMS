@@ -10,6 +10,23 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              // Core React runtime
+              'vendor-react': ['react', 'react-dom'],
+              // Data layer
+              'vendor-query': ['@tanstack/react-query'],
+              'vendor-supabase': ['@supabase/supabase-js'],
+              // Charts (heavy)
+              'vendor-charts': ['chart.js', 'react-chartjs-2'],
+            },
+          },
+        },
+        // Raise the warning threshold so chart.js vendor chunk doesn't warn
+        chunkSizeWarningLimit: 1000,
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
