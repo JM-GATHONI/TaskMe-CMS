@@ -24,6 +24,12 @@ function useSupabaseBackedState<T>(
     queryKey: ['app_state', key],
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
+      // Guard: verify session is valid before querying.
+      // Without this, an expired session causes RLS to silently return null
+      // (no error, no data), which gets cached as empty state.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('SESSION_EXPIRED');
+
       console.log('[Supabase] app_state load', { key });
       const { data, error } = await supabase
         .schema('app')
@@ -211,10 +217,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [rolesError]);
 
     useEffect(() => {
-        const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (session) {
-                console.log('[Supabase] auth state change, invalidating roles');
-                queryClient.invalidateQueries({ queryKey: ['roles'] });
+        const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                // Re-fetch all cached data after login or token refresh so stale
+                // empty-state from an expired session is replaced with real data.
+                console.log('[Supabase] auth event:', event, '— invalidating all queries');
+                queryClient.invalidateQueries();
+            } else if (event === 'SIGNED_OUT') {
+                // Clear all cached queries on logout so next login starts clean.
+                console.log('[Supabase] SIGNED_OUT — clearing query cache');
+                queryClient.clear();
+                setCurrentUser(null);
             }
         });
         return () => {
