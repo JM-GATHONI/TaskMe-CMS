@@ -427,10 +427,27 @@ const Users: React.FC = () => {
 
     // --- AGGREGATE ALL USERS ---
     const allUsers: UnifiedUser[] = useMemo(() => {
-        const mergedStaff = [...staff];
-        for (const dbRow of dbStaffProfiles) {
-            if (!mergedStaff.some(s => s.id === dbRow.id)) mergedStaff.push(dbRow);
+        // Helper: true for real auth UUIDs, false for generated IDs like "field-1234567"
+        const isUUID = (id: string) =>
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+        // Deduplicate staff by email. Prefer records whose ID is a real auth UUID
+        // (those have the most accurate identity). Multiple generated-ID records for
+        // the same email are collapsed to one.
+        const staffByEmail = new Map<string, StaffProfile>();
+        for (const s of [...staff, ...dbStaffProfiles]) {
+            const key = (s.email || '').toLowerCase().trim();
+            if (!key) { staffByEmail.set(s.id, s); continue; }
+            const existing = staffByEmail.get(key);
+            if (!existing) {
+                staffByEmail.set(key, s);
+            } else if (isUUID(s.id) && !isUUID(existing.id)) {
+                // Replace generated-ID record with the canonical auth-UUID record,
+                // but preserve richer app_state fields (payroll, leave, etc.)
+                staffByEmail.set(key, { ...s, ...existing, id: s.id });
+            }
         }
+        const mergedStaff = Array.from(staffByEmail.values());
 
         const staffUsers: UnifiedUser[] = mergedStaff.map(s => ({
             id: s.id, name: s.name, username: s.username, email: s.email, phone: s.phone, role: s.role, status: s.status, type: 'Staff', fullObject: s
@@ -448,7 +465,18 @@ const Users: React.FC = () => {
             id: v.id, name: v.name, username: v.username || '', email: v.email || '', phone: v.phone || '', role: 'Contractor', status: 'Active', type: 'Vendor', fullObject: v
         }));
 
-        return [...staffUsers, ...landlordUsers, ...tenantUsers, ...investors, ...contractors];
+        // Final cross-category dedup by email — prevents the same person appearing
+        // in multiple lists (e.g. a Super Admin who was also added as a Landlord).
+        const seenEmails = new Set<string>();
+        const deduped: UnifiedUser[] = [];
+        for (const u of [...staffUsers, ...landlordUsers, ...tenantUsers, ...investors, ...contractors]) {
+            const eKey = (u.email || '').toLowerCase().trim();
+            if (!eKey || !seenEmails.has(eKey)) {
+                deduped.push(u);
+                if (eKey) seenEmails.add(eKey);
+            }
+        }
+        return deduped;
     }, [staff, dbStaffProfiles, landlords, tenants, renovationInvestors, vendors]);
 
     // Filter Users by Active Category Roles
@@ -482,6 +510,18 @@ const Users: React.FC = () => {
             status: rest.status,
             passwordHash: passwordHash
         };
+
+        // Enforce unique email across all user categories.
+        const trimmedEmail = String(rest.email ?? '').trim().toLowerCase();
+        if (trimmedEmail) {
+            const emailOwner = allUsers.find(
+                u => (u.email || '').toLowerCase() === trimmedEmail && u.id !== (editUser?.id ?? '')
+            );
+            if (emailOwner) {
+                alert(`Email ${rest.email} is already registered to ${emailOwner.name}. Each user must have a unique email address.`);
+                return;
+            }
+        }
 
         // Enforce unique phone across all user categories.
         const trimmedPhone = String(rest.phone ?? '').trim();
