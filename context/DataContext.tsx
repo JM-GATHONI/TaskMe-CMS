@@ -16,34 +16,15 @@ function useSupabaseBackedState<T>(
   const [value, setValue] = useState<T>(emptyValue);
   const queryClient = useQueryClient();
 
-  const {
-    data: fetchedValue,
-    isLoading,
-    error,
-  } = useQuery({
+  // Individual queries are DISABLED — the master batch loader in DataProvider
+  // calls app.load_all_app_state() once and populates all individual caches
+  // via setQueryData. This reduces 38+ round-trips to a single RPC call.
+  const { data: fetchedValue } = useQuery<T>({
     queryKey: ['app_state', key],
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      // Guard: verify session is valid before querying.
-      // Without this, an expired session causes RLS to silently return null
-      // (no error, no data), which gets cached as empty state.
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('SESSION_EXPIRED');
-
-      console.log('[Supabase] app_state load', { key });
-      const { data, error } = await supabase
-        .schema('app')
-        .from('app_state')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data && data.value !== null && data.value !== undefined) {
-        return data.value as T;
-      }
-      return emptyValue;
-    },
+    staleTime: Infinity,   // master batch controls freshness
+    gcTime: 30 * 60 * 1000,
+    enabled: false,        // never auto-fetches; populated by batch loader
+    queryFn: async () => emptyValue, // never called, satisfies TS
   });
 
   useEffect(() => {
@@ -63,9 +44,15 @@ function useSupabaseBackedState<T>(
         console.warn(`Error persisting Supabase state for key "${key}"`, error);
         throw error;
       }
+      return next;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['app_state', key] });
+    onSuccess: (next) => {
+      // Keep individual cache and master batch cache in sync after writes
+      queryClient.setQueryData(['app_state', key], next);
+      queryClient.setQueryData<Record<string, unknown>>(['all_app_state'], (old) => {
+        if (!old) return old;
+        return { ...old, [key]: next };
+      });
     },
   });
 
@@ -77,7 +64,7 @@ function useSupabaseBackedState<T>(
     });
   };
 
-  return [value, persistAndSetValue, { loading: isLoading, error: (error as any)?.message ?? null }];
+  return [value, persistAndSetValue, { loading: false, error: null }];
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -132,13 +119,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
     const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
 
-    const isDataLoading =
-      tenantsStatus.loading ||
-      propertiesStatus.loading ||
-      staffStatus.loading ||
-      rolesStatus.loading;
-
     const queryClient = useQueryClient();
+
+    // ── Master batch loader ─────────────────────────────────────────────────
+    // Single RPC replaces 38+ individual Supabase queries on startup.
+    // Results are distributed to individual query caches via setQueryData,
+    // which triggers re-renders in every useSupabaseBackedState hook.
+    const { data: allAppState, isLoading: batchLoading } =
+      useQuery<Record<string, unknown>>({
+        queryKey: ['all_app_state'],
+        staleTime: 5 * 60 * 1000,
+        retry: 2,
+        queryFn: async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('SESSION_EXPIRED');
+          console.log('[Supabase] batch load all app_state');
+          const { data, error } = await supabase
+            .schema('app')
+            .rpc('load_all_app_state');
+          if (error) throw error;
+          return (data as Record<string, unknown>) ?? {};
+        },
+      });
+
+    // Distribute batch results to every individual query cache
+    useEffect(() => {
+      if (allAppState) {
+        Object.entries(allAppState).forEach(([k, v]) => {
+          if (v !== null && v !== undefined) {
+            queryClient.setQueryData(['app_state', k], v);
+          }
+        });
+      }
+    }, [allAppState, queryClient]);
+
+    const isDataLoading = batchLoading || rolesStatus.loading;
 
     // ── Supabase Realtime: In-App message delivery ───────────────────────────
     // Subscribes to changes on the app_state row that stores messages.
