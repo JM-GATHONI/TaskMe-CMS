@@ -146,6 +146,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
     const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
 
+    // ── DB Staff Profiles ────────────────────────────────────────────────────
+    // Direct fetch from app.staff_profiles — ensures staff created via the
+    // admin_create_auth_user RPC (or directly in DB) always appear in the UI,
+    // even if tm_staff_v11 hasn't been synced yet.
+    const [dbStaffProfiles, setDbStaffProfiles] = useState<StaffProfile[]>([]);
+
     const queryClient = useQueryClient();
 
     // ── Master batch loader ─────────────────────────────────────────────────
@@ -179,6 +185,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
     }, [allAppState, queryClient]);
+
+    // ── Fetch app.staff_profiles (normalised table) ──────────────────────────
+    // Runs once on mount (session-guarded). Catches staff registered via the
+    // admin_create_auth_user RPC who may not yet be in tm_staff_v11.
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) return;
+                const { data, error } = await supabase
+                    .schema('app')
+                    .from('staff_profiles')
+                    .select('id,name,role,email,phone,branch,status');
+                if (error) throw error;
+                if (!alive) return;
+                const mapped: StaffProfile[] = (data ?? []).map((row: any) => ({
+                    id: row.id,
+                    name: row.name || '',
+                    role: row.role || 'Staff',
+                    email: row.email || '',
+                    phone: row.phone || '',
+                    branch: row.branch || 'Headquarters',
+                    status: row.status || 'Active',
+                    payrollInfo: { baseSalary: 0, nextPaymentDate: '' },
+                    leaveBalance: { annual: 0 },
+                } as StaffProfile));
+                setDbStaffProfiles(mapped);
+            } catch (e) {
+                console.warn('[DataContext] Failed to load app.staff_profiles:', e);
+            }
+        })();
+        return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ── Merged staff: app_state + normalised table, deduped by email ─────────
+    // Used as the single source of truth for all staff-related UI.
+    // Prefers records with real auth UUIDs over generated IDs.
+    const isAuthUUID = (id: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    const mergedStaff = React.useMemo(() => {
+        const byEmail = new Map<string, StaffProfile>();
+        for (const s of [...staff, ...dbStaffProfiles]) {
+            const key = (s.email || '').toLowerCase().trim();
+            if (!key) { byEmail.set(s.id, s); continue; }
+            const existing = byEmail.get(key);
+            if (!existing) {
+                byEmail.set(key, s);
+            } else if (isAuthUUID(s.id) && !isAuthUUID(existing.id)) {
+                // Prefer the auth-UUID record but keep richer app_state fields
+                byEmail.set(key, { ...s, ...existing, id: s.id });
+            }
+        }
+        return Array.from(byEmail.values());
+    }, [staff, dbStaffProfiles]);
 
     // Gate on batch OR core individual queries (individual queries run as fallback
     // when batch RPC is unavailable — they each report their own loading state)
@@ -365,14 +428,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addTenant = (t: TenantProfile) => setTenants(prev => [t, ...prev]);
     const updateTenant = (id: string, d: Partial<TenantProfile>) => setTenants(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
     const deleteTenant = (id: string) => {
-        const prevTenants = tenants;
         setTenants(prev => prev.filter(t => t.id !== id));
         (async () => {
-            console.log('[Supabase] tenant delete', { id });
-            const { error } = await supabase.from('tenants').delete().eq('id', id);
-            if (error) {
-                console.warn('[Supabase] tenant delete error (may not exist in normalized table):', error.message);
-                // Don't rollback – app_state is the source of truth and was already updated
+            if (isAuthUUID(id)) {
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
+                if (error) console.warn('[Supabase] admin_delete_auth_user (tenant) error:', error.message);
             }
         })();
     };
@@ -383,13 +443,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addLandlord = (u: User) => setLandlords(prev => [u, ...prev]);
     const updateLandlord = (id: string, d: Partial<User>) => setLandlords(prev => prev.map(u => u.id === id ? {...u, ...d} : u));
     const deleteLandlord = (id: string) => {
-        const prevLandlords = landlords;
         setLandlords(prev => prev.filter(u => u.id !== id));
         (async () => {
-            console.log('[Supabase] landlord delete', { id });
-            const { error } = await supabase.from('landlords').delete().eq('id', id);
-            if (error) {
-                console.warn('[Supabase] landlord delete error (may not exist in normalized table):', error.message);
+            if (isAuthUUID(id)) {
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
+                if (error) console.warn('[Supabase] admin_delete_auth_user (landlord) error:', error.message);
             }
         })();
     };
@@ -406,14 +464,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addStaff = (s: StaffProfile) => setStaff(prev => [s, ...prev]);
     const updateStaff = (id: string, d: Partial<StaffProfile>) => setStaff(prev => prev.map(s => s.id === id ? {...s, ...d} : s));
     const deleteStaff = (id: string) => {
-        const prevStaff = staff;
         setStaff(prev => prev.filter(s => s.id !== id));
+        // Also remove from the normalised-table mirror so mergedStaff updates immediately
+        setDbStaffProfiles(prev => prev.filter(s => s.id !== id));
         (async () => {
-            console.log('[Supabase] staff delete', { id });
-            // Delete from app.staff_profiles; auth.users record is left to Supabase Admin cleanup
-            const { error } = await supabase.schema('app').from('staff_profiles').delete().eq('id', id);
-            if (error) {
-                console.warn('[Supabase] staff delete error (may not exist in normalized table):', error.message);
+            if (isAuthUUID(id)) {
+                // Deletes auth.users row → cascades to staff_profiles, user_roles, profiles
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
+                if (error) console.warn('[Supabase] admin_delete_auth_user (staff) error:', error.message);
+            } else {
+                // Legacy generated-ID staff: remove from normalised table only
+                const { error } = await supabase.schema('app').from('staff_profiles').delete().eq('id', id);
+                if (error) console.warn('[Supabase] staff_profiles delete error:', error.message);
             }
         })();
     };
@@ -461,7 +523,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addNotification = (n: Notification) => setNotifications(prev => [n, ...prev]);
     const addVendor = (v: Vendor) => setVendors(prev => [v, ...prev]);
     const updateVendor = (id: string, d: Partial<Vendor>) => setVendors(prev => prev.map(v => v.id === id ? {...v, ...d} : v));
-    const deleteVendor = (id: string) => setVendors(prev => prev.filter(v => v.id !== id));
+    const deleteVendor = (id: string) => {
+        setVendors(prev => prev.filter(v => v.id !== id));
+        (async () => {
+            if (isAuthUUID(id)) {
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
+                if (error) console.warn('[Supabase] admin_delete_auth_user (vendor) error:', error.message);
+            }
+        })();
+    };
     const addAuditLog = (log: AuditLogEntry) => setAuditLogs(prev => [log, ...prev]);
     const updateExternalTransaction = (id: string, d: Partial<ExternalTransaction>) => setExternalTransactions(prev => prev.map(t => t.id === id ? {...t, ...d} : t));
     const updateOverpayment = (id: string, d: Partial<Overpayment>) => setOverpayments(prev => prev.map(o => o.id === id ? {...o, ...d} : o));
@@ -504,7 +574,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateWithdrawal = (id: string, d: Partial<WithdrawalRequest>) => setWithdrawals(prev => prev.map(w => w.id === id ? { ...w, ...d } : w));
     const addRenovationInvestor = (inv: RenovationInvestor) => setRenovationInvestors(prev => [inv, ...prev]);
     const updateRenovationInvestor = (id: string, d: Partial<RenovationInvestor>) => setRenovationInvestors(prev => prev.map(i => i.id === id ? { ...i, ...d } : i));
-    const deleteRenovationInvestor = (id: string) => setRenovationInvestors(prev => prev.filter(i => i.id !== id));
+    const deleteRenovationInvestor = (id: string) => {
+        setRenovationInvestors(prev => prev.filter(i => i.id !== id));
+        (async () => {
+            if (isAuthUUID(id)) {
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
+                if (error) console.warn('[Supabase] admin_delete_auth_user (investor) error:', error.message);
+            }
+        })();
+    };
     const addRFTransaction = (tx: RFTransaction) => setRFTransactions(prev => [tx, ...prev]);
     const updateRFTransaction = (id: string, d: Partial<RFTransaction>) => setRFTransactions(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
     const addRenovationProjectBill = (bill: RenovationProjectBill) => setRenovationProjectBills(prev => [bill, ...prev]);
@@ -706,15 +784,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const users = React.useMemo(() => {
         // Map all to User type for unified access
         const mappedTenants = tenants.map(t => ({ ...t, role: 'Tenant' } as unknown as User));
-        const mappedStaff = staff.map(s => ({ ...s, role: s.role } as unknown as User));
+        const mappedStaff = mergedStaff.map(s => ({ ...s, role: s.role } as unknown as User));
         // Landlords are already User[]
         return [...landlords, ...mappedTenants, ...mappedStaff];
-    }, [tenants, landlords, staff]);
+    }, [tenants, landlords, mergedStaff]);
 
     const updateUser = (id: string, data: Partial<User>) => {
         // Determine which list the user belongs to
         const isTenant = tenants.some(t => t.id === id);
-        const isStaff = staff.some(s => s.id === id);
+        const isStaff = mergedStaff.some(s => s.id === id);
         const isLandlord = landlords.some(l => l.id === id);
 
         if (isTenant) {
@@ -729,7 +807,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
         <DataContext.Provider value={{
             tenants, properties, landlords, tasks, quotations, applications, landlordApplications,
-            staff, fines, offboardingRecords, geospatialData, commissionRules, deductionRules,
+            staff: mergedStaff, fines, offboardingRecords, geospatialData, commissionRules, deductionRules,
             bills, invoices, vendors, messages, notifications, templates, workflows, automationRules, auditLogs, escalationRules,
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
