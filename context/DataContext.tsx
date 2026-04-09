@@ -11,20 +11,38 @@ const isSupabaseEnabled = !!supabase;
 
 function useSupabaseBackedState<T>(
   emptyValue: T,
-  key: string
+  key: string,
+  options?: { skipPersist?: boolean }
 ): [T, React.Dispatch<React.SetStateAction<T>>, { loading: boolean; error: string | null }] {
   const [value, setValue] = useState<T>(emptyValue);
   const queryClient = useQueryClient();
 
-  // Individual queries are DISABLED — the master batch loader in DataProvider
-  // calls app.load_all_app_state() once and populates all individual caches
-  // via setQueryData. This reduces 38+ round-trips to a single RPC call.
-  const { data: fetchedValue } = useQuery<T>({
+  // staleTime: Infinity means once the batch loader (or a previous fetch) has
+  // populated this cache, this queryFn is never called again — it's always fresh.
+  // If the batch RPC is unavailable, cache is empty, so staleTime doesn't apply
+  // and this queryFn runs as a fallback individual fetch.
+  const {
+    data: fetchedValue,
+    isLoading,
+    error,
+  } = useQuery<T>({
     queryKey: ['app_state', key],
-    staleTime: Infinity,   // master batch controls freshness
+    staleTime: Infinity,
     gcTime: 30 * 60 * 1000,
-    enabled: false,        // never auto-fetches; populated by batch loader
-    queryFn: async () => emptyValue, // never called, satisfies TS
+    retry: 1,
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('SESSION_EXPIRED');
+      console.log('[Supabase] app_state individual load (batch miss)', { key });
+      const { data, error } = await supabase
+        .schema('app')
+        .from('app_state')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.value ?? emptyValue) as T;
+    },
   });
 
   useEffect(() => {
@@ -35,6 +53,7 @@ function useSupabaseBackedState<T>(
 
   const upsertMutation = useMutation({
     mutationFn: async (next: T) => {
+      if (options?.skipPersist) return next;
       console.log('[Supabase] app_state upsert', { key });
       const { error } = await supabase
         .schema('app')
@@ -47,7 +66,6 @@ function useSupabaseBackedState<T>(
       return next;
     },
     onSuccess: (next) => {
-      // Keep individual cache and master batch cache in sync after writes
       queryClient.setQueryData(['app_state', key], next);
       queryClient.setQueryData<Record<string, unknown>>(['all_app_state'], (old) => {
         if (!old) return old;
@@ -64,7 +82,7 @@ function useSupabaseBackedState<T>(
     });
   };
 
-  return [value, persistAndSetValue, { loading: false, error: null }];
+  return [value, persistAndSetValue, { loading: isLoading, error: (error as any)?.message ?? null }];
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -114,7 +132,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 'tm_system_settings_v11');
     const [scheduledReports, setScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>([], 'tm_scheduled_reports_v11');
     const [taxRecords, setTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>([], 'tm_tax_records_v11');
-    const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11');
+    // skipPersist: listings are auto-derived from properties on every load.
+    // Persisting them causes statement timeouts on large datasets.
+    const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11', { skipPersist: true });
     const [leads, setLeads, leadsStatus] = useSupabaseBackedState<Lead[]>([], 'tm_leads_v11');
     const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
     const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
@@ -153,7 +173,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, [allAppState, queryClient]);
 
-    const isDataLoading = batchLoading || rolesStatus.loading;
+    // Gate on batch OR core individual queries (individual queries run as fallback
+    // when batch RPC is unavailable — they each report their own loading state)
+    const isDataLoading = batchLoading || tenantsStatus.loading || propertiesStatus.loading || staffStatus.loading || rolesStatus.loading;
 
     // ── Supabase Realtime: In-App message delivery ───────────────────────────
     // Subscribes to changes on the app_state row that stores messages.
