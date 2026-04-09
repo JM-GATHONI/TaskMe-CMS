@@ -346,44 +346,11 @@ const Users: React.FC = () => {
     const [resetUser, setResetUser] = useState<UnifiedUser | null>(null);
     const [editUser, setEditUser] = useState<UnifiedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [dbStaffProfiles, setDbStaffProfiles] = useState<StaffProfile[]>([]);
-    
+
     // Get dynamic system roles from context
     const systemRoleNames = useMemo(() => {
         return roles.filter(r => r.isSystem).map(r => r.name);
     }, [roles]);
-
-    // Pull server-side staff profiles so system users created directly in DB still appear in this module.
-    useEffect(() => {
-        let alive = true;
-        (async () => {
-            try {
-                const { data, error } = await supabase
-                    .schema('app')
-                    .from('staff_profiles')
-                    .select('id,name,role,email,phone,branch,status');
-                if (error) throw error;
-                if (!alive) return;
-                const mapped: StaffProfile[] = (data ?? []).map((row: any) => ({
-                    id: row.id,
-                    name: row.name || '',
-                    role: row.role || 'Staff',
-                    email: row.email || '',
-                    phone: row.phone || '',
-                    branch: row.branch || 'Headquarters',
-                    status: row.status || 'Active',
-                    payrollInfo: { baseSalary: 0, nextPaymentDate: '' },
-                    leaveBalance: { annual: 0 },
-                } as StaffProfile));
-                setDbStaffProfiles(mapped);
-            } catch (e) {
-                console.warn('Failed to load app.staff_profiles for user management', e);
-            }
-        })();
-        return () => {
-            alive = false;
-        };
-    }, []);
 
     // Construct Categories with dynamic system roles
     const categories: UserCategory[] = useMemo(() => [
@@ -426,30 +393,10 @@ const Users: React.FC = () => {
     const activeCategory = categories.find(c => c.id === activeCategoryId) || categories[0];
 
     // --- AGGREGATE ALL USERS ---
+    // `staff` from context is already deduplicated (mergedStaff from DataContext),
+    // so no additional dedup pass is needed here.
     const allUsers: UnifiedUser[] = useMemo(() => {
-        // Helper: true for real auth UUIDs, false for generated IDs like "field-1234567"
-        const isUUID = (id: string) =>
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-        // Deduplicate staff by email. Prefer records whose ID is a real auth UUID
-        // (those have the most accurate identity). Multiple generated-ID records for
-        // the same email are collapsed to one.
-        const staffByEmail = new Map<string, StaffProfile>();
-        for (const s of [...staff, ...dbStaffProfiles]) {
-            const key = (s.email || '').toLowerCase().trim();
-            if (!key) { staffByEmail.set(s.id, s); continue; }
-            const existing = staffByEmail.get(key);
-            if (!existing) {
-                staffByEmail.set(key, s);
-            } else if (isUUID(s.id) && !isUUID(existing.id)) {
-                // Replace generated-ID record with the canonical auth-UUID record,
-                // but preserve richer app_state fields (payroll, leave, etc.)
-                staffByEmail.set(key, { ...s, ...existing, id: s.id });
-            }
-        }
-        const mergedStaff = Array.from(staffByEmail.values());
-
-        const staffUsers: UnifiedUser[] = mergedStaff.map(s => ({
+        const staffUsers: UnifiedUser[] = staff.map(s => ({
             id: s.id, name: s.name, username: s.username, email: s.email, phone: s.phone, role: s.role, status: s.status, type: 'Staff', fullObject: s
         }));
         const landlordUsers: UnifiedUser[] = landlords.map(l => ({
@@ -465,7 +412,7 @@ const Users: React.FC = () => {
             id: v.id, name: v.name, username: v.username || '', email: v.email || '', phone: v.phone || '', role: 'Contractor', status: 'Active', type: 'Vendor', fullObject: v
         }));
 
-        // Final cross-category dedup by email — prevents the same person appearing
+        // Cross-category dedup by email — prevents the same person appearing
         // in multiple lists (e.g. a Super Admin who was also added as a Landlord).
         const seenEmails = new Set<string>();
         const deduped: UnifiedUser[] = [];
@@ -477,7 +424,7 @@ const Users: React.FC = () => {
             }
         }
         return deduped;
-    }, [staff, dbStaffProfiles, landlords, tenants, renovationInvestors, vendors]);
+    }, [staff, landlords, tenants, renovationInvestors, vendors]);
 
     // Filter Users by Active Category Roles
     const categoryUsers = useMemo(() => {
