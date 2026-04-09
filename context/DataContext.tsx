@@ -54,6 +54,13 @@ function useSupabaseBackedState<T>(
   const upsertMutation = useMutation({
     mutationFn: async (next: T) => {
       if (options?.skipPersist) return next;
+      // Guard: verify session before writing. Without this, an expired JWT
+      // causes the upsert to silently fail (RLS rejects it), leaving auth
+      // users created but their app_state profile records never written.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('SESSION_EXPIRED: Please log in again to save changes.');
+      }
       console.log('[Supabase] app_state upsert', { key });
       const { error } = await supabase
         .schema('app')
