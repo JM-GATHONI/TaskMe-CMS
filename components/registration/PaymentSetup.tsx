@@ -2,9 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import Icon from '../Icon';
 import { supabase } from '../../utils/supabaseClient';
+import { getSupabaseSession } from '../../utils/supabaseClient';
+import { useData } from '../../context/DataContext';
 
 const PaymentSetup: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'mpesa' | 'airtel' | 'bank'>('mpesa');
+    const { properties, landlords, systemSettings, updateSystemSettings } = useData();
+    const [activeTab, setActiveTab] = useState<'paybills' | 'mpesa' | 'airtel' | 'bank'>('paybills');
     const [stkTestPhone, setStkTestPhone] = useState('');
     const [stkTestBusy, setStkTestBusy] = useState(false);
     const [stkTestMsg, setStkTestMsg] = useState<string | null>(null);
@@ -12,18 +15,31 @@ const PaymentSetup: React.FC = () => {
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const { data } = await supabase.auth.getSession();
-            const p = (data.session?.user?.user_metadata as any)?.phone;
+            const session = await getSupabaseSession();
+            const p = (session?.user?.user_metadata as any)?.phone;
             if (!cancelled && p) setStkTestPhone(String(p));
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, []);
-    
+
+    // Agency primary paybill (editable, persisted in systemSettings)
+    const [agencyPaybill, setAgencyPaybill] = useState(systemSettings?.agencyPaybill || '');
+    const [agencyPaybillSaved, setAgencyPaybillSaved] = useState(false);
+
+    // Keep local field in sync if systemSettings loads asynchronously
+    useEffect(() => {
+        if (systemSettings?.agencyPaybill) setAgencyPaybill(systemSettings.agencyPaybill);
+    }, [systemSettings?.agencyPaybill]);
+
+    const handleSaveAgencyPaybill = () => {
+        updateSystemSettings({ ...systemSettings, agencyPaybill });
+        setAgencyPaybillSaved(true);
+        setTimeout(() => setAgencyPaybillSaved(false), 2500);
+    };
+
     // M-Pesa Mock State
     const [mpesaConfig, setMpesaConfig] = useState({
-        paybill: '522522',
+        paybill: systemSettings?.agencyPaybill || '522522',
         till: '',
         consumerKey: '********************',
         consumerSecret: '********************',
@@ -48,6 +64,9 @@ const PaymentSetup: React.FC = () => {
     const [isAddingBank, setIsAddingBank] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
+    // Partial management properties — derive from context
+    const partialProperties = properties.filter(p => p.managementType === 'Partial');
+
     const handleMpesaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setMpesaConfig({ ...mpesaConfig, [e.target.name]: e.target.value });
     };
@@ -62,41 +81,30 @@ const PaymentSetup: React.FC = () => {
 
     const handleAddOrUpdateBank = () => {
         if (!newBank.bankName || !newBank.accountNumber) {
-            alert("Please fill in at least Bank Name and Account Number.");
+            alert('Please fill in at least Bank Name and Account Number.');
             return;
         }
-
         if (editingId) {
-            // Update existing
             setBankAccounts(prev => prev.map(acc => acc.id === editingId ? { ...acc, ...newBank } : acc));
-            alert("Bank account updated successfully.");
+            alert('Bank account updated successfully.');
         } else {
-            // Add new
             setBankAccounts([...bankAccounts, { id: `ba-${Date.now()}`, ...newBank }]);
-            alert("Bank account added successfully.");
+            alert('Bank account added successfully.');
         }
-
-        // Reset form
         setNewBank({ bankName: '', accountName: '', accountNumber: '', branch: '' });
         setIsAddingBank(false);
         setEditingId(null);
     };
 
     const handleEditBank = (bank: typeof bankAccounts[0]) => {
-        setNewBank({
-            bankName: bank.bankName,
-            accountName: bank.accountName,
-            accountNumber: bank.accountNumber,
-            branch: bank.branch
-        });
+        setNewBank({ bankName: bank.bankName, accountName: bank.accountName, accountNumber: bank.accountNumber, branch: bank.branch });
         setEditingId(bank.id);
         setIsAddingBank(true);
     };
 
     const removeBankAccount = (id: string) => {
-        if (confirm("Are you sure you want to remove this bank account?")) {
+        if (confirm('Are you sure you want to remove this bank account?')) {
             setBankAccounts(prev => prev.filter(acc => acc.id !== id));
-            // If we were editing the deleted one, close form
             if (editingId === id) {
                 setIsAddingBank(false);
                 setEditingId(null);
@@ -112,17 +120,13 @@ const PaymentSetup: React.FC = () => {
     };
 
     const handleSave = () => {
-        alert("Settings Saved Successfully!");
-    };
-
-    const handleBack = () => {
-        window.location.hash = '#/registration/overview';
+        alert('Settings Saved Successfully!');
     };
 
     const handleTestStk = async () => {
         setStkTestMsg(null);
-        const { data: sess } = await supabase.auth.getSession();
-        const uid = sess.session?.user?.id;
+        const session = await getSupabaseSession();
+        const uid = session?.user?.id;
         if (!uid) {
             setStkTestMsg('Sign in first. Test STK uses your account id for the payment row in public.payments.');
             return;
@@ -148,21 +152,22 @@ const PaymentSetup: React.FC = () => {
                     const body = await ctx.json();
                     if (body?.error) msg = String(body.error);
                 }
-            } catch {
-                /* ignore */
-            }
+            } catch { /* ignore */ }
             setStkTestMsg(msg);
         } finally {
             setStkTestBusy(false);
         }
     };
 
+    const tabClass = (tab: typeof activeTab, color: string) =>
+        `whitespace-nowrap px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === tab ? `border-${color}-500 text-${color}-600 bg-${color}-50` : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`;
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Payment Setup</h1>
-                    <p className="text-lg text-gray-500 mt-1">Configure integration with payment providers.</p>
+                    <p className="text-lg text-gray-500 mt-1">Configure payment providers and manage paybill numbers.</p>
                 </div>
                 <button onClick={handleSave} className="px-6 py-2 bg-primary text-white font-semibold rounded-md shadow-sm hover:bg-primary-dark">
                     Save Changes
@@ -172,28 +177,144 @@ const PaymentSetup: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className="border-b border-gray-200">
                     <nav className="flex overflow-x-auto">
-                        <button 
-                            onClick={() => setActiveTab('mpesa')}
-                            className={`whitespace-nowrap px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'mpesa' ? 'border-green-500 text-green-600 bg-green-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        >
+                        <button onClick={() => setActiveTab('paybills')} className={tabClass('paybills', 'purple')}>
+                            Paybill Directory
+                        </button>
+                        <button onClick={() => setActiveTab('mpesa')} className={tabClass('mpesa', 'green')}>
                             M-Pesa Integration
                         </button>
-                        <button 
-                            onClick={() => setActiveTab('airtel')}
-                            className={`whitespace-nowrap px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'airtel' ? 'border-red-500 text-red-600 bg-red-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        >
+                        <button onClick={() => setActiveTab('airtel')} className={tabClass('airtel', 'red')}>
                             Airtel Money API
                         </button>
-                        <button 
-                            onClick={() => setActiveTab('bank')}
-                            className={`whitespace-nowrap px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'bank' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        >
+                        <button onClick={() => setActiveTab('bank')} className={tabClass('bank', 'blue')}>
                             Bank Accounts ({bankAccounts.length})
                         </button>
                     </nav>
                 </div>
 
                 <div className="p-8">
+
+                    {/* ── Paybill Directory ─────────────────────────────────────── */}
+                    {activeTab === 'paybills' && (
+                        <div className="max-w-3xl space-y-8">
+                            <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 flex items-start gap-3">
+                                <Icon name="info" className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <h4 className="font-bold text-purple-800 text-sm">Paybill Directory</h4>
+                                    <p className="text-purple-700 text-xs mt-1">
+                                        The <strong>Agency Paybill</strong> is the primary shortcode used for all <strong>Full Management</strong> properties.
+                                        Landlord paybills are automatically listed here for properties registered under <strong>Partial Management</strong> — tenants pay rent directly to those paybills and the agency invoices the landlord end-of-month.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Agency Primary Paybill */}
+                            <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                                    <h3 className="font-bold text-gray-800">Agency Paybill (Primary)</h3>
+                                    <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">Full Management</span>
+                                </div>
+                                <div className="border border-green-200 rounded-xl p-5 bg-green-50/40">
+                                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-semibold text-gray-600 mb-1">
+                                                M-Pesa Paybill / Till Number
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={agencyPaybill}
+                                                onChange={e => setAgencyPaybill(e.target.value)}
+                                                placeholder="e.g. 522522"
+                                                className="w-full p-2.5 border border-green-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400 font-mono"
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">All Full Management rent payments are collected via this shortcode.</p>
+                                        </div>
+                                        <button
+                                            onClick={handleSaveAgencyPaybill}
+                                            className="px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors flex-shrink-0"
+                                        >
+                                            {agencyPaybillSaved ? '✓ Saved' : 'Save'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Landlord Paybills — Partial Management */}
+                            <div>
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                                    <h3 className="font-bold text-gray-800">Landlord Paybills</h3>
+                                    <span className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-medium">Partial Management</span>
+                                    <span className="ml-auto text-xs text-gray-400">{partialProperties.length} propert{partialProperties.length === 1 ? 'y' : 'ies'}</span>
+                                </div>
+
+                                {partialProperties.length === 0 ? (
+                                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center">
+                                        <p className="text-sm text-gray-500 font-medium">No Partial Management properties registered yet.</p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            When you register a property under <strong>Partial Management</strong> in{' '}
+                                            <a href="#/registration/properties" className="text-primary underline">Registration › Properties</a>,
+                                            its landlord paybill will appear here automatically.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {partialProperties.map(prop => {
+                                            const landlord = landlords.find(l => l.id === prop.landlordId);
+                                            return (
+                                                <div key={prop.id} className="border border-orange-200 rounded-xl p-4 bg-orange-50/40 flex flex-col sm:flex-row sm:items-center gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="font-semibold text-gray-800 text-sm">{prop.name}</span>
+                                                            <span className="text-xs text-gray-400">•</span>
+                                                            <span className="text-xs text-gray-500">{prop.branch}</span>
+                                                            {prop.units?.length > 0 && (
+                                                                <span className="text-xs text-gray-400">{prop.units.length} unit{prop.units.length !== 1 ? 's' : ''}</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 mt-0.5">
+                                                            Landlord: <span className="font-medium text-gray-700">{landlord?.name || '—'}</span>
+                                                            {landlord?.phone && <span className="ml-2 text-gray-400">{landlord.phone}</span>}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                                        <div className="text-right">
+                                                            <p className="text-xs text-gray-500 mb-0.5">Paybill / Till</p>
+                                                            <p className="font-mono font-bold text-orange-700 text-sm">
+                                                                {prop.landlordPaybill || <span className="text-red-500 font-normal">Not set</span>}
+                                                            </p>
+                                                        </div>
+                                                        <a
+                                                            href={`#/registration/properties`}
+                                                            className="p-2 text-gray-400 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors"
+                                                            title="Edit property to update paybill"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                                                            </svg>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {partialProperties.some(p => !p.landlordPaybill) && (
+                                    <div className="mt-3 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                        <Icon name="info" className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                                        <p className="text-xs text-red-700">
+                                            Some Partial Management properties are missing a landlord paybill. Edit the property in{' '}
+                                            <a href="#/registration/properties" className="underline font-medium">Registration › Properties</a> to add it.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── M-Pesa Integration ────────────────────────────────────── */}
                     {activeTab === 'mpesa' && (
                         <div className="max-w-2xl space-y-6">
                             <div className="bg-green-50 p-4 rounded-lg border border-green-100 flex items-start gap-3">
@@ -284,6 +405,7 @@ const PaymentSetup: React.FC = () => {
                         </div>
                     )}
 
+                    {/* ── Airtel Money API ──────────────────────────────────────── */}
                     {activeTab === 'airtel' && (
                         <div className="max-w-2xl space-y-6">
                             <div className="bg-red-50 p-4 rounded-lg border border-red-100 flex items-start gap-3">
@@ -326,16 +448,17 @@ const PaymentSetup: React.FC = () => {
                         </div>
                     )}
 
+                    {/* ── Bank Accounts ─────────────────────────────────────────── */}
                     {activeTab === 'bank' && (
                         <div className="max-w-3xl space-y-6">
                             <div className="flex justify-between items-center">
                                 <h3 className="font-bold text-gray-800">Registered Bank Accounts</h3>
-                                <button 
-                                    onClick={() => { 
-                                        setEditingId(null); 
+                                <button
+                                    onClick={() => {
+                                        setEditingId(null);
                                         setNewBank({ bankName: '', accountName: '', accountNumber: '', branch: '' });
-                                        setIsAddingBank(true); 
-                                    }} 
+                                        setIsAddingBank(true);
+                                    }}
                                     className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700 transition-colors"
                                 >
                                     + Add Another Bank Account
@@ -351,21 +474,12 @@ const PaymentSetup: React.FC = () => {
                                             <p className="text-xs text-gray-500">{bank.accountName} - {bank.branch}</p>
                                         </div>
                                         <div className="flex items-center space-x-2">
-                                            <button 
-                                                onClick={() => handleEditBank(bank)}
-                                                className="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition-colors"
-                                                title="Edit"
-                                            >
-                                                {/* Simple Pencil Icon SVG */}
+                                            <button onClick={() => handleEditBank(bank)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition-colors" title="Edit">
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                                                 </svg>
                                             </button>
-                                            <button 
-                                                onClick={() => removeBankAccount(bank.id)} 
-                                                className="text-red-500 hover:bg-red-100 p-2 rounded-full transition-colors"
-                                                title="Remove"
-                                            >
+                                            <button onClick={() => removeBankAccount(bank.id)} className="text-red-500 hover:bg-red-100 p-2 rounded-full transition-colors" title="Remove">
                                                 <Icon name="close" className="w-5 h-5" />
                                             </button>
                                         </div>

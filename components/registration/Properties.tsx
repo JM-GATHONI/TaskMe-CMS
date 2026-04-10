@@ -130,6 +130,8 @@ export const PropertyForm: React.FC<{
             rentType: 'Exclusive',
             deposit: { required: true, months: 1 },
             placementFee: true, // Default to true as per requirements
+            managementType: 'Full',
+            landlordPaybill: '',
             bills: {
                 water: { applicable: false, amount: 0 },
                 electricity: { applicable: false, amount: 0 },
@@ -560,35 +562,88 @@ export const PropertyForm: React.FC<{
                         {/* Financial & Remittance Section */}
                         <div className="pt-4 mt-2 border-t">
                             <h4 className="text-sm font-bold text-gray-700 mb-3">Financial & Remittance</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Remittance Type</label>
-                                    <select name="remittanceType" value={formData.remittanceType || 'Collection Based'} onChange={handleChange} className="w-full p-2 border rounded bg-white text-sm">
-                                        <option>Collection Based</option>
-                                        <option>Occupancy Based</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Cutoff Day</label>
-                                    <input type="number" name="remittanceCutoffDay" value={formData.remittanceCutoffDay || ''} onChange={handleChange} placeholder="e.g. 5" className="w-full p-2 border rounded text-sm"/>
+
+                            {/* Management Type Toggle */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-medium text-gray-600 mb-2">Management Type</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, managementType: 'Full' }))}
+                                        className={`p-3 rounded-lg border-2 text-left transition-all ${(formData.managementType ?? 'Full') === 'Full' ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${(formData.managementType ?? 'Full') === 'Full' ? 'border-primary bg-primary' : 'border-gray-300'}`}/>
+                                            <span className="text-sm font-semibold text-gray-800">Full Management</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 ml-5">Agency collects rent, deducts fees, remits net to landlord.</p>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, managementType: 'Partial' }))}
+                                        className={`p-3 rounded-lg border-2 text-left transition-all ${formData.managementType === 'Partial' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${formData.managementType === 'Partial' ? 'border-orange-500 bg-orange-500' : 'border-gray-300'}`}/>
+                                            <span className="text-sm font-semibold text-gray-800">Partial Management</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 ml-5">Tenants pay landlord directly. Agency invoices landlord for fees.</p>
+                                    </button>
                                 </div>
                             </div>
-                            <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                <label className="flex items-center space-x-3 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        name="placementFee" 
-                                        checked={formData.placementFee ?? true} // Default to true if undefined
+
+                            {/* Landlord Paybill — only for Partial Management */}
+                            {formData.managementType === 'Partial' && (
+                                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <label className="block text-xs font-semibold text-orange-700 mb-1">
+                                        Landlord M-Pesa Paybill / Till Number <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="landlordPaybill"
+                                        value={formData.landlordPaybill || ''}
                                         onChange={handleChange}
-                                        className="h-4 w-4 text-primary rounded focus:ring-primary border-gray-300"
+                                        placeholder="e.g. 522522 or Till 123456"
+                                        className="w-full p-2 border border-orange-300 rounded text-sm bg-white focus:outline-none focus:ring-1 focus:ring-orange-400"
                                     />
-                                    <span className="text-sm font-bold text-gray-700">Placement Fee Active?</span>
-                                </label>
-                                <p className="text-xs text-gray-500 mt-1 ml-7">
-                                    If active, the <strong>first month's rent</strong> for new tenants is collected as Agency Revenue (Placement Fee). 
-                                    If inactive, it goes to the Landlord.
-                                </p>
-                            </div>
+                                    <p className="text-xs text-orange-600 mt-1">
+                                        Tenants will be directed to pay rent to this paybill. Agency will invoice landlord end-of-month for: placement fee, management fee, and any bills/maintenance.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Full Management: Remittance config + Placement Fee */}
+                            {(formData.managementType ?? 'Full') === 'Full' && (<>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Remittance Type</label>
+                                        <select name="remittanceType" value={formData.remittanceType || 'Collection Based'} onChange={handleChange} className="w-full p-2 border rounded bg-white text-sm">
+                                            <option>Collection Based</option>
+                                            <option>Occupancy Based</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Cutoff Day</label>
+                                        <input type="number" name="remittanceCutoffDay" value={formData.remittanceCutoffDay || ''} onChange={handleChange} placeholder="e.g. 5" className="w-full p-2 border rounded text-sm"/>
+                                    </div>
+                                </div>
+                                <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <label className="flex items-center space-x-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            name="placementFee"
+                                            checked={formData.placementFee ?? true}
+                                            onChange={handleChange}
+                                            className="h-4 w-4 text-primary rounded focus:ring-primary border-gray-300"
+                                        />
+                                        <span className="text-sm font-bold text-gray-700">Placement Fee Active?</span>
+                                    </label>
+                                    <p className="text-xs text-gray-500 mt-1 ml-7">
+                                        If active, the <strong>first month's rent</strong> for new tenants is collected as Agency Revenue (Placement Fee).
+                                        If inactive, it goes to the Landlord.
+                                    </p>
+                                </div>
+                            </>)}
                         </div>
                     </div>
                     <div className="space-y-4">

@@ -2,13 +2,14 @@
 import React, { useMemo, useState } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
+import { computePartialManagementInvoice } from '../../utils/landlordPeriodFinancials';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement);
 
 const FinancialPerformance: React.FC = () => {
-    const { tenants, bills, tasks, properties } = useData();
+    const { tenants, bills, tasks, properties, commissionRules } = useData();
     const [period, setPeriod] = useState('6 Months');
 
     // --- Live Data Calculations ---
@@ -18,9 +19,18 @@ const FinancialPerformance: React.FC = () => {
             const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
             const ym = d.toISOString().slice(0, 7);
             // Gross Revenue definition (Agency): Management fees + Placement fees.
-            // - Management fee assumed as 10% of collected rent (matches Accounting -> Income module).
-            // - Placement fee assumed as 1x rentAmount on onboarding month (when property placementFee is active).
+            //
+            // Full Management: agency collects rent, retains 10% management fee + placement fee.
+            // Partial Management: agency invoices the landlord; income = what was invoiced in the period
+            //   (placement fee + management fee on expected rent + bills + maintenance charged to landlord).
+            //
+            const fullProps = properties.filter(p => (p.managementType ?? 'Full') === 'Full');
+            const partialProps = properties.filter(p => p.managementType === 'Partial');
+
+            // Full Management agency income
             const managementFees = tenants.reduce((acc, t) => {
+                const prop = properties.find(p => p.id === t.propertyId);
+                if (prop?.managementType === 'Partial') return acc; // excluded — counted in partial invoice
                 const paid = t.paymentHistory.reduce((sum, p) => {
                     if (p.status !== 'Paid' || !p.date.startsWith(ym)) return sum;
                     return sum + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0);
@@ -30,11 +40,19 @@ const FinancialPerformance: React.FC = () => {
             const placementFees = tenants.reduce((acc, t) => {
                 if (!t.onboardingDate || !t.onboardingDate.startsWith(ym)) return acc;
                 const prop = properties.find(p => p.id === t.propertyId);
+                if (prop?.managementType === 'Partial') return acc; // counted in partial invoice below
                 const isPlacementFeeActive = prop?.placementFee !== false; // default true
                 if (!isPlacementFeeActive) return acc;
                 return acc + (t.rentAmount || 0);
             }, 0);
-            const revenue = managementFees + placementFees;
+
+            // Partial Management agency income (invoice total for the period)
+            const partialTenants = tenants.filter(t => t.propertyId && partialProps.some(p => p.id === t.propertyId));
+            const partialInv = partialProps.length > 0
+                ? computePartialManagementInvoice(partialTenants, partialProps, bills, tasks, commissionRules, ym)
+                : { totalAmount: 0 };
+
+            const revenue = managementFees + placementFees + partialInv.totalAmount;
             const billExpense = bills.reduce((acc, b) => {
                 const stamp = (b.invoiceDate || b.dueDate || '').slice(0, 7);
                 if (b.status !== 'Paid' || stamp !== ym) return acc;
@@ -47,7 +65,7 @@ const FinancialPerformance: React.FC = () => {
             return { label: d.toLocaleString('default', { month: 'short' }), revenue, expenses: billExpense + taskExpense };
         });
         return points;
-    }, [tenants, bills, tasks, properties]);
+    }, [tenants, bills, tasks, properties, commissionRules]);
 
     const revenueData = useMemo(() => monthSeries.map(m => m.revenue), [monthSeries]);
 
@@ -107,30 +125,39 @@ const FinancialPerformance: React.FC = () => {
         .reduce((s, t) => s + ((t.rentAmount || 0) * 0.10), 0);
     const arrearsRatio = currentRevenue > 0 ? (overdueRent / currentRevenue) * 100 : 0;
     const propertyRows = useMemo(() => {
+        const currentPeriod = new Date().toISOString().slice(0, 7);
         return properties.map(p => {
             const propTenants = tenants.filter(t => t.propertyId === p.id);
-            const managementFees = propTenants.reduce((sum, t) => {
-                const paid = t.paymentHistory.reduce((s, pay) => {
-                    if (pay.status !== 'Paid') return s;
-                    return s + (parseFloat(String(pay.amount).replace(/[^0-9.]/g, '')) || 0);
+            const isPartial = p.managementType === 'Partial';
+            let revenue = 0;
+            if (isPartial) {
+                // Partial: agency income = current-month invoice total charged to landlord
+                const inv = computePartialManagementInvoice(propTenants, [p], bills, tasks, commissionRules, currentPeriod);
+                revenue = inv.totalAmount;
+            } else {
+                // Full: agency income = 10% management fee on collected rent + placement fee
+                const managementFees = propTenants.reduce((sum, t) => {
+                    const paid = t.paymentHistory.reduce((s, pay) => {
+                        if (pay.status !== 'Paid') return s;
+                        return s + (parseFloat(String(pay.amount).replace(/[^0-9.]/g, '')) || 0);
+                    }, 0);
+                    return sum + paid * 0.10;
                 }, 0);
-                return sum + paid * 0.10;
-            }, 0);
-            const placementFees = propTenants.reduce((sum, t) => {
-                const isPlacementFeeActive = p.placementFee !== false;
-                if (!isPlacementFeeActive) return sum;
-                if (!t.onboardingDate) return sum;
-                return sum + (t.onboardingDate.startsWith(new Date().toISOString().slice(0, 7)) ? (t.rentAmount || 0) : 0);
-            }, 0);
-            const revenue = managementFees + placementFees;
+                const placementFees = propTenants.reduce((sum, t) => {
+                    if (!p.placementFee && p.placementFee !== undefined) return sum;
+                    if (!t.onboardingDate) return sum;
+                    return sum + (t.onboardingDate.startsWith(currentPeriod) ? (t.rentAmount || 0) : 0);
+                }, 0);
+                revenue = managementFees + placementFees;
+            }
             const expenses = bills
                 .filter(b => b.propertyId === p.id)
                 .reduce((sum, b) => sum + (b.amount || 0), 0);
             const noi = revenue - expenses;
             const margin = revenue > 0 ? Math.round((noi / revenue) * 100) : 0;
-            return { id: p.id, name: p.name, revenue, expenses, noi, margin };
+            return { id: p.id, name: p.name, revenue, expenses, noi, margin, isPartial };
         }).sort((a, b) => b.noi - a.noi);
-    }, [properties, tenants, bills]);
+    }, [properties, tenants, bills, tasks, commissionRules]);
 
     return (
         <div className="space-y-8 pb-10">

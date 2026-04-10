@@ -153,6 +153,16 @@ export interface Property {
   rentType?: 'Inclusive' | 'Exclusive';
   deposit?: { required: boolean; months: number };
   placementFee?: boolean; // If true, first month rent goes to agency
+  /**
+   * managementType controls the financial flow for this property:
+   *   'Full'    – Agency collects rent, deducts fees, remits net to landlord (default).
+   *   'Partial' – Landlord collects rent via their own paybill; agency invoices the
+   *               landlord end-of-month for placement fee + management fee + bills/maintenance.
+   * Defaults to 'Full' when absent (backward-compatible).
+   */
+  managementType?: 'Full' | 'Partial';
+  /** M-Pesa paybill/till for the landlord. Required when managementType = 'Partial'. */
+  landlordPaybill?: string;
   bills?: {
       [key: string]: { applicable: boolean; amount: number };
   };
@@ -580,6 +590,10 @@ export interface SystemSettings {
   address?: string;
   phone?: string;
   shortcode?: string;
+  /** Agency's primary M-Pesa paybill — used for Full Management rent collection. */
+  agencyPaybill?: string;
+  /** Airtel Money partner ID for agency collections. */
+  agencyAirtelPartnerId?: string;
   /** Arbitrary integration/API fields for Settings → Constants (persisted with system settings). */
   softwareConstants?: Record<string, string>;
 }
