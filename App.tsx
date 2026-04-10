@@ -1,164 +1,168 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { supabase } from './utils/supabaseClient';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './components/Dashboard';
-import QuickStats from './components/QuickStats';
-import QuickSearch from './components/registration/QuickSearch';
 import { DataProvider, useData } from './context/DataContext';
 import Auth from './components/Auth';
 import SignUp from './components/SignUp';
-import Icon from './components/Icon'; 
-import { User, StaffProfile, TenantProfile } from './types'; 
+import Icon from './components/Icon';
+import { User, StaffProfile, TenantProfile } from './types';
 
+// ── Always-needed (small, shown on every page) ─────────────────────────────
+import Dashboard from './components/Dashboard';
+import QuickStats from './components/QuickStats';
+
+// ── Lazy-loaded route chunks ────────────────────────────────────────────────
+// Each group becomes a separate JS chunk loaded only when first visited.
 // Registration
-import RegistrationOverview from './components/registration/Overview';
-import Users from './components/registration/Users';
-import PaymentSetup from './components/registration/PaymentSetup';
-import Commissions from './components/registration/Commissions';
-import GeospatialMapping from './components/registration/GeospatialMapping';
-import Properties from './components/registration/Properties';
+const RegistrationOverview  = React.lazy(() => import('./components/registration/Overview'));
+const Users                 = React.lazy(() => import('./components/registration/Users'));
+const PaymentSetup          = React.lazy(() => import('./components/registration/PaymentSetup'));
+const Commissions           = React.lazy(() => import('./components/registration/Commissions'));
+const GeospatialMapping     = React.lazy(() => import('./components/registration/GeospatialMapping'));
+const Properties            = React.lazy(() => import('./components/registration/Properties'));
+const QuickSearch           = React.lazy(() => import('./components/registration/QuickSearch'));
 
 // Tenants
-import TenantsOverview from './components/tenants/Overview';
-import Applications from './components/tenants/Applications';
-import ActiveTenants from './components/tenants/ActiveTenants';
-import FinesAndPenalties from './components/tenants/FinesAndPenalties';
-import TenantInsights from './components/tenants/TenantInsights';
-import Offboarding from './components/tenants/Offboarding';
+const TenantsOverview    = React.lazy(() => import('./components/tenants/Overview'));
+const Applications       = React.lazy(() => import('./components/tenants/Applications'));
+const ActiveTenants      = React.lazy(() => import('./components/tenants/ActiveTenants'));
+const FinesAndPenalties  = React.lazy(() => import('./components/tenants/FinesAndPenalties'));
+const TenantInsights     = React.lazy(() => import('./components/tenants/TenantInsights'));
+const Offboarding        = React.lazy(() => import('./components/tenants/Offboarding'));
 
 // Landlords
-import LandlordsOverview from './components/landlords/Overview';
-import LandlordApplications from './components/landlords/Applications';
-import ActiveLandlords from './components/landlords/ActiveLandlords';
-import Deductions from './components/landlords/Deductions';
-import LandlordOffboarding from './components/landlords/Offboarding';
+const LandlordsOverview    = React.lazy(() => import('./components/landlords/Overview'));
+const LandlordApplications = React.lazy(() => import('./components/landlords/Applications'));
+const ActiveLandlords      = React.lazy(() => import('./components/landlords/ActiveLandlords'));
+const Deductions           = React.lazy(() => import('./components/landlords/Deductions'));
+const LandlordOffboarding  = React.lazy(() => import('./components/landlords/Offboarding'));
 
-// Operations
-import OperationsOverview from './components/operations/OperationsOverview';
-import FieldAgents from './components/field-ops/FieldAgents';
-import Affiliates from './components/field-ops/Affiliates';
-import Caretakers from './components/field-ops/Caretakers';
-import FieldProperties from './components/field-ops/Properties'; 
+// Operations / Field Ops
+const OperationsOverview = React.lazy(() => import('./components/operations/OperationsOverview'));
+const FieldAgents        = React.lazy(() => import('./components/field-ops/FieldAgents'));
+const Affiliates         = React.lazy(() => import('./components/field-ops/Affiliates'));
+const Caretakers         = React.lazy(() => import('./components/field-ops/Caretakers'));
+const FieldProperties    = React.lazy(() => import('./components/field-ops/Properties'));
 
 // Maintenance
-import MaintenanceOverview from './components/field-ops/maintenance/MaintenanceOverview'; 
-import WorkOrders from './components/field-ops/maintenance/WorkOrders';
-import RequestIntake from './components/field-ops/maintenance/RequestIntake';
-import VendorManagement from './components/field-ops/maintenance/VendorManagement';
-import PreventiveMaintenance from './components/field-ops/maintenance/PreventiveMaintenance';
-import CostTracking from './components/field-ops/maintenance/CostTracking';
-import QualityControl from './components/field-ops/maintenance/QualityControl';
-import MaintenanceReporting from './components/field-ops/maintenance/Reporting';
+const MaintenanceOverview   = React.lazy(() => import('./components/field-ops/maintenance/MaintenanceOverview'));
+const WorkOrders            = React.lazy(() => import('./components/field-ops/maintenance/WorkOrders'));
+const RequestIntake         = React.lazy(() => import('./components/field-ops/maintenance/RequestIntake'));
+const VendorManagement      = React.lazy(() => import('./components/field-ops/maintenance/VendorManagement'));
+const PreventiveMaintenance = React.lazy(() => import('./components/field-ops/maintenance/PreventiveMaintenance'));
+const CostTracking          = React.lazy(() => import('./components/field-ops/maintenance/CostTracking'));
+const QualityControl        = React.lazy(() => import('./components/field-ops/maintenance/QualityControl'));
+const MaintenanceReporting  = React.lazy(() => import('./components/field-ops/maintenance/Reporting'));
 
-// Task Management & Other Ops
-import TaskManagement from './components/operations/TaskManagement';
-import Workflows from './components/operations/Workflows';
-import Automation from './components/operations/Automation'; 
-import EscalationRules from './components/operations/EscalationRules';
-import AuditTrail from './components/operations/AuditTrail';
-import OperationsReporting from './components/operations/Reporting';
+// Task Management & Ops
+const TaskManagement     = React.lazy(() => import('./components/operations/TaskManagement'));
+const Workflows          = React.lazy(() => import('./components/operations/Workflows'));
+const Automation         = React.lazy(() => import('./components/operations/Automation'));
+const EscalationRules    = React.lazy(() => import('./components/operations/EscalationRules'));
+const AuditTrail         = React.lazy(() => import('./components/operations/AuditTrail'));
+const OperationsReporting = React.lazy(() => import('./components/operations/Reporting'));
 
 // Communication
-import CommunicationOverview from './components/operations/communication/CommunicationOverview';
-import Messages from './components/operations/communication/Messages';
-import Templates from './components/operations/communication/Templates';
-import CommunicationAutomation from './components/operations/communication/Automation';
+const CommunicationOverview   = React.lazy(() => import('./components/operations/communication/CommunicationOverview'));
+const Messages                = React.lazy(() => import('./components/operations/communication/Messages'));
+const Templates               = React.lazy(() => import('./components/operations/communication/Templates'));
+const CommunicationAutomation = React.lazy(() => import('./components/operations/communication/Automation'));
 
 // Leases
-import LeasesOverview from './components/operations/leases/LeasesOverview';
-import ActiveLeases from './components/operations/leases/ActiveLeases';
-import LeaseTemplates from './components/operations/leases/LeaseTemplates';
-import Esignature from './components/operations/leases/Esignature';
-import Renewals from './components/operations/leases/Renewals';
-import Amendments from './components/operations/leases/Amendments';
-import Terminations from './components/operations/leases/Terminations';
-import TenantsWithoutLeases from './components/operations/leases/TenantsWithoutLeases';
-import LeaseDocuments from './components/operations/leases/LeaseDocuments';
-import LeasesReporting from './components/operations/leases/Reporting';
+const LeasesOverview       = React.lazy(() => import('./components/operations/leases/LeasesOverview'));
+const ActiveLeases         = React.lazy(() => import('./components/operations/leases/ActiveLeases'));
+const LeaseTemplates       = React.lazy(() => import('./components/operations/leases/LeaseTemplates'));
+const Esignature           = React.lazy(() => import('./components/operations/leases/Esignature'));
+const Renewals             = React.lazy(() => import('./components/operations/leases/Renewals'));
+const Amendments           = React.lazy(() => import('./components/operations/leases/Amendments'));
+const Terminations         = React.lazy(() => import('./components/operations/leases/Terminations'));
+const TenantsWithoutLeases = React.lazy(() => import('./components/operations/leases/TenantsWithoutLeases'));
+const LeaseDocuments       = React.lazy(() => import('./components/operations/leases/LeaseDocuments'));
+const LeasesReporting      = React.lazy(() => import('./components/operations/leases/Reporting'));
 
 // Payments
-import PaymentsOverview from './components/payments/Overview';
-import Inbound from './components/payments/Inbound';
-import Outbound from './components/payments/Outbound';
-import Invoices from './components/payments/Invoices';
-import PaymentReconciliation from './components/payments/Reconciliation';
-import LandlordPayouts from './components/payments/LandlordPayouts';
-import Overpayments from './components/payments/Overpayments';
-import PaymentProcessing from './components/payments/PaymentProcessing';
+const PaymentsOverview       = React.lazy(() => import('./components/payments/Overview'));
+const Inbound                = React.lazy(() => import('./components/payments/Inbound'));
+const Outbound               = React.lazy(() => import('./components/payments/Outbound'));
+const Invoices               = React.lazy(() => import('./components/payments/Invoices'));
+const PaymentReconciliation  = React.lazy(() => import('./components/payments/Reconciliation'));
+const LandlordPayouts        = React.lazy(() => import('./components/payments/LandlordPayouts'));
+const Overpayments           = React.lazy(() => import('./components/payments/Overpayments'));
+const PaymentProcessing      = React.lazy(() => import('./components/payments/PaymentProcessing'));
 
 // HR
-import StaffManagement from './components/hr/StaffManagement';
-import PayrollProcessing from './components/hr/PayrollProcessing';
-import HRCommissions from './components/hr/Commissions';
-import LeaveAttendance from './components/hr/LeaveAttendance';
-import Performance from './components/hr/Performance';
-import HRReporting from './components/hr/Reporting';
+const StaffManagement  = React.lazy(() => import('./components/hr/StaffManagement'));
+const PayrollProcessing = React.lazy(() => import('./components/hr/PayrollProcessing'));
+const HRCommissions    = React.lazy(() => import('./components/hr/Commissions'));
+const LeaveAttendance  = React.lazy(() => import('./components/hr/LeaveAttendance'));
+const Performance      = React.lazy(() => import('./components/hr/Performance'));
+const HRReporting      = React.lazy(() => import('./components/hr/Reporting'));
 
 // Accounting
-import AccountingOverview from './components/accounting/Overview';
-import Income from './components/accounting/Income';
-import Expenses from './components/accounting/Expenses';
-import FinancialStatements from './components/accounting/FinancialStatements';
-import TaxCompliance from './components/accounting/TaxCompliance';
-import AccountingReconciliation from './components/accounting/Reconciliation';
-import AccountingReporting from './components/accounting/Reporting';
+const AccountingOverview       = React.lazy(() => import('./components/accounting/Overview'));
+const Income                   = React.lazy(() => import('./components/accounting/Income'));
+const Expenses                 = React.lazy(() => import('./components/accounting/Expenses'));
+const FinancialStatements      = React.lazy(() => import('./components/accounting/FinancialStatements'));
+const TaxCompliance            = React.lazy(() => import('./components/accounting/TaxCompliance'));
+const AccountingReconciliation = React.lazy(() => import('./components/accounting/Reconciliation'));
+const AccountingReporting      = React.lazy(() => import('./components/accounting/Reporting'));
 
 // Analytics
-import AnalyticsOverview from './components/analytics/Overview';
+const AnalyticsOverview = React.lazy(() => import('./components/analytics/Overview'));
 
 // Reports
-import ReportsOverview from './components/reports/Overview';
-import TenancyReports from './components/reports/TenancyReports';
-import PropertyReports from './components/reports/PropertyReports';
-import FinancialReports from './components/reports/FinancialReports';
-import StaffReports from './components/reports/StaffReports';
-import TaskAndOperationsReports from './components/reports/TaskAndOperationsReports';
-import ReitReports from './components/reports/ReitReports';
-import ComplianceAndTaxReports from './components/reports/ComplianceAndTaxReports';
-import CustomReports from './components/reports/CustomReports';
-import VacancyReports from './components/reports/VacancyReports'; // New Import
+const ReportsOverview             = React.lazy(() => import('./components/reports/Overview'));
+const TenancyReports              = React.lazy(() => import('./components/reports/TenancyReports'));
+const PropertyReports             = React.lazy(() => import('./components/reports/PropertyReports'));
+const FinancialReports            = React.lazy(() => import('./components/reports/FinancialReports'));
+const StaffReports                = React.lazy(() => import('./components/reports/StaffReports'));
+const TaskAndOperationsReports    = React.lazy(() => import('./components/reports/TaskAndOperationsReports'));
+const ReitReports                 = React.lazy(() => import('./components/reports/ReitReports'));
+const ComplianceAndTaxReports     = React.lazy(() => import('./components/reports/ComplianceAndTaxReports'));
+const CustomReports               = React.lazy(() => import('./components/reports/CustomReports'));
+const VacancyReports              = React.lazy(() => import('./components/reports/VacancyReports'));
 
 // User App Portal
-import TenantPortal from './components/userAppPortal/TenantPortal';
-import AgentPortal from './components/userAppPortal/AgentPortal';
-import LandlordsPortal from './components/userAppPortal/LandlordsPortal';
-import AffiliatePortal from './components/userAppPortal/AffiliatePortal';
-import InvestorsPortal from './components/userAppPortal/InvestorsPortal';
-import CaretakerPortal from './components/userAppPortal/CaretakerPortal';
-import ContractorPortal from './components/userAppPortal/ContractorPortal';
-import ReferralLanding from './components/userAppPortal/ReferralLanding';
-import ReferAndGrow from './components/userAppPortal/ReferAndGrow';
-import UserProfile from './components/userAppPortal/UserProfile'; 
+const TenantPortal    = React.lazy(() => import('./components/userAppPortal/TenantPortal'));
+const AgentPortal     = React.lazy(() => import('./components/userAppPortal/AgentPortal'));
+const LandlordsPortal = React.lazy(() => import('./components/userAppPortal/LandlordsPortal'));
+const AffiliatePortal = React.lazy(() => import('./components/userAppPortal/AffiliatePortal'));
+const InvestorsPortal = React.lazy(() => import('./components/userAppPortal/InvestorsPortal'));
+const CaretakerPortal = React.lazy(() => import('./components/userAppPortal/CaretakerPortal'));
+const ContractorPortal = React.lazy(() => import('./components/userAppPortal/ContractorPortal'));
+const ReferralLanding = React.lazy(() => import('./components/userAppPortal/ReferralLanding'));
+const ReferAndGrow    = React.lazy(() => import('./components/userAppPortal/ReferAndGrow'));
+const UserProfile     = React.lazy(() => import('./components/userAppPortal/UserProfile'));
 
 // Marketplace
-import Listings from './components/marketplace/Listings';
-import Leads from './components/marketplace/Leads';
-import MarketplaceAffiliates from './components/marketplace/Affiliates'; 
-import MyFundiHub from './components/marketplace/DeveloperPortal';
-import ReferralProgram from './components/marketplace/ReferralProgram';
-import MarketplaceReporting from './components/marketplace/Reporting';
-import MarketingBanners from './components/marketplace/MarketingBanners'; 
+const Listings              = React.lazy(() => import('./components/marketplace/Listings'));
+const Leads                 = React.lazy(() => import('./components/marketplace/Leads'));
+const MarketplaceAffiliates = React.lazy(() => import('./components/marketplace/Affiliates'));
+const MyFundiHub            = React.lazy(() => import('./components/marketplace/DeveloperPortal'));
+const ReferralProgram       = React.lazy(() => import('./components/marketplace/ReferralProgram'));
+const MarketplaceReporting  = React.lazy(() => import('./components/marketplace/Reporting'));
+const MarketingBanners      = React.lazy(() => import('./components/marketplace/MarketingBanners'));
 
 // R-Reits
-import RReitsOverview from './components/r-reits/Overview';
-import InvestmentPlans from './components/r-reits/InvestmentPlans';
-import RenovationAccounting from './components/r-reits/RenovationAccounting';
-import InvestorDashboard from './components/r-reits/InvestorDashboard';
-import RFPayments from './components/r-reits/RFPayments';
-import PortfolioPerformance from './components/r-reits/PortfolioPerformance';
-import Referrals from './components/r-reits/Referrals';
-import ComplianceAndKYC from './components/r-reits/ComplianceAndKYC';
+const RReitsOverview        = React.lazy(() => import('./components/r-reits/Overview'));
+const InvestmentPlans       = React.lazy(() => import('./components/r-reits/InvestmentPlans'));
+const RenovationAccounting  = React.lazy(() => import('./components/r-reits/RenovationAccounting'));
+const InvestorDashboard     = React.lazy(() => import('./components/r-reits/InvestorDashboard'));
+const RFPayments            = React.lazy(() => import('./components/r-reits/RFPayments'));
+const PortfolioPerformance  = React.lazy(() => import('./components/r-reits/PortfolioPerformance'));
+const Referrals             = React.lazy(() => import('./components/r-reits/Referrals'));
+const ComplianceAndKYC      = React.lazy(() => import('./components/r-reits/ComplianceAndKYC'));
 
 // Settings
-import Profile from './components/settings/Profile';
-import Roles from './components/settings/RolesAndPermissions';
-import Permissions from './components/settings/Permissions';
-import Widgets from './components/settings/Widgets';
-import RatesAndRules from './components/settings/RatesAndRules';
-import Constants from './components/settings/Constants';
-import SettingsAuditTrail from './components/settings/AuditTrail';
+const Profile           = React.lazy(() => import('./components/settings/Profile'));
+const Roles             = React.lazy(() => import('./components/settings/RolesAndPermissions'));
+const Permissions       = React.lazy(() => import('./components/settings/Permissions'));
+const Widgets           = React.lazy(() => import('./components/settings/Widgets'));
+const RatesAndRules     = React.lazy(() => import('./components/settings/RatesAndRules'));
+const Constants         = React.lazy(() => import('./components/settings/Constants'));
+const SettingsAuditTrail = React.lazy(() => import('./components/settings/AuditTrail'));
 
 const AccessDenied: React.FC = () => (
     <div className="flex flex-col items-center justify-center h-[80vh] text-center animate-fade-in">
@@ -667,7 +671,19 @@ const AppContent: React.FC = () => {
         )}
 
         <main className="app-main bg-gray-100 relative" onClick={handleMainClick}>
-            {renderContent()}
+            <Suspense fallback={
+                <div className="flex items-center justify-center h-[60vh]">
+                    <div className="flex flex-col items-center gap-3 text-gray-400">
+                        <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        <span className="text-sm font-medium">Loading...</span>
+                    </div>
+                </div>
+            }>
+                {renderContent()}
+            </Suspense>
         </main>
       </div>
   );
