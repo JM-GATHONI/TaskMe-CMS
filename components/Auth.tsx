@@ -24,11 +24,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         addRenovationInvestor,
         addVendor,
         addStaff,
-        deleteTenant,
-        deleteLandlord,
-        deleteRenovationInvestor,
-        deleteVendor,
-        deleteStaff,
     } = useData();
     const [view, setView] = useState<AuthView>('login');
     const [isLoading, setIsLoading] = useState(false);
@@ -311,11 +306,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     status: 'Active',
                 };
 
+                // Backfill: ensure the user appears in the correct app_state list.
+                // NOTE: We do NOT call delete functions here — those call admin_delete_auth_user
+                // which would delete the user's own auth account. Cross-category dedup is
+                // handled by the allUsers memo in Users.tsx and the mergedStaff logic in DataContext.
                 if (resolvedRole === 'Tenant') {
-                    deleteLandlord(uid);
-                    deleteRenovationInvestor(uid);
-                    deleteVendor(uid);
-                    deleteStaff(uid);
                     if (!tenants.some(t => t.id === uid)) {
                         addTenant({
                             ...base,
@@ -330,18 +325,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         } as any);
                     }
                 } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
-                    deleteTenant(uid);
-                    deleteRenovationInvestor(uid);
-                    deleteVendor(uid);
-                    deleteStaff(uid);
                     if (!landlords.some(l => l.id === uid)) {
                         addLandlord({ ...base, role: resolvedRole } as any);
                     }
                 } else if (resolvedRole === 'Investor') {
-                    deleteTenant(uid);
-                    deleteLandlord(uid);
-                    deleteVendor(uid);
-                    deleteStaff(uid);
                     if (!renovationInvestors.some(i => i.id === uid)) {
                         addRenovationInvestor({
                             ...base,
@@ -351,10 +338,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         } as any);
                     }
                 } else if (resolvedRole === 'Contractor') {
-                    deleteTenant(uid);
-                    deleteLandlord(uid);
-                    deleteRenovationInvestor(uid);
-                    deleteStaff(uid);
                     if (!vendors.some(v => v.id === uid)) {
                         addVendor({
                             id: uid,
@@ -367,11 +350,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         } as any);
                     }
                 } else {
-                    // Staff roles: Field Agent, Caretaker, Accountants, etc.
-                    deleteTenant(uid);
-                    deleteLandlord(uid);
-                    deleteRenovationInvestor(uid);
-                    deleteVendor(uid);
+                    // Staff roles: Field Agent, Caretaker, Super Admin, Accountants, etc.
                     if (!staff.some(s => s.id === uid)) {
                         addStaff({
                             ...base,
