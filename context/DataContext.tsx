@@ -4,10 +4,38 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob, MarketingBannerTemplate } from '../types';
 import { GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA } from '../constants';
 import { websiteApi } from '../utils/websiteApi';
-import { supabase } from '../utils/supabaseClient';
+import { supabase, getSupabaseSession, bustSessionCache } from '../utils/supabaseClient';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 const isSupabaseEnabled = !!supabase;
+
+// ── Batch-settled signal ─────────────────────────────────────────────────────
+// Individual queryFns are disabled (enabled: false) until the batch RPC has
+// settled. This prevents 38+ fallback queries from firing simultaneously on
+// mount. Once the batch resolves or rejects, _setBatchSettled() notifies all
+// waiting hooks via React state so they re-render with enabled: true.
+// By that time the batch has already populated the cache via setQueryData, so
+// the individual queryFns never actually run — React Query sees fresh cache.
+let _globalBatchSettled = false;
+const _batchSettledListeners = new Set<() => void>();
+
+function _setBatchSettled() {
+  if (_globalBatchSettled) return;
+  _globalBatchSettled = true;
+  _batchSettledListeners.forEach(fn => fn());
+  _batchSettledListeners.clear();
+}
+
+function useBatchSettled(): boolean {
+  const [settled, setSettled] = useState(_globalBatchSettled);
+  useEffect(() => {
+    if (_globalBatchSettled) { setSettled(true); return; }
+    const notify = () => setSettled(true);
+    _batchSettledListeners.add(notify);
+    return () => { _batchSettledListeners.delete(notify); };
+  }, []);
+  return settled;
+}
 
 function useSupabaseBackedState<T>(
   emptyValue: T,
@@ -16,11 +44,14 @@ function useSupabaseBackedState<T>(
 ): [T, React.Dispatch<React.SetStateAction<T>>, { loading: boolean; error: string | null }] {
   const [value, setValue] = useState<T>(emptyValue);
   const queryClient = useQueryClient();
+  const batchSettled = useBatchSettled();
 
-  // staleTime: Infinity means once the batch loader (or a previous fetch) has
-  // populated this cache, this queryFn is never called again — it's always fresh.
-  // If the batch RPC is unavailable, cache is empty, so staleTime doesn't apply
-  // and this queryFn runs as a fallback individual fetch.
+  // enabled: batchSettled — individual queries are disabled until the batch RPC
+  // has had a chance to populate the cache. If the batch succeeds (the common
+  // path) these queryFns never run. If the batch fails they run as fallback.
+  //
+  // staleTime: Infinity means once data is in cache (from batch or a prior
+  // individual fetch), this queryFn is never called again on that session.
   const {
     data: fetchedValue,
     isLoading,
@@ -30,8 +61,9 @@ function useSupabaseBackedState<T>(
     staleTime: Infinity,
     gcTime: 30 * 60 * 1000,
     retry: 1,
+    enabled: batchSettled,
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSupabaseSession();
       if (!session) throw new Error('SESSION_EXPIRED');
       console.log('[Supabase] app_state individual load (batch miss)', { key });
       const { data, error } = await supabase
@@ -57,7 +89,7 @@ function useSupabaseBackedState<T>(
       // Guard: verify session before writing. Without this, an expired JWT
       // causes the upsert to silently fail (RLS rejects it), leaving auth
       // users created but their app_state profile records never written.
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await getSupabaseSession();
       if (!session) {
         throw new Error('SESSION_EXPIRED: Please log in again to save changes.');
       }
@@ -158,13 +190,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Single RPC replaces 38+ individual Supabase queries on startup.
     // Results are distributed to individual query caches via setQueryData,
     // which triggers re-renders in every useSupabaseBackedState hook.
-    const { data: allAppState, isLoading: batchLoading } =
+    // On settle (success OR error), _setBatchSettled() enables individual
+    // queries so they run as fallbacks only if the batch failed.
+    const { data: allAppState, isLoading: batchLoading, isSuccess: batchSuccess, isError: batchError } =
       useQuery<Record<string, unknown>>({
         queryKey: ['all_app_state'],
         staleTime: 5 * 60 * 1000,
         retry: 2,
         queryFn: async () => {
-          const { data: { session } } = await supabase.auth.getSession();
+          const session = await getSupabaseSession();
           if (!session) throw new Error('SESSION_EXPIRED');
           console.log('[Supabase] batch load all app_state');
           const { data, error } = await supabase
@@ -175,16 +209,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
       });
 
-    // Distribute batch results to every individual query cache
+    // Distribute batch results + signal individual queries they can run as fallback
     useEffect(() => {
-      if (allAppState) {
+      if (batchSuccess && allAppState) {
         Object.entries(allAppState).forEach(([k, v]) => {
           if (v !== null && v !== undefined) {
             queryClient.setQueryData(['app_state', k], v);
           }
         });
       }
-    }, [allAppState, queryClient]);
+      // Signal after distributing — so individual queries see fresh cache and skip queryFn
+      if (batchSuccess || batchError) {
+        _setBatchSettled();
+      }
+    }, [batchSuccess, batchError, allAppState, queryClient]);
 
     // ── Fetch app.staff_profiles (normalised table) ──────────────────────────
     // Runs once on mount (session-guarded). Catches staff registered via the
@@ -193,7 +231,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let alive = true;
         (async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                const session = await getSupabaseSession();
                 if (!session) return;
                 const { data, error } = await supabase
                     .schema('app')
@@ -324,14 +362,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [rolesError]);
 
     useEffect(() => {
-        const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: authSub } = supabase.auth.onAuthStateChange((event, _session) => {
             if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                // Bust session cache so next getSupabaseSession() returns the new token.
+                bustSessionCache();
                 // Re-fetch all cached data after login or token refresh so stale
                 // empty-state from an expired session is replaced with real data.
                 console.log('[Supabase] auth event:', event, '— invalidating all queries');
                 queryClient.invalidateQueries();
             } else if (event === 'SIGNED_OUT') {
-                // Clear all cached queries on logout so next login starts clean.
+                // Bust session cache and clear all queries on logout.
+                bustSessionCache();
+                // Reset batch-settled so next login goes through the batch-first path again.
+                _globalBatchSettled = false;
                 console.log('[Supabase] SIGNED_OUT — clearing query cache');
                 queryClient.clear();
                 setCurrentUser(null);
