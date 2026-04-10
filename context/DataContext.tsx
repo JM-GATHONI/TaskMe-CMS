@@ -461,7 +461,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addLandlordApplication = (a: LandlordApplication) => setLandlordApplications(prev => [a, ...prev]);
     const updateLandlordApplication = (id: string, d: Partial<LandlordApplication>) => setLandlordApplications(prev => prev.map(a => a.id === id ? {...a, ...d} : a));
     const deleteLandlordApplication = (id: string) => setLandlordApplications(prev => prev.filter(a => a.id !== id));
-    const addStaff = (s: StaffProfile) => setStaff(prev => [s, ...prev]);
+    const addStaff = (s: StaffProfile) => {
+        setStaff(prev => [s, ...prev]);
+        // Mirror into dbStaffProfiles so mergedStaff reflects the new entry immediately,
+        // without waiting for the next mount-time fetch from app.staff_profiles.
+        setDbStaffProfiles(prev => {
+            const key = (s.email || '').toLowerCase().trim();
+            if (key && prev.some(p => (p.email || '').toLowerCase().trim() === key)) return prev;
+            return [s, ...prev];
+        });
+    };
     const updateStaff = (id: string, d: Partial<StaffProfile>) => setStaff(prev => prev.map(s => s.id === id ? {...s, ...d} : s));
     const deleteStaff = (id: string) => {
         setStaff(prev => prev.filter(s => s.id !== id));

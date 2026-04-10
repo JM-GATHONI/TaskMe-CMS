@@ -347,9 +347,14 @@ const Users: React.FC = () => {
     const [editUser, setEditUser] = useState<UnifiedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Get dynamic system roles from context
+    // Roles that have their own dedicated category — excluded from System Users
+    const PORTAL_ROLES = new Set(['Field Agent', 'Caretaker', 'Landlord', 'Tenant', 'Investor', 'Affiliate', 'Contractor']);
+
+    // System Users = every role that is NOT a portal/external role.
+    // This includes Super Admin, plus any custom staff roles (Assistant Admin,
+    // Branch Manager, Accountant, etc.) regardless of their isSystem flag.
     const systemRoleNames = useMemo(() => {
-        return roles.filter(r => r.isSystem).map(r => r.name);
+        return roles.filter(r => !PORTAL_ROLES.has(r.name)).map(r => r.name);
     }, [roles]);
 
     // Construct Categories with dynamic system roles
