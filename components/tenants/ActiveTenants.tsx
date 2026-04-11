@@ -283,6 +283,16 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     if (Number(t.depositPaid || 0) <= 0 && amt >= Number(t.rentAmount || 0)) {
                         updates.depositPaid = Number(t.rentAmount || 0);
                     }
+                    // Rent extension: restore grace days and clear extension flag
+                    if (cycle.clearRentExtension && t.rentExtension) {
+                        updates.rentGraceDays = t.rentExtension.originalGraceDays ?? 5;
+                        updates.rentExtension = { ...t.rentExtension, enabled: false };
+                    }
+                    // Prorated deposit: advance installment counter
+                    if (cycle.proratedUpdate && t.proratedDeposit) {
+                        updates.proratedDeposit = { ...t.proratedDeposit, ...cycle.proratedUpdate };
+                        updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
+                    }
                     updateTenant(tenantId, updates);
 
                     const msg = `Tenant ${t.name} paid KES ${amt.toLocaleString()} via M-Pesa.`;
@@ -1573,7 +1583,17 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     // Derived Financials
     const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.
-    const depositDue = Number(tenant.depositPaid || 0) > 0 ? 0 : Number(tenant.rentAmount || 0);
+    // Deposit status: exempt tenants and already-paid tenants owe 0; prorated tracks via proratedDeposit
+    const depositDue = tenant.depositExempt
+        ? 0
+        : tenant.proratedDeposit?.enabled
+            ? Math.max(0, tenant.proratedDeposit.totalDepositAmount - tenant.proratedDeposit.amountPaidSoFar)
+            : Number(tenant.depositPaid || 0) > 0 ? 0 : Number(tenant.rentAmount || 0);
+    const isDepositFullyPaid = !tenant.depositExempt && (
+        tenant.proratedDeposit?.enabled
+            ? tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
+            : Number(tenant.depositPaid || 0) > 0
+    );
     const recurrentBills = Object.values(tenant.recurringBills || {}).reduce((a: number, b) => a + (b as number), 0);
     const pendingBills = (tenant.outstandingBills || []).filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.amount, 0);
     const fines = (tenant.outstandingFines || []).filter(f => f.type !== 'Late Rent' && f.status === 'Pending').reduce((sum, f) => sum + f.amount, 0);
@@ -1759,6 +1779,16 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         if (tenant.status === 'Pending') updates.status = 'Active';
         if (Number(tenant.depositPaid || 0) <= 0 && Number(amount || 0) >= Number(tenant.rentAmount || 0)) {
             updates.depositPaid = Number(tenant.rentAmount || 0);
+        }
+        // Rent extension: restore grace days and clear extension flag
+        if (cycle.clearRentExtension && tenant.rentExtension) {
+            updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+            updates.rentExtension = { ...tenant.rentExtension, enabled: false };
+        }
+        // Prorated deposit: advance installment counter
+        if (cycle.proratedUpdate && tenant.proratedDeposit) {
+            updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
+            updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
         }
         updateTenant(tenant.id, updates);
         setActiveModal(null);
@@ -1960,13 +1990,49 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 <div className="space-y-3 text-sm">
                     {/* Detailed Breakdown */}
                     <div className="p-3 bg-gray-50 rounded-lg space-y-2 border border-gray-100">
-                        {depositDue > 0 && (
+                        {/* Deposit status badges */}
+                        {tenant.depositExempt && (
+                            <div className="flex justify-between text-gray-500 text-xs">
+                                <span className="flex items-center gap-1">
+                                    Security Deposit
+                                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-bold">Exempt</span>
+                                </span>
+                                <span>—</span>
+                            </div>
+                        )}
+                        {!tenant.depositExempt && isDepositFullyPaid && (
+                            <div className="flex justify-between text-green-700 font-medium text-xs">
+                                <span className="flex items-center gap-1">
+                                    Security Deposit
+                                    <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">Fully Paid</span>
+                                </span>
+                                <span>KES {(tenant.proratedDeposit?.totalDepositAmount ?? Number(tenant.depositPaid || 0)).toLocaleString()}</span>
+                            </div>
+                        )}
+                        {!tenant.depositExempt && !isDepositFullyPaid && tenant.proratedDeposit?.enabled && (
+                            <div className="flex justify-between text-indigo-700 font-medium">
+                                <span className="flex items-center gap-1 flex-wrap">
+                                    Deposit Installment
+                                    <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold">
+                                        {tenant.proratedDeposit.monthsPaid}/{tenant.proratedDeposit.durationMonths} paid
+                                    </span>
+                                </span>
+                                <span>KES {tenant.proratedDeposit.monthlyInstallment.toLocaleString()}</span>
+                            </div>
+                        )}
+                        {!tenant.depositExempt && !tenant.proratedDeposit?.enabled && depositDue > 0 && (
                             <div className="flex justify-between text-blue-700 font-medium">
                                 <span className="flex items-center gap-1">
                                     Security Deposit
                                     <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">New Tenant</span>
                                 </span>
                                 <span>KES {Number(depositDue).toLocaleString()}</span>
+                            </div>
+                        )}
+                        {/* Rent extension notice */}
+                        {tenant.rentExtension?.enabled && (
+                            <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded p-2 mt-1">
+                                Rent deferred until <strong>{tenant.rentExtension.rentDeferredUntil}</strong> — no grace period after that date.
                             </div>
                         )}
                         <div className="flex justify-between">
