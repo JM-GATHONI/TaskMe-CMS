@@ -2444,15 +2444,37 @@ const ActiveTenants: React.FC = () => {
                         ? 0
                         : (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0);
 
-                    // New tenant = deposit has never been paid yet
-                    const isNewTenant = isAllocated && (!tenant.depositPaid || Number(tenant.depositPaid) === 0);
-                    const depositOwed = isNewTenant ? (tenant.rentAmount || 0) : 0;
+                    // Deposit owed on the card — respects all deposit modes.
+                    // Exempt: nothing owed. Prorated: show next installment (if not fully paid).
+                    // Rent extension: deposit already captured at activation, none owed here.
+                    // Standard / multi-month: owed if depositPaid is still 0.
+                    const depositOwed = (() => {
+                        if (!isAllocated) return 0;
+                        if (tenant.depositExempt) return 0;
+                        if (tenant.rentExtension?.enabled) return 0; // deposit captured upfront at activation
+                        if (tenant.proratedDeposit?.enabled) {
+                            const fullyPaid = tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount;
+                            return fullyPaid ? 0 : (tenant.proratedDeposit.monthlyInstallment || 0);
+                        }
+                        // Standard / multi-month: owed only if deposit has never been paid
+                        if (Number(tenant.depositPaid || 0) > 0) return 0;
+                        const depositMonths = Number(tenant.depositMonths ?? 1);
+                        return (tenant.rentAmount || 0) * depositMonths;
+                    })();
 
-                    // New tenant: rent + deposit (first obligation bundle)
-                    // Old tenant: rent + outstanding bills + fines + late fees
+                    const isNewTenant = isAllocated && depositOwed > 0;
+
+                    // Label hint for the card
+                    const totalDueLabel = (() => {
+                        if (!isNewTenant) return 'Total Due';
+                        if (tenant.proratedDeposit?.enabled) return 'Rent + Installment';
+                        return 'Total Due (Rent+Dep)';
+                    })();
+
+                    // New tenant: rent + deposit bundle; Old tenant: rent + bills + fines + late fees
                     const totalDue = !isAllocated ? 0
                         : isNewTenant
-                            ? (tenant.rentAmount || 0) + depositOwed
+                            ? rentDue + depositOwed
                             : rentDue + pendingBills + pendingFines + automatedLateFine;
 
                     // Arrears Month Indicator
@@ -2503,7 +2525,7 @@ const ActiveTenants: React.FC = () => {
                                     </div>
                                     <div>
                                         <p className="text-xs text-gray-400 uppercase font-bold">
-                                            Total Due{isNewTenant ? ' (Rent+Dep)' : ''}
+                                            {totalDueLabel}
                                         </p>
                                         <p className={`font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                             KES {Number(totalDue ?? 0).toLocaleString()}

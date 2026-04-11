@@ -110,6 +110,9 @@ const PropertyForm: React.FC<{
                 electricity: { applicable: false, amount: 0 },
                 garbage: { applicable: false, amount: 0 },
                 serviceCharge: { applicable: false, amount: 0 },
+                securityFee: { applicable: false, amount: 0 },
+                cleaningFee: { applicable: false, amount: 0 },
+                caretakerFee: { applicable: false, amount: 0 },
             },
             remittanceType: 'Collection Based',
             remittanceCutoffDay: 5,
@@ -444,7 +447,7 @@ const PropertyForm: React.FC<{
                                 <div>
                                     <label className="block text-sm font-medium text-gray-800 mb-2">Utilities & Bills Checklist</label>
                                     <div className="bg-white border rounded-lg divide-y divide-gray-100 shadow-sm">
-                                        {(['water', 'electricity', 'garbage', 'serviceCharge'] as const).map(billKey => (
+                                        {(['water', 'electricity', 'garbage', 'serviceCharge', 'securityFee', 'cleaningFee', 'caretakerFee'] as const).map(billKey => (
                                             <div key={billKey} className="flex items-center justify-between p-3">
                                                 <label className="flex items-center space-x-3 cursor-pointer">
                                                     <input 
