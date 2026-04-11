@@ -1670,7 +1670,23 @@ const Applications: React.FC = () => {
                             : false;
 
                         const rentAmountForApps = Number(record.rentAmount || 0);
-                        const depositForApps = Number((record as any).depositPaid || 0);
+
+                        // For applications: show the deposit *owed*, not what's already been paid.
+                        // Exempt → 0; rent extension → deposit upfront amount; prorated → monthly installment;
+                        // multi-month / standard → rent × depositMonths (default 1).
+                        const depositForApps = (() => {
+                            if (!isApplication) return Number((record as any).depositPaid || 0);
+                            if ((record as any).depositExempt) return 0;
+                            if ((record as any).rentExtension?.enabled) {
+                                return Number((record as any).rentExtension.depositPaidUpfront || 0);
+                            }
+                            if ((record as any).proratedDeposit?.enabled) {
+                                return Number((record as any).proratedDeposit.monthlyInstallment || 0);
+                            }
+                            const depositMonths = Number((record as any).depositMonths ?? 1);
+                            const stored = Number((record as any).depositPaid || 0);
+                            return stored > 0 ? stored : rentAmountForApps * depositMonths;
+                        })();
 
                         const rentDisplay = isApplication
                             ? rentAmountForApps
@@ -1742,7 +1758,17 @@ const Applications: React.FC = () => {
                                             <p className="font-semibold">KES {Number(rentDisplay ?? 0).toLocaleString()}</p>
                                         </div>
                                         <div>
-                                            <p className="text-xs text-gray-400 uppercase font-bold">Total Due</p>
+                                            <p className="text-xs text-gray-400 uppercase font-bold">
+                                                {isApplication
+                                                    ? ((record as any).depositExempt
+                                                        ? 'Total Due'
+                                                        : (record as any).rentExtension?.enabled
+                                                            ? 'Deposit Due'
+                                                            : (record as any).proratedDeposit?.enabled
+                                                                ? 'Rent + Installment'
+                                                                : 'Rent + Deposit')
+                                                    : 'Total Due'}
+                                            </p>
                                             <p className={`font-semibold ${totalDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                                 KES {Number(totalDue ?? 0).toLocaleString()}
                                             </p>
