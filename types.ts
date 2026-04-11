@@ -132,6 +132,41 @@ export interface TenantProfile {
   };
   /** When set, used for M-Pesa ledger (auth.users.id). Falls back to `id` if it looks like a UUID. */
   authUserId?: string;
+
+  // ── Deposit special-case fields ──────────────────────────────────────────
+  /** When true, tenant pays rent only — no deposit collected. */
+  depositExempt?: boolean;
+  /**
+   * Number of deposit months required (default 1).
+   * Mutually exclusive with proratedDeposit.
+   * depositPaid = rentAmount × depositMonths when multi-month.
+   */
+  depositMonths?: number;
+  /**
+   * Prorated deposit: tenant pays deposit in monthly installments alongside rent.
+   * Mutually exclusive with depositMonths > 1.
+   */
+  proratedDeposit?: {
+    enabled: boolean;
+    totalDepositAmount: number;
+    monthlyInstallment: number;
+    durationMonths: number;
+    monthsPaid: number;
+    amountPaidSoFar: number;
+  };
+  /**
+   * Rent extension: tenant pays deposit upfront; first rent is deferred to a
+   * specific date (no grace period after that date; subsequent rent follows
+   * the standard 1st-of-month schedule).
+   */
+  rentExtension?: {
+    enabled: boolean;
+    /** ISO date: rent is due on this date; no grace period applies. */
+    rentDeferredUntil: string;
+    depositPaidUpfront: number;
+    /** Stored to restore after the extension period ends. */
+    originalGraceDays?: number;
+  };
 }
 
 export interface Property {
@@ -269,6 +304,24 @@ export interface TenantApplication {
   avatar?: string;
   profilePicture?: string;
   referrerId?: string;
+
+  // ── Deposit special-case fields (carried to TenantProfile on approval) ───
+  depositExempt?: boolean;
+  depositMonths?: number;
+  proratedDeposit?: {
+    enabled: boolean;
+    totalDepositAmount: number;
+    monthlyInstallment: number;
+    durationMonths: number;
+    monthsPaid: number;
+    amountPaidSoFar: number;
+  };
+  rentExtension?: {
+    enabled: boolean;
+    rentDeferredUntil: string;
+    depositPaidUpfront: number;
+    originalGraceDays?: number;
+  };
 }
 
 export interface LandlordApplication {

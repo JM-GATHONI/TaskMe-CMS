@@ -644,6 +644,48 @@ export const PropertyForm: React.FC<{
                                     </p>
                                 </div>
                             </>)}
+
+                            {/* Deposit Configuration */}
+                            <div className="mt-4 pt-4 border-t">
+                                <h5 className="text-xs font-bold text-gray-700 mb-3">Deposit Settings</h5>
+                                <label className="flex items-center gap-2 cursor-pointer mb-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.deposit?.required ?? true}
+                                        onChange={e => setFormData(prev => ({
+                                            ...prev,
+                                            deposit: { required: e.target.checked, months: prev.deposit?.months ?? 1 }
+                                        }))}
+                                        className="h-4 w-4 text-primary rounded focus:ring-primary border-gray-300"
+                                    />
+                                    <span className="text-sm font-bold text-gray-700">Deposit Required?</span>
+                                </label>
+                                {(formData.deposit?.required ?? true) && (
+                                    <div className="ml-7">
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                            Default Deposit (months of rent)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={12}
+                                            value={formData.deposit?.months ?? 1}
+                                            onChange={e => setFormData(prev => ({
+                                                ...prev,
+                                                deposit: { required: prev.deposit?.required ?? true, months: Math.max(1, parseInt(e.target.value) || 1) }
+                                            }))}
+                                            className="w-28 p-2 border rounded text-sm"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Standard deposit = <strong>{formData.deposit?.months ?? 1} month(s)</strong> of rent.
+                                            Can be adjusted per tenant during onboarding.
+                                        </p>
+                                    </div>
+                                )}
+                                {!(formData.deposit?.required ?? true) && (
+                                    <p className="text-xs text-gray-500 ml-7">No deposit will be collected for tenants in this property by default.</p>
+                                )}
+                            </div>
                         </div>
                     </div>
                     <div className="space-y-4">

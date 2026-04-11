@@ -136,7 +136,12 @@ export const ApplicationFormModal: React.FC<{
             d.setFullYear(d.getFullYear() + 1);
             return d.toISOString().split('T')[0];
         })(),
-        source: record?.source || 'Walk-in'
+        source: record?.source || 'Walk-in',
+        // Deposit special cases
+        depositExempt: record?.depositExempt || false,
+        depositMonths: record?.depositMonths ?? 1,
+        proratedDeposit: record?.proratedDeposit,
+        rentExtension: record?.rentExtension,
     });
 
     const ensureLeaseDates = (prev: any) => {
@@ -200,13 +205,15 @@ export const ApplicationFormModal: React.FC<{
         setSelectedUnitId(uId);
         const unit = activeProperty?.units.find(u => u.id === uId);
         const rent = unit?.rent || activeProperty?.defaultMonthlyRent || 0;
+        const depositMonths = activeProperty?.deposit?.months ?? 1;
 
-        setFormData(prev => ({ 
-            ...prev, 
-            unitId: uId, 
+        setFormData(prev => ({
+            ...prev,
+            unitId: uId,
             unit: unit?.unitNumber,
             rentAmount: rent,
-            depositPaid: rent // Default deposit to 1 month
+            depositMonths,
+            depositPaid: prev.depositExempt ? 0 : rent * depositMonths,
         }));
     };
 
@@ -558,10 +565,12 @@ export const ApplicationFormModal: React.FC<{
                                     <input type="number" name="rentAmount" value={formData.rentAmount} onChange={handleAmountChange} className="w-full p-2 border rounded font-bold" />
                                 </div>
                                 
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Deposit Amount</label>
-                                    <input type="number" name="depositPaid" value={formData.depositPaid} onChange={handleAmountChange} className="w-full p-2 border rounded" />
-                                </div>
+                                {!formData.depositExempt && !formData.proratedDeposit?.enabled && !formData.rentExtension?.enabled && (
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Deposit Amount</label>
+                                        <input type="number" name="depositPaid" value={formData.depositPaid} onChange={handleAmountChange} className="w-full p-2 border rounded" />
+                                    </div>
+                                )}
 
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Rent due day (1–28)</label>
@@ -595,6 +604,208 @@ export const ApplicationFormModal: React.FC<{
                                     <input type="number" className="w-full p-2 border rounded bg-blue-50 font-bold text-blue-800" value={rentDue} disabled />
                                     <p className="text-[10px] text-gray-500 mt-1 italic">{calcNote}</p>
                                 </div>
+                            </div>
+
+                            {/* ── Deposit Configuration ──────────────────────────────────────────── */}
+                            <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <h4 className="text-xs font-bold text-gray-700 mb-3">Deposit Configuration</h4>
+
+                                {/* Deposit Exempt */}
+                                <label className="flex items-center gap-2 cursor-pointer mb-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={!!formData.depositExempt}
+                                        onChange={e => {
+                                            const exempt = e.target.checked;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                depositExempt: exempt,
+                                                depositPaid: exempt ? 0 : (prev.rentAmount || 0) * (prev.depositMonths ?? 1),
+                                                proratedDeposit: exempt ? undefined : prev.proratedDeposit,
+                                                rentExtension: exempt ? undefined : prev.rentExtension,
+                                            }));
+                                        }}
+                                        className="h-4 w-4 text-primary rounded border-gray-300"
+                                    />
+                                    <span className="text-sm font-semibold text-gray-700">Deposit Exempt</span>
+                                    <span className="text-xs text-gray-500 ml-1">— tenant pays rent only, no deposit collected</span>
+                                </label>
+
+                                {!formData.depositExempt && (<>
+                                    {/* Deposit Months */}
+                                    <div className="mb-3">
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Deposit Months</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={12}
+                                                value={formData.depositMonths ?? 1}
+                                                disabled={!!formData.proratedDeposit?.enabled}
+                                                onChange={e => {
+                                                    const months = Math.max(1, parseInt(e.target.value) || 1);
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        depositMonths: months,
+                                                        depositPaid: (prev.rentAmount || 0) * months,
+                                                    }));
+                                                }}
+                                                className="w-20 p-2 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                                            />
+                                            <span className="text-xs text-gray-500">
+                                                × KES {(formData.rentAmount || 0).toLocaleString()} = <strong>KES {((formData.depositMonths ?? 1) * (formData.rentAmount || 0)).toLocaleString()}</strong>
+                                            </span>
+                                        </div>
+                                        {(formData.depositMonths ?? 1) > 1 && !formData.proratedDeposit?.enabled && (
+                                            <p className="text-xs text-indigo-600 mt-1 font-medium">Multi-month deposit: full amount collected at first payment.</p>
+                                        )}
+                                    </div>
+
+                                    {/* Prorated Deposit */}
+                                    <label className={`flex items-center gap-2 cursor-pointer mb-2 ${(formData.depositMonths ?? 1) > 1 && !formData.proratedDeposit?.enabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={!!formData.proratedDeposit?.enabled}
+                                            onChange={e => {
+                                                const enabled = e.target.checked;
+                                                const total = (formData.rentAmount || 0) * (formData.depositMonths ?? 1);
+                                                const dur = formData.depositMonths ?? 1;
+                                                const installment = dur > 0 ? Math.ceil(total / dur) : total;
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    proratedDeposit: enabled ? {
+                                                        enabled: true,
+                                                        totalDepositAmount: total,
+                                                        monthlyInstallment: installment,
+                                                        durationMonths: dur,
+                                                        monthsPaid: 0,
+                                                        amountPaidSoFar: 0,
+                                                    } : undefined,
+                                                    depositPaid: enabled ? 0 : (prev.rentAmount || 0) * (prev.depositMonths ?? 1),
+                                                    rentExtension: enabled ? undefined : prev.rentExtension,
+                                                }));
+                                            }}
+                                            className="h-4 w-4 rounded border-gray-300"
+                                        />
+                                        <span className="text-sm font-semibold text-gray-700">Prorated Deposit</span>
+                                        <span className="text-xs text-gray-500 ml-1">— paid in monthly installments alongside rent</span>
+                                    </label>
+
+                                    {formData.proratedDeposit?.enabled && (
+                                        <div className="ml-6 grid grid-cols-3 gap-3 mb-3 p-3 bg-white border border-indigo-100 rounded-lg">
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Total Deposit (KES)</label>
+                                                <input
+                                                    type="number" min={0}
+                                                    value={formData.proratedDeposit.totalDepositAmount}
+                                                    onChange={e => {
+                                                        const total = parseFloat(e.target.value) || 0;
+                                                        const dur = formData.proratedDeposit!.durationMonths;
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            proratedDeposit: {
+                                                                ...prev.proratedDeposit!,
+                                                                totalDepositAmount: total,
+                                                                monthlyInstallment: dur > 0 ? Math.ceil(total / dur) : total,
+                                                            },
+                                                        }));
+                                                    }}
+                                                    className="w-full p-1.5 border rounded text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Monthly Installment</label>
+                                                <input
+                                                    type="number" min={0}
+                                                    value={formData.proratedDeposit.monthlyInstallment}
+                                                    onChange={e => setFormData(prev => ({
+                                                        ...prev,
+                                                        proratedDeposit: { ...prev.proratedDeposit!, monthlyInstallment: parseFloat(e.target.value) || 0 },
+                                                    }))}
+                                                    className="w-full p-1.5 border rounded text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Duration (months)</label>
+                                                <input
+                                                    type="number" min={1} max={24}
+                                                    value={formData.proratedDeposit.durationMonths}
+                                                    onChange={e => {
+                                                        const dur = Math.max(1, parseInt(e.target.value) || 1);
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            proratedDeposit: {
+                                                                ...prev.proratedDeposit!,
+                                                                durationMonths: dur,
+                                                                monthlyInstallment: Math.ceil(prev.proratedDeposit!.totalDepositAmount / dur),
+                                                            },
+                                                        }));
+                                                    }}
+                                                    className="w-full p-1.5 border rounded text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Rent Extension */}
+                                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!formData.rentExtension?.enabled}
+                                            onChange={e => {
+                                                const enabled = e.target.checked;
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    rentExtension: enabled ? {
+                                                        enabled: true,
+                                                        rentDeferredUntil: (() => {
+                                                            const d = new Date();
+                                                            d.setMonth(d.getMonth() + 1);
+                                                            d.setDate(1);
+                                                            return d.toISOString().split('T')[0];
+                                                        })(),
+                                                        depositPaidUpfront: (prev.rentAmount || 0) * (prev.depositMonths ?? 1),
+                                                        originalGraceDays: prev.rentGraceDays ?? 5,
+                                                    } : undefined,
+                                                    proratedDeposit: enabled ? undefined : prev.proratedDeposit,
+                                                }));
+                                            }}
+                                            className="h-4 w-4 rounded border-gray-300"
+                                        />
+                                        <span className="text-sm font-semibold text-gray-700">Rent Extension</span>
+                                        <span className="text-xs text-gray-500 ml-1">— deposit paid now, first rent deferred to a set date (no grace after)</span>
+                                    </label>
+
+                                    {formData.rentExtension?.enabled && (
+                                        <div className="ml-6 grid grid-cols-2 gap-3 p-3 bg-white border border-orange-100 rounded-lg">
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Deposit Paid Upfront (KES)</label>
+                                                <input
+                                                    type="number" min={0}
+                                                    value={formData.rentExtension.depositPaidUpfront}
+                                                    onChange={e => setFormData(prev => ({
+                                                        ...prev,
+                                                        rentExtension: { ...prev.rentExtension!, depositPaidUpfront: parseFloat(e.target.value) || 0 },
+                                                    }))}
+                                                    className="w-full p-1.5 border rounded text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">First Rent Due Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={formData.rentExtension.rentDeferredUntil}
+                                                    onChange={e => setFormData(prev => ({
+                                                        ...prev,
+                                                        rentExtension: { ...prev.rentExtension!, rentDeferredUntil: e.target.value },
+                                                    }))}
+                                                    className="w-full p-1.5 border rounded text-sm"
+                                                />
+                                                <p className="text-[10px] text-orange-600 mt-1">No grace after this date. Subsequent rent follows standard 1st-of-month schedule.</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>)}
                             </div>
                             
                             {/* Recurring Bills */}
@@ -733,9 +944,22 @@ const AppRecordPaymentModal: React.FC<{
     onRecord: (amount: number, method: string, reference: string, date: string) => void;
 }> = ({ record, onClose, onRecord }) => {
     const rent = Number(record.rentAmount || 0);
-    const deposit = Number(record.depositPaid || 0);
-    const depositForApp = record.recordType === 'Application' ? (deposit > 0 ? deposit : rent) : deposit;
-    const [amount, setAmount] = useState(String(rent + depositForApp));
+    const isApp = record.recordType === 'Application';
+
+    // Compute expected first payment based on deposit mode
+    const firstPaymentAmount = (() => {
+        if (record.depositExempt) return rent;
+        if (record.rentExtension?.enabled) return record.rentExtension.depositPaidUpfront || 0;
+        if (record.proratedDeposit?.enabled) return rent + (record.proratedDeposit.monthlyInstallment || 0);
+        if (isApp) {
+            const depositMonths = record.depositMonths ?? 1;
+            const depositAmt = Number(record.depositPaid || 0) || rent * depositMonths;
+            return rent + depositAmt;
+        }
+        return rent + Number(record.depositPaid || 0);
+    })();
+
+    const [amount, setAmount] = useState(String(firstPaymentAmount));
     const [method, setMethod] = useState('Cash');
     const [reference, setReference] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -751,7 +975,18 @@ const AppRecordPaymentModal: React.FC<{
         <div className="fixed inset-0 bg-black/60 z-[2100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
                 <h3 className="text-lg font-bold text-gray-800 mb-3">Record Payment</h3>
-                <p className="text-xs text-gray-500 mb-4">{record.name} • {record.recordType}</p>
+                <p className="text-xs text-gray-500 mb-2">{record.name} • {record.recordType}</p>
+                {isApp && (
+                    <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded p-2 mb-3">
+                        {record.rentExtension?.enabled
+                            ? `Deposit only: KES ${(record.rentExtension.depositPaidUpfront || 0).toLocaleString()} (rent deferred to ${record.rentExtension.rentDeferredUntil})`
+                            : record.proratedDeposit?.enabled
+                                ? `Rent KES ${rent.toLocaleString()} + deposit installment KES ${(record.proratedDeposit.monthlyInstallment || 0).toLocaleString()}`
+                                : record.depositExempt
+                                    ? `Rent only: KES ${rent.toLocaleString()} (deposit exempt)`
+                                    : `Rent + deposit: KES ${firstPaymentAmount.toLocaleString()}`}
+                    </p>
+                )}
                 <div className="space-y-3">
                     <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded" placeholder="Amount" />
                     <select value={method} onChange={e => setMethod(e.target.value)} className="w-full p-2 border rounded bg-white">
@@ -990,11 +1225,29 @@ const Applications: React.FC = () => {
         const resolvedPropertyName = (record.propertyName || record.property || prop.name || '').toString();
         const resolvedUnitNumber = (record.unit || unit.unitNumber || '').toString();
         const rentAmount = Number(record.rentAmount || unit.rent || prop.defaultMonthlyRent || 0);
+        const isDepositExempt = !!(record as any).depositExempt;
+        const depositMonths = Number((record as any).depositMonths ?? 1);
+        const proratedDeposit = (record as any).proratedDeposit;
+        const rentExtension = (record as any).rentExtension;
         const depositPaidRaw = Number((record as any).depositPaid || 0);
-        const depositPaid = depositPaidRaw > 0 ? depositPaidRaw : (rentAmount > 0 ? rentAmount : 0);
 
-        if (rentAmount <= 0 || depositPaid <= 0) {
-            alert('Rent and deposit must be set before approving.');
+        let depositPaid: number;
+        if (isDepositExempt) {
+            depositPaid = 0;
+        } else if (proratedDeposit?.enabled) {
+            depositPaid = 0; // starts at 0, increments per installment
+        } else if (rentExtension?.enabled) {
+            depositPaid = rentExtension.depositPaidUpfront || 0;
+        } else {
+            depositPaid = depositPaidRaw > 0 ? depositPaidRaw : rentAmount * depositMonths;
+        }
+
+        if (rentAmount <= 0) {
+            alert('Rent must be set before approving.');
+            return;
+        }
+        if (!isDepositExempt && depositPaid <= 0 && !proratedDeposit?.enabled) {
+            alert('Deposit must be set before approving (or mark tenant as Deposit Exempt).');
             return;
         }
 
@@ -1007,6 +1260,10 @@ const Applications: React.FC = () => {
             propertyId: record.propertyId,
             rentAmount,
             depositPaid,
+            depositExempt: isDepositExempt,
+            depositMonths,
+            proratedDeposit,
+            rentExtension,
         } as any);
 
         setProfileHubRecord(prev =>
@@ -1022,6 +1279,10 @@ const Applications: React.FC = () => {
                     unit: resolvedUnitNumber,
                     rentAmount,
                     depositPaid,
+                    depositExempt: isDepositExempt,
+                    depositMonths,
+                    proratedDeposit,
+                    rentExtension,
                 } as any)
                 : prev,
         );
@@ -1177,7 +1438,7 @@ const Applications: React.FC = () => {
             if (!app) return;
 
             if (String(app.status ?? '') !== 'Approved') {
-                alert('Please approve the application first, then record the rent + deposit payment.');
+                alert('Please approve the application first, then record the payment.');
                 return;
             }
 
@@ -1194,14 +1455,54 @@ const Applications: React.FC = () => {
             }
 
             const rentAmount = Number(app.rentAmount || unit.rent || prop.defaultMonthlyRent || 0);
-            let depositPaid = Number(app.depositPaid || 0);
-            if (depositPaid <= 0 && rentAmount > 0) depositPaid = rentAmount; // default 1-month deposit
+            const isDepositExempt = !!(app as any).depositExempt;
+            const appDepositMonths = Number((app as any).depositMonths ?? 1);
+            const appProrated = (app as any).proratedDeposit as TenantProfile['proratedDeposit'];
+            const appRentExtension = (app as any).rentExtension as TenantProfile['rentExtension'];
 
-            const expectedTotalResolved = rentAmount + depositPaid;
+            // ── Compute expected first payment ────────────────────────────────
+            let expectedTotal: number;
+            let depositPaid: number;
+            let nextDueDateIso: string;
+            let graceDays = Number(app.rentGraceDays ?? 5);
 
-            // This conversion requires the first payment to include rent+deposit.
-            if (expectedTotalResolved > 0 && Number(amount || 0) + 0.01 < expectedTotalResolved) {
-                alert(`First payment must cover rent + deposit (expected KES ${expectedTotalResolved.toLocaleString()}).`);
+            if (isDepositExempt) {
+                expectedTotal = rentAmount;
+                depositPaid = 0;
+                const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
+                const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(dueDay); d.setHours(0, 0, 0, 0);
+                nextDueDateIso = d.toISOString().split('T')[0];
+            } else if (appRentExtension?.enabled) {
+                expectedTotal = appRentExtension.depositPaidUpfront || 0;
+                depositPaid = appRentExtension.depositPaidUpfront || 0;
+                // First rent deferred; no grace period after the deferred date
+                nextDueDateIso = appRentExtension.rentDeferredUntil;
+                graceDays = 0;
+            } else if (appProrated?.enabled) {
+                expectedTotal = rentAmount + (appProrated.monthlyInstallment || 0);
+                depositPaid = 0; // will be tracked via proratedDeposit.amountPaidSoFar
+                const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
+                const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(dueDay); d.setHours(0, 0, 0, 0);
+                nextDueDateIso = d.toISOString().split('T')[0];
+            } else {
+                // Normal or multi-month: full deposit at first payment
+                const storedDeposit = Number((app as any).depositPaid || 0);
+                depositPaid = storedDeposit > 0 ? storedDeposit : rentAmount * appDepositMonths;
+                expectedTotal = rentAmount + depositPaid;
+                const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
+                const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(dueDay); d.setHours(0, 0, 0, 0);
+                nextDueDateIso = d.toISOString().split('T')[0];
+            }
+
+            if (expectedTotal > 0 && Number(amount || 0) + 0.01 < expectedTotal) {
+                const label = appRentExtension?.enabled
+                    ? 'deposit upfront'
+                    : appProrated?.enabled
+                        ? 'rent + deposit installment'
+                        : isDepositExempt
+                            ? 'rent (deposit exempt)'
+                            : 'rent + deposit';
+                alert(`First payment must cover ${label} (expected KES ${expectedTotal.toLocaleString()}).`);
                 return;
             }
 
@@ -1216,6 +1517,15 @@ const Applications: React.FC = () => {
             // 1) Mark unit as occupied.
             const updatedUnits = prop.units.map(u => (u.id === app.unitId ? { ...u, status: 'Occupied' } : u));
             updateProperty(prop.id, { units: updatedUnits as any });
+
+            // Build prorated deposit initial state if applicable
+            let resolvedProratedDeposit = appProrated?.enabled
+                ? {
+                    ...appProrated,
+                    monthsPaid: 1,
+                    amountPaidSoFar: appProrated.monthlyInstallment || 0,
+                }
+                : undefined;
 
             // 2) Upsert TenantProfile.
             const tenantPayload: Partial<TenantProfile> = {
@@ -1232,17 +1542,10 @@ const Applications: React.FC = () => {
                 unit: app.unit || unit.unitNumber,
                 rentAmount: rentAmount,
                 rentDueDate: app.rentDueDate,
-                rentGraceDays: app.rentGraceDays,
+                rentGraceDays: graceDays,
                 depositPaid,
                 onboardingDate: new Date().toISOString().split('T')[0],
-                nextDueDate: (() => {
-                    const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
-                    const d = new Date();
-                    d.setMonth(d.getMonth() + 1);
-                    d.setDate(dueDay);
-                    d.setHours(0, 0, 0, 0);
-                    return d.toISOString().split('T')[0];
-                })(),
+                nextDueDate: nextDueDateIso,
                 leaseSigned: !!app.leaseSigned,
                 leaseStartDate: app.leaseStartDate,
                 leaseEnd: app.leaseEnd,
@@ -1254,6 +1557,11 @@ const Applications: React.FC = () => {
                 avatar: app.avatar,
                 profilePicture: (app as any).profilePicture,
                 kraPin: app.kraPin,
+                // Deposit special-case fields
+                depositExempt: isDepositExempt || undefined,
+                depositMonths: appDepositMonths > 1 ? appDepositMonths : undefined,
+                proratedDeposit: resolvedProratedDeposit,
+                rentExtension: appRentExtension?.enabled ? appRentExtension : undefined,
             };
 
             const alreadyTenant = tenants.find(t => t.id === app.id);
