@@ -20,23 +20,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Supabase CLI
-        run: |
-          VERSION=$(curl -fsSL https://api.github.com/repos/supabase/cli/releases/latest \
-            | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
-          echo "Installing Supabase CLI v${VERSION}"
-          wget -q "https://github.com/supabase/cli/releases/download/v${VERSION}/supabase_linux_amd64.deb"
-          sudo dpkg -i "supabase_linux_amd64.deb"
-          supabase --version
-
       - name: Deploy mpesa-stk-push
         run: |
-          supabase functions deploy mpesa-stk-push \
+          npx --yes supabase functions deploy mpesa-stk-push \
             --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
             --no-verify-jwt
 
       - name: Deploy mpesa-callback
         run: |
-          supabase functions deploy mpesa-callback \
+          npx --yes supabase functions deploy mpesa-callback \
             --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
             --no-verify-jwt
