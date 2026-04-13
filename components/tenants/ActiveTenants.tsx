@@ -231,7 +231,7 @@ const RecordPaymentModal: React.FC<{
 
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName: string; tenantId: string }> = ({ onClose, amount, tenantName, tenantId }) => {
     const { updateTenant, tenants, addNotification, addMessage } = useData();
-    const [step, setStep] = useState<'input' | 'processing' | 'success'>('input');
+    const [step, setStep] = useState<'input' | 'processing' | 'success' | 'timed_out'>('input');
     const [phone, setPhone] = useState('');
     const [txCode, setTxCode] = useState('');
     const [editableAmount, setEditableAmount] = useState(amount);
@@ -324,6 +324,10 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                 setIsSubmitting(false);
                 setCheckoutRequestId(null);
             }
+            if (String(row.status ?? '') === 'timed_out') {
+                setStep('timed_out');
+                setIsSubmitting(false);
+            }
         };
 
         return followStkPaymentCompletion(supabase, paymentUserId, checkoutRequestId, applyRow);
@@ -343,6 +347,10 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
             alert('Please enter a valid Kenyan mobile number');
             return;
         }
+
+        const amt = Math.round(Number(editableAmount) || 0);
+        if (amt < 1) { setErrorMsg('Amount must be at least KES 1.'); return; }
+        if (amt > 150_000) { setErrorMsg('Amount exceeds the M-Pesa per-transaction limit of KES 150,000.'); return; }
 
         setIsSubmitting(true);
         setStep('processing');
@@ -588,10 +596,10 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     </>
                 )}
 
-                {(step === 'processing' || step === 'success') && (
+                {(step === 'processing' || step === 'success' || step === 'timed_out') && (
                     <div className="text-center pt-4">
                          <div className="mpesa-header" style={{ justifyContent: 'center', borderBottom: 'none' }}>
-                            <div className="mpesa-icon-box">
+                            <div className="mpesa-icon-box" style={step === 'timed_out' ? { background: '#e65c00' } : {}}>
                                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                                     <path d="M8 12L10.5 14.5L16 9" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -607,6 +615,28 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                                 <p className="text-[#4a904a] font-medium">Please enter your M-Pesa PIN on your device</p>
                                 <div className="loading-dots flex justify-center gap-1.5 mt-6">
                                     <span></span><span></span><span></span>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 'timed_out' && (
+                            <div className="py-6 animate-fade-in">
+                                <div className="text-5xl mb-4">⏱</div>
+                                <p className="text-lg font-semibold text-gray-700 mb-2">Taking longer than expected</p>
+                                <p className="text-sm text-gray-500 mb-1">No confirmation was received within 2 minutes.</p>
+                                <p className="text-sm text-gray-500 mb-6">
+                                    Check your M-Pesa messages — if the payment went through, use <strong>Record Payment</strong> to log it manually with the M-Pesa transaction code.
+                                </p>
+                                <div className="flex gap-3 justify-center">
+                                    <button
+                                        onClick={() => { setStep('input'); setCheckoutRequestId(null); setErrorMsg(null); }}
+                                        className="px-5 py-2.5 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+                                    >
+                                        Try Again
+                                    </button>
+                                    <button onClick={onClose} className="px-5 py-2.5 bg-gray-800 text-white font-semibold rounded-lg hover:bg-gray-900 transition-colors">
+                                        Close
+                                    </button>
                                 </div>
                             </div>
                         )}

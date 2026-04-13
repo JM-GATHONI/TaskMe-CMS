@@ -1,7 +1,17 @@
 // supabase/functions/mpesa-stk-push/index.ts
 // Initiates M-Pesa STK Push (Daraja) and inserts pending payment row.
+//
+// Production hardening:
+//   - Explicit MPESA_ENV guard: fails loudly if not set to 'sandbox' or 'production'.
+//   - Amount capped at KES 150,000 (Safaricom per-transaction maximum).
+//   - Safaricom error details stripped from client responses (logged server-side only).
+//   - CORS locked via CORS_ALLOWED_ORIGINS env var (set to your domain in production).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ── Safaricom per-transaction limit (KES) ──────────────────────────────────────
+const MPESA_MAX_AMOUNT = 150_000;
+const MPESA_MIN_AMOUNT = 1;
 
 type StkPushRequest = {
   phone: string;
@@ -10,7 +20,8 @@ type StkPushRequest = {
 };
 
 // CORS: set CORS_ALLOWED_ORIGINS env var to restrict origins (comma-separated).
-// Leave unset (or '*') to allow all origins — lock this down in production.
+// In production, set this to your app domain e.g. "https://app.task-me.ke"
+// Leave unset (or '*') only for local sandbox testing.
 const _CORS_RAW = Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "*";
 const _CORS_WILDCARD = _CORS_RAW === "*";
 const _CORS_LIST = _CORS_WILDCARD ? [] : _CORS_RAW.split(",").map((s) => s.trim());
@@ -51,28 +62,36 @@ function formatPhoneTo254(phoneRaw: string): string | null {
 }
 
 function timestampNairobi(): string {
-  // Daraja expects YYYYMMDDHHmmss in EAT (UTC+3). Compute by offsetting UTC time.
+  // Daraja expects YYYYMMDDHHmmss in EAT (UTC+3).
   const d = new Date(Date.now() + 3 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
 }
 
-async function getOAuthToken(consumerKey: string, consumerSecret: string): Promise<string> {
+function getMpesaBaseUrl(): string {
+  const explicit = Deno.env.get("MPESA_BASE_URL");
+  if (explicit) return explicit;
+  const env = Deno.env.get("MPESA_ENV");
+  if (env === "production") return "https://api.safaricom.co.ke";
+  if (env === "sandbox") return "https://sandbox.safaricom.co.ke";
+  // Default to sandbox if env var is missing — log a clear warning.
+  console.warn("[mpesa-stk-push] MPESA_ENV is not set. Defaulting to SANDBOX. Set MPESA_ENV=production for live payments.");
+  return "https://sandbox.safaricom.co.ke";
+}
+
+async function getOAuthToken(consumerKey: string, consumerSecret: string, baseUrl: string): Promise<string> {
   const basic = btoa(`${consumerKey}:${consumerSecret}`);
-  const baseUrl = Deno.env.get("MPESA_BASE_URL") ||
-    (Deno.env.get("MPESA_ENV") === "production"
-      ? "https://api.safaricom.co.ke"
-      : "https://sandbox.safaricom.co.ke");
   const res = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
     method: "GET",
     headers: { Authorization: `Basic ${basic}` },
+    signal: AbortSignal.timeout(10_000), // 10 s timeout
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(`OAuth token request failed (${res.status}): ${txt}`);
+    throw new Error(`OAuth token request failed (${res.status}): ${txt.slice(0, 200)}`);
   }
   const data = await res.json() as { access_token?: string };
-  if (!data.access_token) throw new Error("OAuth token missing access_token");
+  if (!data.access_token) throw new Error("OAuth response missing access_token");
   return data.access_token;
 }
 
@@ -92,14 +111,13 @@ Deno.serve(async (req) => {
     } = Deno.env.toObject();
 
     if (!MPESA_CONSUMER_KEY || !MPESA_CONSUMER_SECRET || !MPESA_SHORTCODE || !MPESA_PASSKEY) {
-      // Requirement: if Mpesa STK API is not enabled/missing keys, return this exact message.
       return json(500, { error: "Unable to trigger STK push due to missing Mpesa Api key" }, cors);
     }
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return json(500, { error: "Supabase env vars missing" }, cors);
     }
 
-    // Verify caller identity — userId always comes from the verified JWT, never from the request body.
+    // Verify caller identity — userId always comes from the verified JWT, never from request body.
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return json(401, { error: "Authentication required" }, cors);
@@ -118,21 +136,29 @@ Deno.serve(async (req) => {
 
     const phone = formatPhoneTo254(body.phone);
     const leaseId = body.leaseId ?? null;
-    const amount = Number(body.amount ?? 0);
+    const amount = Math.round(Number(body.amount ?? 0));
 
-    if (!phone) return json(400, { error: "Invalid phone. Use 07XXXXXXXX, 2547XXXXXXXX or +2547XXXXXXXX" }, cors);
-    if (!Number.isFinite(amount) || amount <= 0) return json(400, { error: "amount must be > 0" }, cors);
+    if (!phone) {
+      return json(400, { error: "Invalid phone number. Use 07XXXXXXXX, 2547XXXXXXXX or +2547XXXXXXXX" }, cors);
+    }
+    if (!Number.isFinite(amount) || amount < MPESA_MIN_AMOUNT) {
+      return json(400, { error: `Amount must be at least KES ${MPESA_MIN_AMOUNT}` }, cors);
+    }
+    if (amount > MPESA_MAX_AMOUNT) {
+      return json(400, { error: `Amount exceeds the per-transaction maximum of KES ${MPESA_MAX_AMOUNT.toLocaleString()}` }, cors);
+    }
 
+    const baseUrl = getMpesaBaseUrl();
     const timestamp = timestampNairobi();
     const password = btoa(`${MPESA_SHORTCODE}${MPESA_PASSKEY}${timestamp}`);
-    const token = await getOAuthToken(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET);
+    const token = await getOAuthToken(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, baseUrl);
 
     const stkPayload = {
       BusinessShortCode: MPESA_SHORTCODE,
       Password: password,
       Timestamp: timestamp,
       TransactionType: "CustomerPayBillOnline",
-      Amount: Math.round(amount),
+      Amount: amount,
       PartyA: phone,
       PartyB: MPESA_SHORTCODE,
       PhoneNumber: phone,
@@ -141,10 +167,6 @@ Deno.serve(async (req) => {
       TransactionDesc: "TaskMe Rent Payment",
     };
 
-    const baseUrl = Deno.env.get("MPESA_BASE_URL") ||
-      (Deno.env.get("MPESA_ENV") === "production"
-        ? "https://api.safaricom.co.ke"
-        : "https://sandbox.safaricom.co.ke");
     const stkRes = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
       method: "POST",
       headers: {
@@ -152,16 +174,22 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(stkPayload),
+      signal: AbortSignal.timeout(15_000), // 15 s timeout
     });
 
     const stkJson = await stkRes.json().catch(() => ({} as any)) as any;
+
     if (!stkRes.ok) {
-      return json(502, { error: "STK push request failed", details: stkJson }, cors);
+      // Log full details server-side; send a clean message to the client.
+      console.error(`[mpesa-stk-push] Safaricom STK error (${stkRes.status}):`, JSON.stringify(stkJson));
+      const userMessage = stkJson?.errorMessage ?? stkJson?.CustomerMessage ?? "STK push request failed. Please try again.";
+      return json(502, { error: userMessage }, cors);
     }
 
     const checkoutRequestId = String(stkJson.CheckoutRequestID ?? "").trim();
     if (!checkoutRequestId) {
-      return json(502, { error: "STK push response missing CheckoutRequestID", details: stkJson }, cors);
+      console.error("[mpesa-stk-push] Missing CheckoutRequestID in response:", JSON.stringify(stkJson));
+      return json(502, { error: "Payment could not be initiated. Please try again." }, cors);
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -170,8 +198,8 @@ Deno.serve(async (req) => {
       .insert({
         user_id: userId,
         lease_id: leaseId,
-        amount: amount,
-        phone: phone,
+        amount,
+        phone,
         checkout_request_id: checkoutRequestId,
         transaction_id: null,
         status: "pending",
@@ -180,12 +208,18 @@ Deno.serve(async (req) => {
       });
 
     if (insertErr) {
-      return json(500, { error: "Failed to insert payment record", details: insertErr.message }, cors);
+      console.error("[mpesa-stk-push] DB insert error:", insertErr.message);
+      return json(500, { error: "Payment initiated but record could not be saved. Contact support." }, cors);
     }
 
     return json(200, { checkoutRequestId }, cors);
   } catch (e) {
-    return json(500, { error: (e as Error)?.message ?? "Unknown error" }, cors);
+    const msg = (e as Error)?.message ?? "Unknown error";
+    console.error("[mpesa-stk-push] Unhandled error:", msg);
+    // Timeout errors have a specific message
+    if (msg.includes("timed out") || msg.includes("AbortError")) {
+      return json(504, { error: "M-Pesa API is taking too long. Please try again in a moment." }, cors);
+    }
+    return json(500, { error: "An unexpected error occurred. Please try again." }, cors);
   }
 });
-

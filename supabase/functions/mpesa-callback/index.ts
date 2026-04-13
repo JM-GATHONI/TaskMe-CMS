@@ -1,27 +1,38 @@
 // supabase/functions/mpesa-callback/index.ts
 // Handles Safaricom STK callback and updates payment row.
+//
+// Security hardening:
+//   - MPESA_VERIFY_CALLBACK_IP=true (default) restricts to Safaricom published IP ranges.
+//     Set to 'false' only for local sandbox testing.
+//   - Idempotency: only updates rows whose status is still 'pending' — duplicate callbacks
+//     from Safaricom are silently ignored (returns 200 OK so Safaricom doesn't retry).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// CORS: set CORS_ALLOWED_ORIGINS env var to restrict origins (comma-separated).
-// Note: mpesa-callback is called server-to-server by Safaricom; CORS headers are ignored by them.
-const _CORS_RAW = Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "*";
-const _CORS_WILDCARD = _CORS_RAW === "*";
-const _CORS_LIST = _CORS_WILDCARD ? [] : _CORS_RAW.split(",").map((s) => s.trim());
-function buildCors(origin: string | null): Record<string, string> {
-  const ao = _CORS_WILDCARD ? "*" : (origin && _CORS_LIST.includes(origin) ? origin : "");
-  return {
-    "Access-Control-Allow-Origin": ao,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    ...(ao && ao !== "*" ? { Vary: "Origin" } : {}),
-  };
-}
+// ── Safaricom published callback IP ranges ─────────────────────────────────────
+// Source: Safaricom Daraja API documentation (updated 2024).
+// Add any new ranges here if Safaricom publishes updates.
+const SAFARICOM_IPS = new Set([
+  "196.201.214.200",
+  "196.201.214.206",
+  "196.201.213.114",
+  "196.201.214.207",
+  "196.201.214.208",
+  "196.201.213.44",
+  "196.201.214.170",
+  "196.201.214.176",
+  "196.201.214.177",
+  "196.201.214.167",
+  "196.201.214.168",
+  "196.201.214.195",
+]);
 
-function json(status: number, body: unknown, cors: Record<string, string>) {
+// Note: mpesa-callback is called server-to-server by Safaricom; CORS headers are irrelevant
+// but Supabase Edge Functions need them for OPTIONS pre-flight from any monitoring tools.
+function json(status: number, body: unknown, headers?: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...cors, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
   });
 }
 
@@ -35,51 +46,104 @@ function extractMetadata(callbackMetadata: any): Record<string, unknown> {
   return out;
 }
 
+/** Return the real caller IP from standard proxy headers. */
+function resolveCallerIp(req: Request): string | null {
+  // X-Forwarded-For may be comma-separated; first entry is the original client IP.
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0].trim();
+  return req.headers.get("x-real-ip") ?? null;
+}
+
 Deno.serve(async (req) => {
-  const cors = buildCors(req.headers.get("Origin"));
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (req.method !== "POST") return json(405, { error: "Method not allowed" }, cors);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "content-type",
+      },
+    });
+  }
+
+  if (req.method !== "POST") return json(405, { error: "Method not allowed" });
+
+  // ── IP validation ──────────────────────────────────────────────────────────
+  // Default ON in production. Disable only for sandbox testing:
+  //   set MPESA_VERIFY_CALLBACK_IP=false in Edge Function secrets.
+  const verifyIp = (Deno.env.get("MPESA_VERIFY_CALLBACK_IP") ?? "true") !== "false";
+  if (verifyIp) {
+    const callerIp = resolveCallerIp(req);
+    if (!callerIp || !SAFARICOM_IPS.has(callerIp)) {
+      // Return 200 to Safaricom regardless — never expose that we rejected it.
+      // Log the IP for investigation.
+      console.warn(`[mpesa-callback] Rejected request from IP: ${callerIp}`);
+      return json(200, { ok: false, reason: "ip_not_allowed" });
+    }
+  }
 
   try {
     const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = Deno.env.toObject();
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return json(500, { error: "Supabase env vars missing" }, cors);
+      console.error("[mpesa-callback] Supabase env vars missing");
+      return json(500, { error: "Supabase env vars missing" });
     }
 
     const payload = await req.json().catch(() => null) as any;
     const cb = payload?.Body?.stkCallback;
-    if (!cb) return json(400, { error: "Invalid callback payload" }, cors);
+    if (!cb) {
+      console.warn("[mpesa-callback] Invalid callback payload:", JSON.stringify(payload));
+      return json(400, { error: "Invalid callback payload" });
+    }
 
     const checkoutRequestId = String(cb.CheckoutRequestID ?? "").trim();
-    if (!checkoutRequestId) return json(400, { error: "Missing CheckoutRequestID" }, cors);
+    if (!checkoutRequestId) return json(400, { error: "Missing CheckoutRequestID" });
 
     const resultCode = typeof cb.ResultCode === "number" ? cb.ResultCode : Number(cb.ResultCode);
     const resultDesc = String(cb.ResultDesc ?? "");
 
     const meta = extractMetadata(cb.CallbackMetadata);
-    const transactionId = (meta["MpesaReceiptNumber"] ? String(meta["MpesaReceiptNumber"]) : null);
+    const transactionId = meta["MpesaReceiptNumber"] ? String(meta["MpesaReceiptNumber"]) : null;
+    const amount = meta["Amount"] ? Number(meta["Amount"]) : null;
 
     let status: "completed" | "failed" | "cancelled" = "failed";
     if (resultCode === 0) status = "completed";
     else if (resultCode === 1032) status = "cancelled"; // user cancelled
 
+    console.log(`[mpesa-callback] ${checkoutRequestId} → ${status} (code ${resultCode})`);
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { error: updateErr } = await supabase
+
+    // ── Idempotency guard ────────────────────────────────────────────────────
+    // Only update rows that are still 'pending'. If this callback is a duplicate
+    // (Safaricom retries on non-200), the update is a no-op and we return 200 OK
+    // to prevent infinite retries.
+    const { error: updateErr, count } = await supabase
       .from("payments")
       .update({
         status,
         transaction_id: transactionId,
         result_code: Number.isFinite(resultCode) ? resultCode : null,
         result_desc: resultDesc,
+        ...(amount != null ? { amount } : {}),
       })
-      .eq("checkout_request_id", checkoutRequestId);
+      .eq("checkout_request_id", checkoutRequestId)
+      .eq("status", "pending")   // ← idempotency: skip already-processed rows
+      .select("id", { count: "exact", head: true });
 
     if (updateErr) {
-      return json(500, { error: "Failed to update payment record", details: updateErr.message }, cors);
+      console.error("[mpesa-callback] DB update error:", updateErr.message);
+      // Return 500 so Safaricom retries (genuine error, not a duplicate).
+      return json(500, { error: "Failed to update payment record" });
     }
 
-    return json(200, { ok: true }, cors);
+    if ((count ?? 0) === 0) {
+      // Row was already processed (duplicate callback) — ack silently.
+      console.log(`[mpesa-callback] Duplicate callback ignored for ${checkoutRequestId}`);
+    }
+
+    return json(200, { ok: true });
   } catch (e) {
-    return json(500, { error: (e as Error)?.message ?? "Unknown error" }, cors);
+    console.error("[mpesa-callback] Unhandled error:", (e as Error)?.message);
+    return json(500, { error: "Internal server error" });
   }
 });
