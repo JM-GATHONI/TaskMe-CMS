@@ -1016,7 +1016,7 @@ const AppMpesaModal: React.FC<{
     const [phone, setPhone] = useState(record.phone || '');
     const [amount, setAmount] = useState(Number(record.rentAmount || 0) + Number(record.depositPaid || 0));
     const [checkoutId, setCheckoutId] = useState<string | null>(null);
-    const [step, setStep] = useState<'input' | 'processing'>('input');
+    const [step, setStep] = useState<'input' | 'processing' | 'timed_out'>('input');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const userId = getPaymentUserId(record);
@@ -1032,6 +1032,9 @@ const AppMpesaModal: React.FC<{
                 setStep('input');
                 setBusy(false);
                 setCheckoutId(null);
+            } else if (status === 'timed_out') {
+                setStep('timed_out');
+                setBusy(false);
             }
         });
     }, [userId, checkoutId, amount, onPaid, record]);
@@ -1045,8 +1048,13 @@ const AppMpesaModal: React.FC<{
             setError('Enter a valid Kenyan mobile number.');
             return;
         }
-        if (!Number.isFinite(amount) || amount <= 0) {
-            setError('Enter a valid amount.');
+        const roundedAmt = Math.round(amount);
+        if (!Number.isFinite(roundedAmt) || roundedAmt < 1) {
+            setError('Enter a valid amount (minimum KES 1).');
+            return;
+        }
+        if (roundedAmt > 150_000) {
+            setError('Amount exceeds the M-Pesa per-transaction limit of KES 150,000.');
             return;
         }
         setError(null);
@@ -1081,6 +1089,26 @@ const AppMpesaModal: React.FC<{
                             <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded">Cancel</button>
                             <button onClick={handlePay} disabled={busy} className="px-4 py-2 bg-green-700 text-white rounded font-bold disabled:opacity-50">
                                 {busy ? 'Sending...' : 'Send STK'}
+                            </button>
+                        </div>
+                    </div>
+                ) : step === 'timed_out' ? (
+                    <div className="py-4 text-center">
+                        <div className="text-4xl mb-3">⏱</div>
+                        <p className="font-semibold text-gray-700 mb-1">Taking longer than expected</p>
+                        <p className="text-xs text-gray-500 mb-4">
+                            No confirmation received. Check your M-Pesa messages — if it went through, use <strong>Record Payment</strong> with the M-Pesa code.
+                        </p>
+                        <div className="flex gap-2 justify-center">
+                            <button
+                                type="button"
+                                onClick={() => { setStep('input'); setCheckoutId(null); setError(null); }}
+                                className="px-4 py-2 bg-gray-100 rounded font-medium text-sm"
+                            >
+                                Try Again
+                            </button>
+                            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-800 text-white rounded font-medium text-sm">
+                                Close
                             </button>
                         </div>
                     </div>
