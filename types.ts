@@ -1259,6 +1259,7 @@ export interface DataContextType {
     deleteVendor: (id: string) => void;
     addAuditLog: (log: AuditLogEntry) => void;
     updateExternalTransaction: (id: string, d: Partial<ExternalTransaction>) => void;
+    addOverpayment: (o: Overpayment) => void;
     updateOverpayment: (id: string, d: Partial<Overpayment>) => void;
     moveTenantPayment: (f: string, t: string, r: string) => void;
     addWorkflow: (w: Workflow) => void;

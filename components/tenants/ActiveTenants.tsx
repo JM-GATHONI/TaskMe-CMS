@@ -230,7 +230,7 @@ const RecordPaymentModal: React.FC<{
 
 
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName: string; tenantId: string }> = ({ onClose, amount, tenantName, tenantId }) => {
-    const { updateTenant, tenants, addNotification, addMessage } = useData();
+    const { updateTenant, tenants, addNotification, addMessage, addOverpayment } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success' | 'timed_out'>('input');
     const [phone, setPhone] = useState('');
     const [txCode, setTxCode] = useState('');
@@ -295,6 +295,34 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     }
                     updateTenant(tenantId, updates);
 
+                    // Mark payment as reconciled in the payments ledger
+                    supabase.from('payments')
+                        .update({ reconciliation_status: 'reconciled' })
+                        .eq('checkout_request_id', checkoutRequestId)
+                        .then(() => {});
+
+                    // Detect overpayment: amount exceeds expected rent (+ prorated installment if applicable)
+                    const depositSettled = Number(t.depositPaid || 0) > 0 || t.depositExempt || t.rentExtension?.enabled;
+                    if (depositSettled && !t.rentExtension?.enabled) {
+                        const expectedRent = Number(t.rentAmount || 0);
+                        const expectedInstallment = t.proratedDeposit?.enabled && !cycle.proratedUpdate?.fullyPaid
+                            ? (t.proratedDeposit.monthlyInstallment || 0)
+                            : 0;
+                        const overpayAmt = amt - (expectedRent + expectedInstallment);
+                        if (overpayAmt > 0) {
+                            addOverpayment({
+                                id: `ovp-${Date.now()}`,
+                                tenantName: t.name,
+                                unit: t.unit,
+                                amount: overpayAmt,
+                                reference: ref,
+                                dateReceived: newPayment.date,
+                                appliedMonth: newPayment.date.slice(0, 7),
+                                status: 'Held',
+                            });
+                        }
+                    }
+
                     const msg = `Tenant ${t.name} paid KES ${amt.toLocaleString()} via M-Pesa.`;
                     addNotification({
                         id: `notif-${Date.now()}`,
@@ -304,6 +332,16 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         read: false,
                         type: 'Success',
                         recipientRole: 'All',
+                    });
+                    // Notify the landlord separately
+                    addNotification({
+                        id: `notif-landlord-${Date.now()}`,
+                        title: 'Rent Payment Received',
+                        message: `${t.name} (${t.unit}) paid KES ${amt.toLocaleString()} via M-Pesa. Ref: ${ref}`,
+                        date: new Date().toLocaleString(),
+                        read: false,
+                        type: 'Success',
+                        recipientRole: 'Landlord',
                     });
                     addMessage({
                         id: `msg-${Date.now()}`,
@@ -360,7 +398,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                 body: {
                     phone,
                     amount: Math.round(Number(editableAmount) || 0),
-                    leaseId: null,
+                    leaseId: tenantId,
                     userId: paymentUserId,
                 },
             });

@@ -586,6 +586,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const addAuditLog = (log: AuditLogEntry) => setAuditLogs(prev => [log, ...prev]);
     const updateExternalTransaction = (id: string, d: Partial<ExternalTransaction>) => setExternalTransactions(prev => prev.map(t => t.id === id ? {...t, ...d} : t));
+    const addOverpayment = (o: Overpayment) => setOverpayments(prev => [o, ...prev]);
     const updateOverpayment = (id: string, d: Partial<Overpayment>) => setOverpayments(prev => prev.map(o => o.id === id ? {...o, ...d} : o));
     const moveTenantPayment = (f: string, t: string, r: string) => {
         setTenants(prev => {
@@ -876,7 +877,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updateOffboardingRecord, addGeospatialNode, addCommissionRule, updateCommissionRule,
             deleteCommissionRule, addDeductionRule, updateDeductionRule, deleteDeductionRule,
             addBill, updateBill, deleteBill, addTenantBill, addInvoice, updateInvoice,
-            addMessage, addNotification, addVendor, updateVendor, deleteVendor, addAuditLog, updateExternalTransaction, updateOverpayment, moveTenantPayment,
+            addMessage, addNotification, addVendor, updateVendor, deleteVendor, addAuditLog, updateExternalTransaction, addOverpayment, updateOverpayment, moveTenantPayment,
             addWorkflow, updateWorkflow, addAutomationRule, updateAutomationRule, addEscalationRule, updateEscalationRule,
             updateSystemSettings, addPreventiveTask, addTemplate, updateTemplate, deleteTemplate, addIncomeSource, updateIncomeSource,
             addFund, updateFund, addInvestment, updateInvestment, addWithdrawal, updateWithdrawal,

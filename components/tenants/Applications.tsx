@@ -1062,7 +1062,7 @@ const AppMpesaModal: React.FC<{
         setStep('processing');
         try {
             const { data, error: invokeError } = await supabase.functions.invoke('mpesa-stk-push', {
-                body: { phone, amount: Math.round(amount), leaseId: null, userId },
+                body: { phone, amount: Math.round(amount), leaseId: record.id ?? null, userId },
             });
             if (invokeError) throw invokeError;
             const id = String((data as any)?.checkoutRequestId ?? '').trim();
