@@ -44,10 +44,13 @@ export function followStkPaymentCompletion(
         .channel(`stk-follow-${userId}-${checkoutRequestId}-${Date.now()}`)
         .on(
             'postgres_changes',
-            { event: '*', schema: 'public', table: 'payments', filter: `user_id=eq.${userId}` },
+            // Filter by checkout_request_id only — the edge function stores user_id = caller's
+            // JWT ID (the admin), not the tenant's auth ID. Filtering only by the unique
+            // checkout_request_id avoids the mismatch. RLS still applies at the DB level.
+            { event: '*', schema: 'public', table: 'payments', filter: `checkout_request_id=eq.${checkoutRequestId}` },
             (payload: any) => {
                 const row = (payload?.new ?? payload?.old) as PaymentRow | undefined;
-                if (!row || String(row.checkout_request_id ?? '') !== checkoutRequestId) return;
+                if (!row) return;
                 if (TERMINAL.has(String(row.status ?? ''))) settle(row);
                 else onUpdate(row); // pass through non-terminal updates (e.g. pending)
             },
@@ -60,7 +63,6 @@ export function followStkPaymentCompletion(
             const { data, error } = await supabase
                 .from('payments')
                 .select('status,checkout_request_id,transaction_id,result_desc')
-                .eq('user_id', userId)
                 .eq('checkout_request_id', checkoutRequestId)
                 .maybeSingle();
             if (!error && data) {
