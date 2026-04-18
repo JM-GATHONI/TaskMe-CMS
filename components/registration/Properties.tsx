@@ -277,6 +277,13 @@ export const PropertyForm: React.FC<{
         }));
     };
 
+    const updateUnitTag = (unitId: string, next: string) => {
+        setFormData((prev) => ({
+            ...prev,
+            units: (prev.units || []).map((u) => (u.id === unitId ? { ...u, unitTag: next } : u)),
+        }));
+    };
+
     // Cascading Geospatial Logic
     const geoData = geospatialData || GEOSPATIAL_DATA;
 
@@ -1175,7 +1182,7 @@ export const PropertyForm: React.FC<{
                                         .map((u) => (
                                             <div key={u.id} className="p-3 bg-gray-50 rounded border border-gray-200">
                                                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
-                                                    Unit Tag/ID {u.unitType ? `• ${u.unitType}` : ''}
+                                                    Unit Number {u.unitType ? `• ${u.unitType}` : ''}
                                                 </label>
                                                 <input
                                                     value={u.unitNumber || ''}
@@ -1183,6 +1190,21 @@ export const PropertyForm: React.FC<{
                                                     className="w-full p-2 border rounded bg-white text-sm font-semibold"
                                                     placeholder="e.g. G01 / F101"
                                                 />
+
+                                                <div className="mt-2">
+                                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                                                        Paybill Account Ref (Unit Tag)
+                                                    </label>
+                                                    <input
+                                                        value={u.unitTag || ''}
+                                                        onChange={(e) => updateUnitTag(u.id, e.target.value)}
+                                                        className="w-full p-2 border rounded bg-white text-sm font-mono font-semibold uppercase tracking-wider"
+                                                        placeholder="e.g. MSK/05"
+                                                    />
+                                                    <p className="text-[10px] text-gray-400 mt-1">
+                                                        Tenants type this at the M-Pesa Paybill account prompt. Must be unique across all your properties.
+                                                    </p>
+                                                </div>
 
                                                 <div className="mt-2">
                                                     <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Unit Rent (KES)</label>

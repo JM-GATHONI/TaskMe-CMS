@@ -230,6 +230,14 @@ export interface Unit {
   unitType?: string;
   amenities?: string[];
   isLocked?: boolean; // New: For tracking 'Vacant Locked' KPI
+  /**
+   * Human-typable account reference printed on invoices and shown to the
+   * tenant. At the M-Pesa Paybill prompt the customer enters this exact
+   * string as the account number (BillRefNumber). Must be unique across
+   * the organisation so the C2B confirmation handler can match a payment
+   * back to a specific unit → tenant. Example: "MSK/05".
+   */
+  unitTag?: string;
 }
 
 export interface User {

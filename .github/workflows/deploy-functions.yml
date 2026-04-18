@@ -7,6 +7,10 @@ on:
     paths:
       - "supabase/functions/mpesa-stk-push/**"
       - "supabase/functions/mpesa-callback/**"
+      - "supabase/functions/mpesa-c2b-register-urls/**"
+      - "supabase/functions/mpesa-c2b-validation/**"
+      - "supabase/functions/mpesa-c2b-confirmation/**"
+      - "supabase/functions/mpesa-pull-transactions/**"
       - ".github/workflows/deploy-functions.yml"
 
 jobs:
@@ -31,3 +35,25 @@ jobs:
           npx --yes supabase functions deploy mpesa-callback \
             --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
             --no-verify-jwt
+
+      - name: Deploy mpesa-c2b-register-urls
+        run: |
+          npx --yes supabase functions deploy mpesa-c2b-register-urls \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy mpesa-c2b-validation
+        run: |
+          npx --yes supabase functions deploy mpesa-c2b-validation \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --no-verify-jwt
+
+      - name: Deploy mpesa-c2b-confirmation
+        run: |
+          npx --yes supabase functions deploy mpesa-c2b-confirmation \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --no-verify-jwt
+
+      - name: Deploy mpesa-pull-transactions
+        run: |
+          npx --yes supabase functions deploy mpesa-pull-transactions \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}

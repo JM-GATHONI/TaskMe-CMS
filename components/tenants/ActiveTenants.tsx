@@ -1886,6 +1886,16 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <div>
                                 <h1 className="text-2xl font-bold">{tenant.name}</h1>
                                 <p className="text-white/80">{tenant.unit}, {tenant.propertyName}</p>
+                                {(() => {
+                                    const tag = tenantProperty?.units?.find(u => u.id === tenant.unitId)?.unitTag;
+                                    return tag ? (
+                                        <p className="text-xs text-white/90 mt-1">
+                                            Paybill Account: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded uppercase tracking-wider">{tag}</span>
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-amber-200 mt-1">No paybill account set for this unit</p>
+                                    );
+                                })()}
                                 <p className="text-xs text-white/60 mt-1">Onboarded: {tenant.onboardingDate}</p>
                             </div>
                         </div>
