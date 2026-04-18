@@ -1,9 +1,12 @@
 -- supabase/migrations/0028_fix_record_c2b_payment.sql
 --
--- Fix ambiguous column reference in record_c2b_payment.
--- PostgreSQL 42702: "matched_tenant_id" is ambiguous because it exists as
--- both a column in public.payments AND a return variable in RETURNS TABLE.
--- Fix: qualify all payments column references with a table alias.
+-- Two fixes to record_c2b_payment:
+--  1. Resolve PostgreSQL 42702 (ambiguous "matched_tenant_id") — the column
+--     existed as both a payments table column and a RETURNS TABLE variable.
+--     Fixed by storing lookup results in local variables before assignment.
+--  2. Resolve PostgreSQL 42P10 (no matching ON CONFLICT target) — the
+--     transaction_id unique index is partial (WHERE transaction_id IS NOT
+--     NULL), so ON CONFLICT must spell out the same predicate.
 
 create or replace function public.record_c2b_payment(
   p_transaction_id text,
@@ -102,7 +105,8 @@ begin
     0,
     'C2B confirmation received'
   )
-  on conflict (transaction_id) do nothing
+  on conflict (transaction_id) where transaction_id is not null
+  do nothing
   returning id into v_payment_id;
 
   if v_payment_id is null then
