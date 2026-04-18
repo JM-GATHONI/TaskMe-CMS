@@ -470,8 +470,20 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
 
 // --- INVOICE PREVIEW & SEND MODAL ---
 const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> = ({ invoice, onClose }) => {
-    const { systemSettings } = useData();
+    const { systemSettings, tenants, properties } = useData();
     const [linkCopied, setLinkCopied] = useState(false);
+
+    // Resolve the paybill account reference (unit tag) for this invoice's tenant.
+    // The tenant types this exact string at the M-Pesa Paybill account prompt;
+    // the C2B confirmation callback uses it to match payment → unit → tenant.
+    const invoiceTenant = tenants.find(t => t.name === invoice.tenantName);
+    const invoiceUnit = invoiceTenant
+        ? properties
+            .find(p => p.id === invoiceTenant.propertyId)
+            ?.units?.find(u => u.id === invoiceTenant.unitId)
+        : undefined;
+    const unitTag = invoiceUnit?.unitTag || invoiceTenant?.unit || '';
+    const paybill = systemSettings?.agencyPaybill;
     
     // Simulated Link Generation
     const paymentLink = `https://portal.taskme.re/pay/${invoice.id}`;
@@ -589,6 +601,34 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
                             </div>
                         </div>
                     </div>
+
+                    {/* Pay by M-Pesa Paybill — shows the Unit Tag as the account reference.
+                        The C2B confirmation callback matches this account back to the unit/tenant. */}
+                    {(paybill || unitTag) && (
+                        <div className="mt-8 border-t-2 border-dashed border-gray-300 pt-5">
+                            <p className="text-xs font-bold text-gray-500 uppercase mb-3">Pay by M-Pesa Paybill</p>
+                            <div className="bg-green-50 border-l-4 border-green-600 p-4 rounded-r-lg">
+                                <ol className="text-sm text-gray-800 space-y-2">
+                                    <li><span className="font-bold">1.</span> Go to M-PESA &rsaquo; Lipa na M-PESA &rsaquo; Pay Bill</li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="font-bold">2.</span>
+                                        <span>Business No:</span>
+                                        <span className="font-mono font-bold bg-white px-3 py-1 rounded border text-green-700 tracking-wider">{paybill || '— set agency paybill —'}</span>
+                                    </li>
+                                    <li className="flex items-center gap-2">
+                                        <span className="font-bold">3.</span>
+                                        <span>Account No:</span>
+                                        <span className="font-mono font-bold bg-white px-3 py-1 rounded border text-green-700 tracking-wider">{unitTag || '— set unit tag —'}</span>
+                                    </li>
+                                    <li><span className="font-bold">4.</span> Amount: <span className="font-bold">KES {Number(invoice.amount ?? 0).toLocaleString()}</span></li>
+                                    <li><span className="font-bold">5.</span> Enter your M-PESA PIN and confirm.</li>
+                                </ol>
+                                <p className="text-[11px] text-gray-500 mt-3 italic">
+                                    Important: the account number above must be entered exactly. Wrong accounts delay reconciliation.
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="p-4 bg-gray-50 border-t text-right">
                     <button onClick={onClose} className="px-6 py-2 bg-gray-800 text-white rounded hover:bg-black">Close Preview</button>

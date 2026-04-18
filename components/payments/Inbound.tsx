@@ -1,55 +1,61 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../context/DataContext';
 import { TenantProfile } from '../../types';
 import Icon from '../Icon';
+import { supabase } from '../../utils/supabaseClient';
+import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 
-// --- CARD STYLE CONSTANT ---
-const MAJOR_CARD_CLASSES = "relative bg-white rounded-2xl border-t-[8px] border-t-primary border-b-[4px] border-b-secondary border-x-[3px] border-x-secondary shadow-[inset_0_0_60px_-15px_rgba(157,31,21,0.15)] hover:shadow-lg transition-all duration-300 overflow-hidden";
-
-interface InboundCardProps {
-    title: string;
+// DB row shape from public.payments (selected columns).
+interface PaymentRow {
+    id: string;
+    created_at: string;
+    source: 'stk' | 'c2b' | 'manual';
+    status: string;
+    reconciliation_status: string;
     amount: number;
-    count: number;
-    icon: string;
-    onClick: () => void;
+    transaction_id: string | null;
+    checkout_request_id: string | null;
+    bill_ref_number: string | null;
+    msisdn: string | null;
+    phone: string | null;
+    first_name: string | null;
+    middle_name: string | null;
+    last_name: string | null;
+    matched_tenant_id: string | null;
+    matched_unit_id: string | null;
+    result_desc: string | null;
 }
 
-const PaymentCard: React.FC<InboundCardProps> = ({ title, amount, count, icon, onClick }) => (
-    <div 
-        className={`${MAJOR_CARD_CLASSES} p-6 cursor-pointer group`}
-        onClick={onClick}
-    >
-        <div className="relative z-10 flex justify-between items-start">
-            <div>
-                <p className="text-gray-500 text-xs font-bold uppercase tracking-wide group-hover:text-gray-700">{title}</p>
-                <h3 className="text-2xl font-extrabold text-gray-800 mt-2">KES {(amount/1000).toFixed(1)}k</h3>
-                <p className="text-xs text-gray-400 mt-1">{count} Transactions</p>
-            </div>
-            <div className="p-3 rounded-full bg-gray-50 text-gray-400 group-hover:bg-primary group-hover:text-white transition-colors">
-                <Icon name={icon} className="w-6 h-6" />
-            </div>
-        </div>
-        <div className="relative z-10 mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
-            <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
-                View Details <Icon name="chevron-down" className="w-3 h-3 ml-1 -rotate-90" />
-            </span>
-        </div>
-    </div>
-);
+type SourceFilter = 'all' | 'stk' | 'c2b' | 'manual';
+
+const SOURCE_META: Record<PaymentRow['source'], { label: string; className: string }> = {
+    stk:    { label: 'STK',    className: 'bg-green-100 text-green-700 border-green-200' },
+    c2b:    { label: 'C2B',    className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    manual: { label: 'Manual', className: 'bg-gray-100 text-gray-700 border-gray-200' },
+};
+
+function formatKes(amount: number) {
+    return `KES ${Number(amount ?? 0).toLocaleString()}`;
+}
+
+function senderName(row: PaymentRow): string {
+    const names = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ').trim();
+    return names || row.phone || row.msisdn || '—';
+}
 
 // --- MODALS (Payment Flow) ---
 
-const PaymentMethodModal: React.FC<{ 
-    onClose: () => void; 
+const PaymentMethodModal: React.FC<{
+    onClose: () => void;
     onSelectMethod: (method: 'M-Pesa' | 'Bank' | 'Cash', tenant: TenantProfile) => void;
     tenants: TenantProfile[];
 }> = ({ onClose, onSelectMethod, tenants }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTenant, setSelectedTenant] = useState<TenantProfile | null>(null);
 
-    const filteredTenants = tenants.filter(t => 
-        t.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const filteredTenants = tenants.filter(t =>
+        t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.unit.toLowerCase().includes(searchQuery.toLowerCase())
     ).slice(0, 5);
 
@@ -64,18 +70,18 @@ const PaymentMethodModal: React.FC<{
                 {!selectedTenant ? (
                     <div className="space-y-4">
                         <p className="text-sm text-gray-600">First, select the tenant paying.</p>
-                        <input 
+                        <input
                             autoFocus
-                            type="text" 
-                            placeholder="Search Tenant Name or Unit..." 
+                            type="text"
+                            placeholder="Search Tenant Name or Unit..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="w-full p-3 border rounded-lg focus:ring-primary focus:border-primary"
                         />
                         <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
                             {filteredTenants.map(t => (
-                                <div 
-                                    key={t.id} 
+                                <div
+                                    key={t.id}
                                     onClick={() => setSelectedTenant(t)}
                                     className="p-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                 >
@@ -99,7 +105,7 @@ const PaymentMethodModal: React.FC<{
                             </div>
                             <button onClick={() => setSelectedTenant(null)} className="text-xs text-blue-600 hover:underline">Change</button>
                         </div>
-                        
+
                         <p className="text-sm font-bold text-gray-700 mb-2">Select Payment Method</p>
                         <div className="grid grid-cols-1 gap-3">
                             <button onClick={() => onSelectMethod('M-Pesa', selectedTenant)} className="flex items-center p-4 border rounded-lg hover:bg-green-50 hover:border-green-300 transition-all group">
@@ -137,257 +143,187 @@ const PaymentMethodModal: React.FC<{
     );
 };
 
-const MpesaStkModal: React.FC<{ onClose: () => void; tenant: TenantProfile; onSuccess: (amount: number, code: string) => void }> = ({ onClose, tenant, onSuccess }) => {
-    const [step, setStep] = useState<'input' | 'processing' | 'success'>('input');
-    const [phone, setPhone] = useState(tenant.phone);
-    const [amount, setAmount] = useState(tenant.rentAmount.toString());
+// Real STK push modal: invokes the mpesa-stk-push edge function and polls
+// the payments row for completion. Replaces the previous mocked setTimeout flow.
+const MpesaStkModal: React.FC<{
+    onClose: () => void;
+    tenant: TenantProfile;
+    onComplete: () => void;
+}> = ({ onClose, tenant, onComplete }) => {
+    const [step, setStep] = useState<'input' | 'processing' | 'success' | 'failed'>('input');
+    const [phone, setPhone] = useState(tenant.phone || '');
+    const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
     const [txCode, setTxCode] = useState('');
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
 
-    const handlePay = () => {
-        if (!/^(2547|07)\d{8}$/.test(phone.replace(/\s/g, ''))) {
-            alert('Please enter a valid Kenyan mobile number');
+    useEffect(() => {
+        if (!checkoutRequestId) return;
+        return followStkPaymentCompletion(supabase, tenant.id, checkoutRequestId, (row) => {
+            const s = String(row.status ?? '');
+            if (s === 'completed') {
+                setTxCode(String(row.transaction_id ?? checkoutRequestId));
+                setStep('success');
+            } else if (s === 'failed' || s === 'cancelled' || s === 'timed_out') {
+                setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
+                setStep('failed');
+            }
+        });
+    }, [checkoutRequestId, tenant.id]);
+
+    const handlePay = async () => {
+        if (!/^(?:\+?254|0)7\d{8}$/.test(phone.replace(/\s/g, ''))) {
+            setErrorMsg('Please enter a valid Kenyan mobile number');
             return;
         }
-        
+        const amt = Math.round(Number(amount) || 0);
+        if (amt <= 0) {
+            setErrorMsg('Amount must be greater than zero');
+            return;
+        }
+        setErrorMsg(null);
         setStep('processing');
-        setTimeout(() => {
-            const randomCode = `QHS${Date.now().toString().slice(-10)}XT`;
-            setTxCode(randomCode);
-            setStep('success');
-        }, 3000);
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
+                body: { phone, amount: amt, leaseId: tenant.id },
+            });
+            if (error) throw error;
+            const id = String((data as any)?.checkoutRequestId ?? '').trim();
+            if (!id) throw new Error('CheckoutRequestID missing from STK response');
+            setCheckoutRequestId(id);
+        } catch (e: any) {
+            let msg = e?.message ?? 'Failed to initiate STK push.';
+            try {
+                const ctx = e?.context;
+                if (ctx && typeof ctx.json === 'function') {
+                    const body = await ctx.json();
+                    if (body?.error) msg = String(body.error);
+                }
+            } catch { /* swallow */ }
+            setErrorMsg(msg);
+            setStep('failed');
+        }
+    };
+
+    const handleFinish = () => {
+        onComplete();
     };
 
     return (
         <div className="fixed inset-0 bg-gray-900/60 z-[1400] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
-             <style>{`
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                .mpesa-card {
-                    background: white;
-                    border-radius: 16px;
-                    box-shadow: 0 8px 25px rgba(31, 159, 33, 0.15);
-                    padding: 30px;
-                    border: 1px solid #e0f0e0;
-                    width: 100%;
-                    max-width: 450px;
-                    position: relative;
-                }
-                
-                .mpesa-header {
-                    display: flex;
-                    align-items: center;
-                    margin-bottom: 25px;
-                    padding-bottom: 15px;
-                    border-bottom: 2px solid #e8f5e9;
-                }
-                
-                .mpesa-icon-box {
-                    width: 50px;
-                    height: 50px;
-                    background: #1F9F21;
-                    border-radius: 12px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin-right: 15px;
-                    box-shadow: 0 4px 10px rgba(31, 159, 33, 0.3);
-                }
-                
-                .mpesa-title {
-                    font-size: 22px;
-                    font-weight: 700;
-                    color: #1a365d;
-                }
-                
-                .mpesa-input-group {
-                    margin-bottom: 25px;
-                }
-                
-                .mpesa-label {
-                    display: block;
-                    margin-bottom: 8px;
-                    font-weight: 600;
-                    color: #2d3748;
-                    font-size: 15px;
-                }
-                
-                .mpesa-input {
-                    width: 100%;
-                    padding: 14px;
-                    border: 2px solid #c8e6c9;
-                    border-radius: 12px;
-                    font-size: 16px;
-                    transition: all 0.3s;
-                }
-                
-                .mpesa-input:focus {
-                    outline: none;
-                    border-color: #1F9F21;
-                    box-shadow: 0 0 0 3px rgba(31, 159, 33, 0.2);
-                }
-                
-                .mpesa-btn {
-                    background: linear-gradient(to right, #1F9F21, #177D1A);
-                    color: white;
-                    border: none;
-                    padding: 14px 20px;
-                    width: 100%;
-                    border-radius: 12px;
-                    font-size: 17px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    box-shadow: 0 4px 15px rgba(31, 159, 33, 0.4);
-                    position: relative;
-                    overflow: hidden;
-                }
-                
-                .mpesa-btn:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 6px 20px rgba(31, 159, 33, 0.6);
-                }
-                
-                .mpesa-spinner {
-                    width: 60px;
-                    height: 60px;
-                    border: 5px solid rgba(31, 159, 33, 0.2);
-                    border-top: 5px solid #1F9F21;
-                    border-radius: 50%;
-                    margin: 0 auto 25px;
-                    animation: spin 1s linear infinite;
-                }
-                
-                .mpesa-success-msg {
-                    background: #e8f5e9;
-                    border-left: 4px solid #1F9F21;
-                    padding: 20px;
-                    border-radius: 0 12px 12px 0;
-                    margin: 25px 0;
-                    font-size: 18px;
-                    color: #1b5e20;
-                    font-weight: 600;
-                    border: 1px solid #c8e6c9;
-                }
-                
-                .mpesa-tx-code {
-                    background: #f1fdf1;
-                    padding: 15px;
-                    border-radius: 10px;
-                    font-family: monospace;
-                    font-size: 18px;
-                    letter-spacing: 1px;
-                    margin-top: 20px;
-                    color: #177D1A;
-                    font-weight: 700;
-                    border: 1px dashed #1F9F21;
-                    text-align: center;
-                }
-                
-                .mpesa-logo {
-                    position: absolute;
-                    top: 20px;
-                    right: 20px;
-                    font-weight: 800;
-                    font-size: 24px;
-                    color: #1F9F21;
-                    text-shadow: 0 2px 4px rgba(31, 159, 33, 0.2);
-                }
-                
-                .mpesa-logo span {
-                    color: #177D1A;
-                }
-            `}</style>
-            
-            <div className="mpesa-card" onClick={e => e.stopPropagation()}>
-                <div className="mpesa-logo">M<span>p</span>esa</div>
-
-                {step === 'input' && (
-                    <>
-                        <div className="mpesa-header">
-                            <div className="mpesa-icon-box">
-                                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8C20.9998 6.89543 20.5611 5.8362 19.7804 5.05508C18.9997 4.27396 17.9408 3.83526 16.836 3.835H7.164C6.05925 3.83526 4.99999 4.27396 4.21922 5.05508C3.43845 5.8362 2.99975 6.89543 3 8V16C3.00026 17.1046 3.439 18.1641 4.22005 18.9453C5.00111 19.7266 6.06048 20.1654 7.165 20.166H16.836C17.9405 20.1654 19.0002 19.7266 19.7813 18.9453C20.5623 18.1641 21.001 17.1046 21 16Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M7.5 12H16.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M7.5 15H12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            </div>
-                            <h2 className="mpesa-title">Initiate STK Push</h2>
-                        </div>
-
-                        <p className="text-sm text-gray-500 mb-6 -mt-4">Requesting payment from {tenant.name}</p>
-
-                        <div className="mpesa-input-group">
-                            <label className="mpesa-label">Phone Number</label>
-                            <input 
-                                type="tel" 
-                                value={phone} 
-                                onChange={e => setPhone(e.target.value)} 
-                                className="mpesa-input"
-                            />
-                        </div>
-                        <div className="mpesa-input-group">
-                            <label className="mpesa-label">Amount (KES)</label>
-                            <input 
-                                type="number" 
-                                value={amount} 
-                                onChange={e => setAmount(e.target.value)} 
-                                className="mpesa-input"
-                            />
-                        </div>
-                        <div className="flex gap-3 pt-4">
-                            <button onClick={onClose} className="flex-1 py-3.5 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors">Cancel</button>
-                            <button onClick={handlePay} className="flex-[2] mpesa-btn">Send Request</button>
-                        </div>
-                    </>
-                )}
-
-                {(step === 'processing' || step === 'success') && (
-                    <div className="text-center pt-4">
-                        <div className="mpesa-header" style={{ justifyContent: 'center', borderBottom: 'none' }}>
-                            <div className="mpesa-icon-box">
-                                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M8 12L10.5 14.5L16 9" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            </div>
-                            <h2 className="mpesa-title">Payment Confirmation</h2>
-                        </div>
-
-                        {step === 'processing' && (
-                            <div className="py-6">
-                                <div className="mpesa-spinner"></div>
-                                <p className="text-xl font-semibold text-[#1a365d] mb-2">Sending Request...</p>
-                                <p className="text-[#4a904a] font-medium">Please ask the tenant to check their phone.</p>
-                            </div>
-                        )}
-
-                        {step === 'success' && (
-                            <div>
-                                <div className="mpesa-success-msg">
-                                    Payment Successful!
-                                </div>
-                                <div className="text-left">
-                                    <p className="text-[#4caf50] font-medium mb-1">Time:</p>
-                                    <p className="text-[#2d3748] font-medium mb-4">{new Date().toLocaleString()}</p>
-                                    <div className="mpesa-tx-code">
-                                        {txCode}
-                                    </div>
-                                </div>
-                                <button onClick={() => onSuccess(parseFloat(amount), txCode)} className="mpesa-btn mt-8">Finish</button>
-                            </div>
-                        )}
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[#e0f0e0]" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b-2 border-[#e8f5e9] flex items-center gap-3">
+                    <div className="w-12 h-12 bg-[#1F9F21] rounded-xl flex items-center justify-center shadow-lg shadow-[#1F9F21]/30">
+                        <Icon name="wallet" className="w-6 h-6 text-white" />
                     </div>
-                )}
+                    <div>
+                        <h2 className="text-xl font-bold text-[#1a365d]">M-Pesa STK Push</h2>
+                        <p className="text-sm text-gray-500">Requesting payment from {tenant.name}</p>
+                    </div>
+                </div>
+
+                <div className="p-6">
+                    {step === 'input' && (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Phone Number</label>
+                                <input
+                                    type="tel"
+                                    value={phone}
+                                    onChange={e => setPhone(e.target.value)}
+                                    className="w-full p-3 border-2 border-[#c8e6c9] rounded-xl text-base focus:outline-none focus:border-[#1F9F21]"
+                                    placeholder="07XXXXXXXX"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (KES)</label>
+                                <input
+                                    type="number"
+                                    value={amount}
+                                    onChange={e => setAmount(e.target.value)}
+                                    className="w-full p-3 border-2 border-[#c8e6c9] rounded-xl text-base focus:outline-none focus:border-[#1F9F21] font-bold"
+                                />
+                            </div>
+                            {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{errorMsg}</div>}
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200">Cancel</button>
+                                <button onClick={handlePay} className="flex-[2] py-3 bg-gradient-to-r from-[#1F9F21] to-[#177D1A] text-white font-bold rounded-xl shadow-lg hover:shadow-xl">Send Request</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 'processing' && (
+                        <div className="text-center py-6">
+                            <div className="w-16 h-16 border-4 border-[#1F9F21]/20 border-t-[#1F9F21] rounded-full animate-spin mx-auto mb-6"></div>
+                            <p className="text-xl font-semibold text-[#1a365d] mb-2">Sending Request…</p>
+                            <p className="text-[#4a904a] font-medium">Ask the tenant to check their phone for the STK prompt.</p>
+                        </div>
+                    )}
+
+                    {step === 'success' && (
+                        <div>
+                            <div className="bg-[#e8f5e9] border-l-4 border-[#1F9F21] p-4 rounded-r-xl mb-4">
+                                <p className="text-[#1b5e20] font-semibold">Payment received!</p>
+                            </div>
+                            <div className="bg-[#f1fdf1] p-3 rounded-lg border border-dashed border-[#1F9F21] text-center font-mono font-bold text-[#177D1A] mb-4">
+                                {txCode}
+                            </div>
+                            <button onClick={handleFinish} className="w-full py-3 bg-[#1F9F21] text-white font-bold rounded-xl shadow-lg">Done</button>
+                        </div>
+                    )}
+
+                    {step === 'failed' && (
+                        <div>
+                            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl mb-4">
+                                <p className="text-red-800 font-semibold">Payment did not complete.</p>
+                                {errorMsg && <p className="text-sm text-red-700 mt-1">{errorMsg}</p>}
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200">Close</button>
+                                <button onClick={() => { setStep('input'); setCheckoutRequestId(null); setErrorMsg(null); }} className="flex-1 py-3 bg-[#1F9F21] text-white font-bold rounded-xl">Try Again</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
 
-const ManualPaymentModal: React.FC<{ 
-    onClose: () => void; 
-    tenant: TenantProfile; 
+const ManualPaymentModal: React.FC<{
+    onClose: () => void;
+    tenant: TenantProfile;
     method: 'Bank' | 'Cash';
-    onSuccess: (amount: number, ref: string) => void 
-}> = ({ onClose, tenant, method, onSuccess }) => {
-    const [amount, setAmount] = useState(tenant.rentAmount.toString());
+    onComplete: () => void;
+}> = ({ onClose, tenant, method, onComplete }) => {
+    const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
     const [reference, setReference] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleSubmit = () => {
-        if (!amount || !reference) return alert("Amount and Reference are required.");
-        onSuccess(parseFloat(amount), reference);
+    const handleSubmit = async () => {
+        const amt = Number(amount);
+        if (!amount || !Number.isFinite(amt) || amt <= 0) { setErrorMsg('Amount is required'); return; }
+        if (!reference.trim()) { setErrorMsg('Reference is required'); return; }
+
+        setIsSaving(true);
+        setErrorMsg(null);
+        try {
+            const { error } = await supabase.rpc('record_manual_payment', {
+                p_tenant_id: tenant.id,
+                p_amount: amt,
+                p_reference: reference.trim(),
+                p_method: method,
+                p_date: date,
+            });
+            if (error) throw error;
+            onComplete();
+        } catch (e: any) {
+            setErrorMsg(e?.message ?? 'Failed to record payment');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -395,7 +331,7 @@ const ManualPaymentModal: React.FC<{
             <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Record {method} Payment</h3>
                 <p className="text-xs text-gray-500 mb-4">For Tenant: <strong>{tenant.name}</strong> ({tenant.unit})</p>
-                
+
                 <div className="space-y-3">
                     <div>
                         <label className="block text-xs font-bold text-gray-500 mb-1">Date Paid</label>
@@ -409,11 +345,14 @@ const ManualPaymentModal: React.FC<{
                         <label className="block text-xs font-bold text-gray-500 mb-1">Transaction Ref / Receipt No</label>
                         <input type="text" value={reference} onChange={e => setReference(e.target.value)} className="w-full p-2 border rounded" placeholder={method === 'Bank' ? 'e.g. FT2309...' : 'e.g. RCPT-001'}/>
                     </div>
+                    {errorMsg && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded p-2">{errorMsg}</div>}
                 </div>
 
                 <div className="flex justify-end gap-2 mt-6">
-                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-bold">Cancel</button>
-                    <button onClick={handleSubmit} className="px-4 py-2 bg-primary text-white rounded text-sm font-bold hover:bg-primary-dark">Record</button>
+                    <button onClick={onClose} disabled={isSaving} className="px-4 py-2 bg-gray-100 text-gray-700 rounded text-sm font-bold">Cancel</button>
+                    <button onClick={handleSubmit} disabled={isSaving} className="px-4 py-2 bg-primary text-white rounded text-sm font-bold hover:bg-primary-dark disabled:opacity-60">
+                        {isSaving ? 'Saving…' : 'Record'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -423,38 +362,84 @@ const ManualPaymentModal: React.FC<{
 // --- MAIN COMPONENT ---
 
 const Inbound: React.FC = () => {
-    const { tenants, updateTenant, addNotification } = useData();
+    const { tenants } = useData();
+    const [payments, setPayments] = useState<PaymentRow[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    
+    const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+
     // Payment Modal State
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [payStep, setPayStep] = useState<'method' | 'mpesa' | 'manual' | null>(null);
     const [selectedPayTenant, setSelectedPayTenant] = useState<TenantProfile | null>(null);
     const [selectedPayMethod, setSelectedPayMethod] = useState<'M-Pesa' | 'Bank' | 'Cash' | null>(null);
 
-    // Ensure modal closes if no step is defined
-    useEffect(() => {
-        if (isPayModalOpen && !payStep) {
-            setPayStep('method');
+    const loadPayments = useCallback(async () => {
+        setIsLoading(true);
+        setLoadError(null);
+        try {
+            const { data, error } = await supabase
+                .from('payments')
+                .select('id,created_at,source,status,reconciliation_status,amount,transaction_id,checkout_request_id,bill_ref_number,msisdn,phone,first_name,middle_name,last_name,matched_tenant_id,matched_unit_id,result_desc')
+                .eq('status', 'completed')
+                .order('created_at', { ascending: false })
+                .limit(500);
+            if (error) throw error;
+            setPayments((data ?? []) as PaymentRow[]);
+        } catch (e: any) {
+            setLoadError(e?.message ?? 'Failed to load payments');
+        } finally {
+            setIsLoading(false);
         }
-    }, [isPayModalOpen, payStep]);
+    }, []);
 
-    // Data filtering logic
+    useEffect(() => { loadPayments(); }, [loadPayments]);
+
+    // Realtime subscription — any new or updated payments row refreshes the list.
+    useEffect(() => {
+        const channel = supabase
+            .channel('inbound-payments')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+                loadPayments();
+            })
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [loadPayments]);
+
+    const tenantsById = useMemo(() => {
+        const m = new Map<string, TenantProfile>();
+        for (const t of tenants) m.set(t.id, t);
+        return m;
+    }, [tenants]);
+
     const filteredPayments = useMemo(() => {
-        return tenants.flatMap(t => t.paymentHistory.map(p => ({
-            ...p,
-            tenantName: t.name,
-            unit: t.unit,
-            property: t.propertyName
-        }))).filter(p => {
-             const matchesSearch = p.tenantName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                   p.reference.toLowerCase().includes(searchQuery.toLowerCase());
-             // Date filter logic (simplified)
-             return matchesSearch;
-        }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [tenants, searchQuery]);
+        const q = searchQuery.toLowerCase().trim();
+        return payments.filter(p => {
+            if (sourceFilter !== 'all' && p.source !== sourceFilter) return false;
+            if (!q) return true;
+            const matchedTenant = p.matched_tenant_id ? tenantsById.get(p.matched_tenant_id) : null;
+            const hay = [
+                matchedTenant?.name,
+                matchedTenant?.unit,
+                p.transaction_id,
+                p.checkout_request_id,
+                p.bill_ref_number,
+                p.msisdn,
+                p.phone,
+                senderName(p),
+            ].filter(Boolean).join(' ').toLowerCase();
+            return hay.includes(q);
+        });
+    }, [payments, searchQuery, sourceFilter, tenantsById]);
 
-    const totalCollected = filteredPayments.reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
+    const totalCollected = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const unmatchedC2B = useMemo(() => payments.filter(p => p.source === 'c2b' && !p.matched_tenant_id).length, [payments]);
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const todaysInflow = payments
+        .filter(p => p.created_at?.slice(0, 10) === todayIso)
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
 
     const handleOpenPaymentModal = () => {
         setPayStep('method');
@@ -469,52 +454,45 @@ const Inbound: React.FC = () => {
         else setPayStep('manual');
     };
 
-    const handlePaymentSuccess = (amount: number, ref: string) => {
-        if (selectedPayTenant) {
-            const newPayment = {
-                date: new Date().toISOString().split('T')[0],
-                amount: `KES ${amount.toLocaleString()}`,
-                status: 'Paid' as const,
-                method: selectedPayMethod || 'Manual',
-                reference: ref
-            };
-            const updatedHistory = [newPayment, ...(selectedPayTenant.paymentHistory || [])];
-            updateTenant(selectedPayTenant.id, { paymentHistory: updatedHistory });
-            
-            // Add Notification
-            addNotification({
-                id: `notif-${Date.now()}`,
-                title: 'Payment Received',
-                message: `Received KES ${amount.toLocaleString()} from ${selectedPayTenant.name}`,
-                date: new Date().toLocaleString(),
-                read: false,
-                type: 'Success',
-                recipientRole: 'All'
-            });
-        }
+    const handlePaymentComplete = () => {
         setIsPayModalOpen(false);
+        setPayStep(null);
+        setSelectedPayTenant(null);
+        setSelectedPayMethod(null);
+        loadPayments();
     };
 
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Inbound Payments</h1>
-                    <p className="text-lg text-gray-500 mt-1">Track and record rent collections and other income.</p>
+                    <p className="text-lg text-gray-500 mt-1">Every rent collection — STK, Paybill (C2B), and manual — in one ledger.</p>
                 </div>
-                <button 
-                    onClick={handleOpenPaymentModal}
-                    className="px-6 py-2 bg-primary text-white font-bold rounded-md hover:bg-primary-dark shadow-sm flex items-center"
-                >
-                    <Icon name="plus" className="w-5 h-5 mr-2" /> Record Payment
-                </button>
+                <div className="flex items-center gap-2">
+                    {unmatchedC2B > 0 && (
+                        <a
+                            href="#/payments/reconciliation"
+                            className="px-4 py-2 bg-amber-50 border-2 border-amber-300 text-amber-800 font-bold rounded-md hover:bg-amber-100 text-sm flex items-center"
+                        >
+                            <Icon name="info" className="w-4 h-4 mr-2" />
+                            {unmatchedC2B} unmatched C2B — reconcile
+                        </a>
+                    )}
+                    <button
+                        onClick={handleOpenPaymentModal}
+                        className="px-6 py-2 bg-primary text-white font-bold rounded-md hover:bg-primary-dark shadow-sm flex items-center"
+                    >
+                        <Icon name="plus" className="w-5 h-5 mr-2" /> Record Payment
+                    </button>
+                </div>
             </div>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-green-500">
                     <p className="text-gray-500 text-sm font-bold uppercase">Total Collected (View)</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES {totalCollected.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">{formatKes(totalCollected)}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-blue-500">
                      <p className="text-gray-500 text-sm font-bold uppercase">Transactions</p>
@@ -522,21 +500,32 @@ const Inbound: React.FC = () => {
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-purple-500">
                      <p className="text-gray-500 text-sm font-bold uppercase">Today's Inflow</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">KES 0</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-2">{formatKes(todaysInflow)}</p>
                 </div>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
                     <div className="relative w-full max-w-md">
-                        <input 
-                            type="text" 
-                            placeholder="Search payments..." 
+                        <input
+                            type="text"
+                            placeholder="Search by tenant, reference, phone, account…"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-primary focus:border-primary"
                         />
                         <div className="absolute left-3 top-2.5 text-gray-400"><Icon name="search" className="w-5 h-5" /></div>
+                    </div>
+                    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 text-xs font-bold">
+                        {(['all', 'stk', 'c2b', 'manual'] as SourceFilter[]).map(s => (
+                            <button
+                                key={s}
+                                onClick={() => setSourceFilter(s)}
+                                className={`px-3 py-1.5 rounded uppercase transition-colors ${sourceFilter === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                {s === 'all' ? 'All' : s.toUpperCase()}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
@@ -544,31 +533,63 @@ const Inbound: React.FC = () => {
                     <table className="min-w-full text-sm text-left">
                         <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
                             <tr>
-                                <th className="px-6 py-3">Date</th>
-                                <th className="px-6 py-3">Tenant</th>
-                                <th className="px-6 py-3">Reference</th>
-                                <th className="px-6 py-3">Method</th>
-                                <th className="px-6 py-3 text-right">Amount</th>
-                                <th className="px-6 py-3 text-center">Status</th>
+                                <th className="px-4 py-3">Date</th>
+                                <th className="px-4 py-3">Source</th>
+                                <th className="px-4 py-3">Tenant / Sender</th>
+                                <th className="px-4 py-3">Account Ref</th>
+                                <th className="px-4 py-3">Reference</th>
+                                <th className="px-4 py-3 text-right">Amount</th>
+                                <th className="px-4 py-3 text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {filteredPayments.map((p, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 text-gray-600">{p.date}</td>
-                                    <td className="px-6 py-4 font-medium text-gray-900">
-                                        {p.tenantName}
-                                        <div className="text-xs text-gray-500">{p.property} - {p.unit}</div>
-                                    </td>
-                                    <td className="px-6 py-4 font-mono text-xs text-gray-500">{p.reference}</td>
-                                    <td className="px-6 py-4 text-gray-600">{p.method}</td>
-                                    <td className="px-6 py-4 text-right font-bold text-green-600">{p.amount}</td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">Paid</span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredPayments.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">No payments found.</td></tr>}
+                            {isLoading && (
+                                <tr><td colSpan={7} className="p-8 text-center text-gray-400">Loading payments…</td></tr>
+                            )}
+                            {!isLoading && loadError && (
+                                <tr><td colSpan={7} className="p-8 text-center text-red-500">{loadError}</td></tr>
+                            )}
+                            {!isLoading && !loadError && filteredPayments.map((p) => {
+                                const meta = SOURCE_META[p.source];
+                                const matched = p.matched_tenant_id ? tenantsById.get(p.matched_tenant_id) : null;
+                                const isUnmatched = p.source === 'c2b' && !p.matched_tenant_id;
+                                return (
+                                    <tr key={p.id} className={`hover:bg-gray-50 ${isUnmatched ? 'bg-amber-50/40' : ''}`}>
+                                        <td className="px-4 py-3 text-gray-600">{new Date(p.created_at).toLocaleString()}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${meta.className}`}>
+                                                {meta.label}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {matched ? (
+                                                <>
+                                                    <p className="font-medium text-gray-900">{matched.name}</p>
+                                                    <p className="text-xs text-gray-500">{matched.propertyName} &bull; {matched.unit}</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p className="font-medium text-gray-800">{senderName(p)}</p>
+                                                    {isUnmatched && <p className="text-xs text-amber-700">Needs matching</p>}
+                                                </>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 font-mono text-xs uppercase tracking-wider text-gray-600">{p.bill_ref_number || '—'}</td>
+                                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.transaction_id || p.checkout_request_id || '—'}</td>
+                                        <td className="px-4 py-3 text-right font-bold text-green-600">{formatKes(Number(p.amount))}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            {isUnmatched ? (
+                                                <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold">Unmatched</span>
+                                            ) : (
+                                                <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold">Paid</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {!isLoading && !loadError && filteredPayments.length === 0 && (
+                                <tr><td colSpan={7} className="p-8 text-center text-gray-400">No payments found.</td></tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -578,25 +599,25 @@ const Inbound: React.FC = () => {
             {isPayModalOpen && (
                 <>
                     {payStep === 'method' && (
-                        <PaymentMethodModal 
+                        <PaymentMethodModal
                             tenants={tenants}
                             onClose={() => setIsPayModalOpen(false)}
                             onSelectMethod={handleMethodSelect}
                         />
                     )}
                     {payStep === 'mpesa' && selectedPayTenant && (
-                        <MpesaStkModal 
+                        <MpesaStkModal
                             tenant={selectedPayTenant}
                             onClose={() => setIsPayModalOpen(false)}
-                            onSuccess={handlePaymentSuccess}
+                            onComplete={handlePaymentComplete}
                         />
                     )}
-                    {payStep === 'manual' && selectedPayTenant && selectedPayMethod && (
+                    {payStep === 'manual' && selectedPayTenant && selectedPayMethod && selectedPayMethod !== 'M-Pesa' && (
                         <ManualPaymentModal
                             tenant={selectedPayTenant}
-                            method={selectedPayMethod as 'Bank' | 'Cash'}
+                            method={selectedPayMethod}
                             onClose={() => setIsPayModalOpen(false)}
-                            onSuccess={handlePaymentSuccess}
+                            onComplete={handlePaymentComplete}
                         />
                     )}
                 </>

@@ -139,7 +139,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
 };
 
 const TenantPortal: React.FC = () => {
-    const { tenants, updateTenant, tasks, addTask, messages, addMessage, currentUser, isDataLoading } = useData();
+    const { tenants, updateTenant, tasks, addTask, messages, addMessage, currentUser, isDataLoading, systemSettings, properties } = useData();
     const [requestType, setRequestType] = useState<'Maintenance' | 'General'>('Maintenance');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -250,6 +250,15 @@ const TenantPortal: React.FC = () => {
         : ((firstName ?? '').trim() ? (firstName as string).trim() : activeUser.name);
 
     const hasLease = !!activeUser.propertyName && Number(activeUser.rentAmount ?? 0) > 0;
+
+    // Resolve this tenant's Paybill account reference (unit tag). Tenants read
+    // this off their dashboard and type it at the M-Pesa Paybill account prompt
+    // when paying manually (C2B). The confirmation callback matches it back.
+    const myUnit = properties
+        .find(p => p.id === activeUser.propertyId)
+        ?.units?.find(u => u.id === activeUser.unitId);
+    const myUnitTag = myUnit?.unitTag || '';
+    const agencyPaybill = systemSettings?.agencyPaybill || '';
     const canPayNow = Number(balance ?? 0) > 0;
 
     return (
@@ -376,6 +385,53 @@ const TenantPortal: React.FC = () => {
                             </>
                         )}
                     </div>
+
+                    {/* Pay by M-Pesa Paybill — manual C2B route.
+                        The Business No + Account No below are what the tenant types at the
+                        Lipa na M-Pesa Pay Bill prompt. The C2B confirmation webhook uses
+                        the account (unit tag) to match payment → unit → tenant. */}
+                    {(agencyPaybill || myUnitTag) && (
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 p-6 rounded-xl shadow-sm">
+                            <div className="flex items-start justify-between gap-4 flex-wrap">
+                                <div className="flex-1 min-w-[220px]">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className="text-[#1F9F21] font-extrabold text-lg">M<span className="text-[#177D1A]">p</span>esa</span>
+                                        <span className="text-xs font-bold text-gray-500 uppercase">Pay via Paybill</span>
+                                    </div>
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Prefer to pay from the M-Pesa menu instead? Use the details below. The STK push above is faster, but both work.
+                                    </p>
+                                    <ol className="text-sm text-gray-800 space-y-2">
+                                        <li>1. M-PESA &rsaquo; Lipa na M-PESA &rsaquo; Pay Bill</li>
+                                        <li className="flex items-center gap-2 flex-wrap">
+                                            2. Business Number:
+                                            <span className="font-mono font-bold bg-white px-3 py-1 rounded border border-green-300 text-green-700 tracking-wider">
+                                                {agencyPaybill || '— not set —'}
+                                            </span>
+                                        </li>
+                                        <li className="flex items-center gap-2 flex-wrap">
+                                            3. Account Number:
+                                            <span className="font-mono font-bold bg-white px-3 py-1 rounded border border-green-300 text-green-700 tracking-wider uppercase">
+                                                {myUnitTag || '— not set —'}
+                                            </span>
+                                        </li>
+                                        <li>4. Amount: <span className="font-bold">KES {Number(balance ?? 0).toLocaleString()}</span></li>
+                                        <li>5. Enter M-PESA PIN and confirm.</li>
+                                    </ol>
+                                </div>
+                                <div className="bg-white rounded-lg border border-green-200 p-4 min-w-[180px]">
+                                    <p className="text-[11px] font-bold text-gray-500 uppercase mb-1">Your Account</p>
+                                    <p className="font-mono text-xl font-extrabold text-green-700 tracking-wider uppercase mb-1">{myUnitTag || '—'}</p>
+                                    <p className="text-xs text-gray-500">{activeUser.unit} &bull; {activeUser.propertyName}</p>
+                                </div>
+                            </div>
+                            {!myUnitTag && (
+                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-4">
+                                    Your unit has no Paybill account reference set yet. Contact your property manager — using the wrong account will delay reconciliation.
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -1,55 +1,95 @@
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
-import { ExternalTransaction, TenantProfile } from '../../types';
+import { TenantProfile } from '../../types';
+import { supabase } from '../../utils/supabaseClient';
 
-// Modal to match transaction to a tenant (External Matching)
-const MatchTransactionModal: React.FC<{ 
-    transaction: ExternalTransaction; 
-    onClose: () => void; 
-    onMatch: (tenantId: string) => void 
+// Row shape from public.payments for the External Unmatched queue —
+// C2B payments whose BillRefNumber did not resolve to an active tenant.
+interface UnmatchedPayment {
+    id: string;
+    created_at: string;
+    source: 'stk' | 'c2b' | 'manual';
+    amount: number;
+    transaction_id: string | null;
+    bill_ref_number: string | null;
+    msisdn: string | null;
+    phone: string | null;
+    first_name: string | null;
+    middle_name: string | null;
+    last_name: string | null;
+    result_desc: string | null;
+}
+
+function senderName(row: UnmatchedPayment): string {
+    const names = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ').trim();
+    return names || row.phone || row.msisdn || 'Unknown sender';
+}
+
+// Modal to assign an unmatched C2B payment to a tenant.
+const MatchTransactionModal: React.FC<{
+    transaction: UnmatchedPayment;
+    onClose: () => void;
+    onMatch: (tenantId: string) => Promise<void>;
 }> = ({ transaction, onClose, onMatch }) => {
     const { tenants } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTenantId, setSelectedTenantId] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    const filteredTenants = tenants.filter(t => 
-        t.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        t.unit.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredTenants = tenants.filter(t =>
+        t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.unit || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const handleMatch = async () => {
+        if (!selectedTenantId) return;
+        setIsSaving(true);
+        setErrorMsg(null);
+        try {
+            await onMatch(selectedTenantId);
+        } catch (e: any) {
+            setErrorMsg(e?.message ?? 'Failed to match payment');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 z-[1300] flex items-center justify-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold mb-4 text-gray-800">Match Transaction</h3>
-                
+                <h3 className="text-xl font-bold mb-4 text-gray-800">Match C2B Payment to Tenant</h3>
+
                 <div className="bg-gray-50 p-4 rounded-lg mb-4 text-sm">
                     <div className="grid grid-cols-2 gap-2">
-                        <span className="text-gray-500">Reference:</span>
-                        <span className="font-mono font-semibold">{transaction.transactionCode || transaction.reference}</span>
+                        <span className="text-gray-500">M-Pesa Receipt:</span>
+                        <span className="font-mono font-semibold">{transaction.transaction_id || '—'}</span>
                         <span className="text-gray-500">Amount:</span>
-                        <span className="font-bold text-green-600">KES {transaction.amount.toLocaleString()}</span>
+                        <span className="font-bold text-green-600">KES {Number(transaction.amount).toLocaleString()}</span>
                         <span className="text-gray-500">Date:</span>
-                        <span>{new Date(transaction.date).toLocaleString()}</span>
+                        <span>{new Date(transaction.created_at).toLocaleString()}</span>
+                        <span className="text-gray-500">Account Ref:</span>
+                        <span className="font-mono uppercase tracking-wider">{transaction.bill_ref_number || '—'}</span>
                         <span className="text-gray-500">Sender:</span>
-                        <span>{transaction.name || 'Unknown'}</span>
+                        <span>{senderName(transaction)}</span>
                     </div>
                 </div>
 
                 <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Search Tenant</label>
-                    <input 
+                    <input
                         type="text"
                         placeholder="Type name or unit..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         className="w-full p-2 border rounded-md mb-2"
                     />
-                    <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
+                    <div className="max-h-48 overflow-y-auto border rounded-md divide-y">
                         {filteredTenants.map(t => (
-                            <div 
-                                key={t.id} 
+                            <div
+                                key={t.id}
                                 onClick={() => setSelectedTenantId(t.id)}
                                 className={`p-2 cursor-pointer hover:bg-blue-50 flex justify-between items-center ${selectedTenantId === t.id ? 'bg-blue-100' : ''}`}
                             >
@@ -60,17 +100,22 @@ const MatchTransactionModal: React.FC<{
                                 {selectedTenantId === t.id && <Icon name="check" className="w-4 h-4 text-blue-600" />}
                             </div>
                         ))}
+                        {filteredTenants.length === 0 && (
+                            <p className="p-3 text-center text-xs text-gray-400">No tenants match your search.</p>
+                        )}
                     </div>
                 </div>
 
+                {errorMsg && <p className="text-sm text-red-600 mb-3">{errorMsg}</p>}
+
                 <div className="flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md text-gray-700 font-medium">Cancel</button>
-                    <button 
-                        onClick={() => selectedTenantId && onMatch(selectedTenantId)}
-                        disabled={!selectedTenantId}
+                    <button onClick={onClose} disabled={isSaving} className="px-4 py-2 bg-gray-200 rounded-md text-gray-700 font-medium">Cancel</button>
+                    <button
+                        onClick={handleMatch}
+                        disabled={!selectedTenantId || isSaving}
                         className="px-4 py-2 bg-primary text-white rounded-md font-medium disabled:opacity-50"
                     >
-                        Confirm Match
+                        {isSaving ? 'Matching…' : 'Confirm Match'}
                     </button>
                 </div>
             </div>
@@ -78,7 +123,7 @@ const MatchTransactionModal: React.FC<{
     );
 };
 
-// Modal for Internal Payment Correction (Moving from A to B)
+// Modal for Internal Payment Correction (Moving from A to B) — unchanged.
 const PaymentCorrectionModal: React.FC<{
     payment: { reference: string, amount: string, date: string };
     fromTenant: TenantProfile;
@@ -89,10 +134,9 @@ const PaymentCorrectionModal: React.FC<{
     const [searchQuery, setSearchQuery] = useState('');
     const [targetTenantId, setTargetTenantId] = useState('');
 
-    // Filter tenants excluding the source tenant
-    const targetTenants = tenants.filter(t => 
+    const targetTenants = tenants.filter(t =>
         t.id !== fromTenant.id &&
-        (t.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
          t.unit.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
@@ -119,7 +163,7 @@ const PaymentCorrectionModal: React.FC<{
 
                 <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Move To (Select Tenant)</label>
-                    <input 
+                    <input
                         type="text"
                         placeholder="Search target tenant..."
                         value={searchQuery}
@@ -128,8 +172,8 @@ const PaymentCorrectionModal: React.FC<{
                     />
                     <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
                         {targetTenants.map(t => (
-                            <div 
-                                key={t.id} 
+                            <div
+                                key={t.id}
                                 onClick={() => setTargetTenantId(t.id)}
                                 className={`p-2 cursor-pointer hover:bg-blue-50 flex justify-between items-center ${targetTenantId === t.id ? 'bg-blue-100' : ''}`}
                             >
@@ -145,7 +189,7 @@ const PaymentCorrectionModal: React.FC<{
 
                 <div className="flex justify-end space-x-3">
                     <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md text-gray-700 font-medium">Cancel</button>
-                    <button 
+                    <button
                         onClick={() => targetTenantId && onConfirmMove(targetTenantId)}
                         disabled={!targetTenantId}
                         className="px-4 py-2 bg-red-600 text-white rounded-md font-medium disabled:opacity-50 hover:bg-red-700"
@@ -158,39 +202,104 @@ const PaymentCorrectionModal: React.FC<{
     );
 };
 
+type VerifyResult = {
+    totalReturned?: number;
+    inserted?: number;
+    duplicates?: number;
+    matched?: number;
+    unmatched?: number;
+    error?: string;
+    hint?: string;
+};
+
 const Reconciliation: React.FC = () => {
-    const { externalTransactions, updateExternalTransaction, updateTenant, tenants, moveTenantPayment } = useData();
+    const { tenants, moveTenantPayment } = useData();
     const [activeTab, setActiveTab] = useState<'external' | 'internal'>('external');
-    
-    const [selectedTx, setSelectedTx] = useState<ExternalTransaction | null>(null);
-    
-    // State for internal correction
+
+    const [unmatched, setUnmatched] = useState<UnmatchedPayment[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [selectedTx, setSelectedTx] = useState<UnmatchedPayment | null>(null);
+
+    // Verify (Pull Transactions) state.
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+
+    // Internal correction state (unchanged).
     const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
     const [correctionData, setCorrectionData] = useState<{ payment: any, fromTenant: TenantProfile } | null>(null);
 
-    const unmatchedTransactions = externalTransactions.filter(t => !t.matched);
-
-    const handleMatch = (tenantId: string) => {
-        if (!selectedTx) return;
-        
-        // 1. Update External Tx
-        updateExternalTransaction(selectedTx.id, { matched: true, matchedTenantId: tenantId });
-        
-        // 2. Add payment to Tenant History
-        const tenant = tenants.find(t => t.id === tenantId);
-        if (tenant) {
-            const newPayment = {
-                date: selectedTx.date,
-                amount: `KES ${selectedTx.amount.toLocaleString()}`,
-                status: 'Paid' as const,
-                method: selectedTx.type,
-                reference: selectedTx.transactionCode || selectedTx.reference
-            };
-            updateTenant(tenantId, { paymentHistory: [newPayment, ...tenant.paymentHistory] });
+    const loadUnmatched = useCallback(async () => {
+        setIsLoading(true);
+        setLoadError(null);
+        try {
+            const { data, error } = await supabase
+                .from('payments')
+                .select('id,created_at,source,amount,transaction_id,bill_ref_number,msisdn,phone,first_name,middle_name,last_name,result_desc')
+                .eq('source', 'c2b')
+                .is('matched_tenant_id', null)
+                .order('created_at', { ascending: false })
+                .limit(200);
+            if (error) throw error;
+            setUnmatched((data ?? []) as UnmatchedPayment[]);
+        } catch (e: any) {
+            setLoadError(e?.message ?? 'Failed to load unmatched payments');
+        } finally {
+            setIsLoading(false);
         }
+    }, []);
 
+    useEffect(() => { loadUnmatched(); }, [loadUnmatched]);
+
+    // Realtime — refresh the queue whenever a row changes.
+    useEffect(() => {
+        const channel = supabase
+            .channel('reconciliation-unmatched')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+                loadUnmatched();
+            })
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [loadUnmatched]);
+
+    const handleMatch = async (tenantId: string) => {
+        if (!selectedTx) return;
+        const { error } = await supabase.rpc('match_c2b_payment_to_tenant', {
+            p_payment_id: selectedTx.id,
+            p_tenant_id: tenantId,
+        });
+        if (error) throw new Error(error.message);
         setSelectedTx(null);
-        alert("Transaction matched and recorded to tenant ledger.");
+        loadUnmatched();
+    };
+
+    const handleVerify = async () => {
+        setIsVerifying(true);
+        setVerifyResult(null);
+        try {
+            const { data, error } = await supabase.functions.invoke('mpesa-pull-transactions', {
+                body: { hoursBack: 48 },
+            });
+            if (error) {
+                let msg = error.message;
+                try {
+                    const ctx = (error as any)?.context;
+                    if (ctx && typeof ctx.json === 'function') {
+                        const body = await ctx.json();
+                        if (body?.error) msg = String(body.error);
+                        if (body?.hint) msg += ` — ${body.hint}`;
+                    }
+                } catch { /* swallow */ }
+                setVerifyResult({ error: msg });
+                return;
+            }
+            setVerifyResult(data as VerifyResult);
+            loadUnmatched();
+        } catch (e: any) {
+            setVerifyResult({ error: e?.message ?? 'Verify failed' });
+        } finally {
+            setIsVerifying(false);
+        }
     };
 
     const handleOpenCorrection = (tenant: TenantProfile, payment: any) => {
@@ -204,26 +313,33 @@ const Reconciliation: React.FC = () => {
             moveTenantPayment(fromTenant.id, toTenantId, payment.reference);
             setCorrectionModalOpen(false);
             setCorrectionData(null);
-            alert("Payment successfully moved.");
+            alert('Payment successfully moved.');
         }
     };
+
+    const internalLedgerRows = useMemo(() => {
+        return tenants
+            .flatMap(t => (t.paymentHistory ?? []).map(p => ({ ...p, tenant: t })))
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 20);
+    }, [tenants]);
 
     return (
         <div className="space-y-8">
             <div>
                 <h1 className="text-3xl font-bold text-gray-800">Reconciliation</h1>
-                <p className="text-lg text-gray-500 mt-1">Match external bank/M-Pesa statements and correct tenant ledger entries.</p>
+                <p className="text-lg text-gray-500 mt-1">Match unmatched Paybill payments and correct tenant ledger entries.</p>
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="flex border-b mb-6">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('external')}
                         className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors ${activeTab === 'external' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
-                        External Unmatched ({unmatchedTransactions.length})
+                        External Unmatched ({unmatched.length})
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('internal')}
                         className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors ${activeTab === 'internal' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                     >
@@ -233,30 +349,65 @@ const Reconciliation: React.FC = () => {
 
                 {activeTab === 'external' && (
                     <div>
-                        <p className="text-sm text-gray-500 mb-4">Incoming funds not yet assigned to a tenant ledger.</p>
+                        <div className="flex justify-between items-start flex-wrap gap-3 mb-4">
+                            <div>
+                                <p className="text-sm text-gray-500">
+                                    C2B payments whose account reference (BillRefNumber) did not resolve to a unit. Match each one to the correct tenant; it will be added to their ledger.
+                                </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                                <button
+                                    onClick={handleVerify}
+                                    disabled={isVerifying}
+                                    className="px-4 py-2 bg-gray-900 text-white font-bold text-sm rounded-md hover:bg-black disabled:opacity-60 flex items-center gap-2"
+                                    title="Pulls the last 48 hours of C2B transactions from Safaricom and inserts any we are missing. Safe to run anytime — duplicates are ignored."
+                                >
+                                    <Icon name="refresh" className="w-4 h-4" />
+                                    {isVerifying ? 'Verifying…' : 'Verify with Safaricom'}
+                                </button>
+                                {verifyResult && (
+                                    verifyResult.error ? (
+                                        <p className="text-xs text-red-600 max-w-xs text-right">{verifyResult.error}</p>
+                                    ) : (
+                                        <p className="text-xs text-gray-600 max-w-xs text-right">
+                                            Pulled {verifyResult.totalReturned ?? 0} · new {verifyResult.inserted ?? 0} ·
+                                            duplicates {verifyResult.duplicates ?? 0} · matched {verifyResult.matched ?? 0} ·
+                                            unmatched {verifyResult.unmatched ?? 0}
+                                        </p>
+                                    )
+                                )}
+                            </div>
+                        </div>
+
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-500 font-bold uppercase">
                                     <tr>
                                         <th className="px-4 py-3">Date</th>
-                                        <th className="px-4 py-3">Ref / Code</th>
-                                        <th className="px-4 py-3">Details</th>
+                                        <th className="px-4 py-3">M-Pesa Receipt</th>
+                                        <th className="px-4 py-3">Account Ref</th>
+                                        <th className="px-4 py-3">Sender</th>
                                         <th className="px-4 py-3 text-right">Amount</th>
                                         <th className="px-4 py-3 text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {unmatchedTransactions.map(tx => (
+                                    {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>}
+                                    {!isLoading && loadError && <tr><td colSpan={6} className="px-4 py-8 text-center text-red-500">{loadError}</td></tr>}
+                                    {!isLoading && !loadError && unmatched.map(tx => (
                                         <tr key={tx.id} className="hover:bg-gray-50">
-                                            <td className="px-4 py-3 text-gray-600">{tx.date}</td>
-                                            <td className="px-4 py-3 font-mono text-xs">{tx.transactionCode || tx.reference}</td>
-                                            <td className="px-4 py-3">
-                                                <p className="text-gray-800 font-medium">{tx.name || 'Unknown Sender'}</p>
-                                                <p className="text-xs text-gray-500">{tx.account} • {tx.type}</p>
+                                            <td className="px-4 py-3 text-gray-600">{new Date(tx.created_at).toLocaleString()}</td>
+                                            <td className="px-4 py-3 font-mono text-xs">{tx.transaction_id || '—'}</td>
+                                            <td className="px-4 py-3 font-mono text-xs uppercase tracking-wider">
+                                                {tx.bill_ref_number || <span className="text-gray-400">(blank)</span>}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-bold text-green-600">KES {tx.amount.toLocaleString()}</td>
+                                            <td className="px-4 py-3">
+                                                <p className="text-gray-800 font-medium">{senderName(tx)}</p>
+                                                <p className="text-xs text-gray-500">{tx.msisdn || tx.phone || ''}</p>
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-bold text-green-600">KES {Number(tx.amount).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right">
-                                                <button 
+                                                <button
                                                     onClick={() => setSelectedTx(tx)}
                                                     className="px-3 py-1.5 bg-blue-50 text-blue-700 font-bold text-xs rounded hover:bg-blue-100"
                                                 >
@@ -265,8 +416,8 @@ const Reconciliation: React.FC = () => {
                                             </td>
                                         </tr>
                                     ))}
-                                    {unmatchedTransactions.length === 0 && (
-                                        <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">All external transactions are matched.</td></tr>
+                                    {!isLoading && !loadError && unmatched.length === 0 && (
+                                        <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">All Paybill payments are matched.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -290,7 +441,7 @@ const Reconciliation: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {tenants.flatMap(t => t.paymentHistory.map(p => ({ ...p, tenant: t }))).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 20).map((item, idx) => (
+                                    {internalLedgerRows.map((item, idx) => (
                                         <tr key={`${item.tenant.id}-${idx}`} className="hover:bg-gray-50">
                                             <td className="px-4 py-3 text-gray-600">{item.date}</td>
                                             <td className="px-4 py-3 font-medium text-gray-900">{item.tenant.name}</td>
@@ -298,7 +449,7 @@ const Reconciliation: React.FC = () => {
                                             <td className="px-4 py-3 font-mono text-xs">{item.reference}</td>
                                             <td className="px-4 py-3 text-right font-bold text-green-600">{item.amount}</td>
                                             <td className="px-4 py-3 text-right">
-                                                <button 
+                                                <button
                                                     onClick={() => handleOpenCorrection(item.tenant, item)}
                                                     className="text-xs text-red-600 font-bold hover:underline"
                                                 >
@@ -307,6 +458,9 @@ const Reconciliation: React.FC = () => {
                                             </td>
                                         </tr>
                                     ))}
+                                    {internalLedgerRows.length === 0 && (
+                                        <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No recent payments.</td></tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -315,13 +469,13 @@ const Reconciliation: React.FC = () => {
             </div>
 
             {selectedTx && <MatchTransactionModal transaction={selectedTx} onClose={() => setSelectedTx(null)} onMatch={handleMatch} />}
-            
+
             {correctionModalOpen && correctionData && (
-                <PaymentCorrectionModal 
-                    payment={{ 
-                        reference: correctionData.payment.reference, 
-                        amount: correctionData.payment.amount, 
-                        date: correctionData.payment.date 
+                <PaymentCorrectionModal
+                    payment={{
+                        reference: correctionData.payment.reference,
+                        amount: correctionData.payment.amount,
+                        date: correctionData.payment.date
                     }}
                     fromTenant={correctionData.fromTenant}
                     onClose={() => setCorrectionModalOpen(false)}
