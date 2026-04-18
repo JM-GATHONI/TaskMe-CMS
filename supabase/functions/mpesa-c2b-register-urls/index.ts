@@ -94,9 +94,9 @@ Deno.serve(async (req) => {
 
     // Derive the two public URLs from our Supabase project.
     const confirmationUrl = Deno.env.get("MPESA_C2B_CONFIRMATION_URL")
-      ?? `${SUPABASE_URL}/functions/v1/mpesa-c2b-confirmation`;
+      ?? `${SUPABASE_URL}/functions/v1/c2b-confirmation`;
     const validationUrl = Deno.env.get("MPESA_C2B_VALIDATION_URL")
-      ?? `${SUPABASE_URL}/functions/v1/mpesa-c2b-validation`;
+      ?? `${SUPABASE_URL}/functions/v1/c2b-validation`;
 
     // ResponseType: 'Completed' = if Safaricom cannot reach the validation
     // URL, treat the transaction as accepted. 'Cancelled' = treat as rejected.

@@ -1,4 +1,4 @@
-// supabase/functions/mpesa-c2b-validation/index.ts
+// supabase/functions/c2b-validation/index.ts
 //
 // C2B Validation URL.
 //
@@ -66,14 +66,14 @@ Deno.serve(async (req) => {
   if (verifyIp) {
     const ip = resolveCallerIp(req);
     if (!ip || !SAFARICOM_IPS.has(ip)) {
-      console.warn(`[mpesa-c2b-validation] rejected IP: ${ip}`);
+      console.warn(`[c2b-validation] rejected IP: ${ip}`);
       // Respond 200 with Rejected so Safaricom does not retry; we just drop it.
       return json(200, { ResultCode: "C2B00016", ResultDesc: "Rejected" });
     }
   }
 
   const payload = await req.json().catch(() => null) as Record<string, unknown> | null;
-  console.log("[mpesa-c2b-validation] payload:", JSON.stringify(payload));
+  console.log("[c2b-validation] payload:", JSON.stringify(payload));
 
   // Best-effort: log unknown bill refs to help admins spot typos in customer
   // messaging. This is non-blocking — we still accept the payment.
@@ -86,12 +86,12 @@ Deno.serve(async (req) => {
         const { data } = await sb.rpc("find_active_tenant_by_unit_tag", { p_tag: billRef });
         const match = Array.isArray(data) ? data[0] : data;
         if (!match?.unit_id) {
-          console.warn(`[mpesa-c2b-validation] no unit matches BillRefNumber="${billRef}" — will land in External Unmatched`);
+          console.warn(`[c2b-validation] no unit matches BillRefNumber="${billRef}" — will land in External Unmatched`);
         }
       }
     }
   } catch (e) {
-    console.warn("[mpesa-c2b-validation] lookup warning:", (e as Error)?.message);
+    console.warn("[c2b-validation] lookup warning:", (e as Error)?.message);
   }
 
   return json(200, { ResultCode: 0, ResultDesc: "Accepted" });
