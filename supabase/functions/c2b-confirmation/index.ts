@@ -1,4 +1,4 @@
-// supabase/functions/mpesa-c2b-confirmation/index.ts
+// supabase/functions/c2b-confirmation/index.ts
 //
 // C2B Confirmation URL — called by Safaricom AFTER the customer has been
 // debited. This is the authoritative event that a payment happened.
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
   if (verifyIp) {
     const ip = resolveCallerIp(req);
     if (!ip || !SAFARICOM_IPS.has(ip)) {
-      console.warn(`[mpesa-c2b-confirmation] rejected IP: ${ip}`);
+      console.warn(`[c2b-confirmation] rejected IP: ${ip}`);
       // Return 200 ok so Safaricom does not retry a request we intentionally dropped.
       return json(200, { ResultCode: 0, ResultDesc: "Ignored" });
     }
@@ -89,19 +89,19 @@ Deno.serve(async (req) => {
 
   const payload = await req.json().catch(() => null) as C2BPayload | null;
   if (!payload) {
-    console.warn("[mpesa-c2b-confirmation] invalid JSON body");
+    console.warn("[c2b-confirmation] invalid JSON body");
     return json(200, { ResultCode: 0, ResultDesc: "Bad payload ignored" });
   }
 
   const transId = String(payload.TransID ?? "").trim();
   if (!transId) {
-    console.warn("[mpesa-c2b-confirmation] payload missing TransID:", JSON.stringify(payload));
+    console.warn("[c2b-confirmation] payload missing TransID:", JSON.stringify(payload));
     return json(200, { ResultCode: 0, ResultDesc: "Missing TransID ignored" });
   }
 
   const amount = Number(payload.TransAmount);
   if (!Number.isFinite(amount) || amount <= 0) {
-    console.warn(`[mpesa-c2b-confirmation] invalid TransAmount for ${transId}:`, payload.TransAmount);
+    console.warn(`[c2b-confirmation] invalid TransAmount for ${transId}:`, payload.TransAmount);
     return json(200, { ResultCode: 0, ResultDesc: "Invalid amount ignored" });
   }
 
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
 
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = Deno.env.toObject();
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("[mpesa-c2b-confirmation] Supabase env vars missing");
+    console.error("[c2b-confirmation] Supabase env vars missing");
     // Return 500 so Safaricom retries — a genuine server misconfig, not a duplicate.
     return json(500, { ResultCode: 1, ResultDesc: "Server misconfigured" });
   }
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
-      console.error(`[mpesa-c2b-confirmation] RPC error for ${transId}:`, error.message);
+      console.error(`[c2b-confirmation] RPC error for ${transId}:`, error.message);
       // Return 500 so Safaricom retries — transient DB error.
       return json(500, { ResultCode: 1, ResultDesc: "DB error" });
     }
@@ -150,13 +150,13 @@ Deno.serve(async (req) => {
     const wasDuplicate = !!row?.was_duplicate;
 
     console.log(
-      `[mpesa-c2b-confirmation] ${transId} amount=${amount} billRef="${billRef}" ` +
+      `[c2b-confirmation] ${transId} amount=${amount} billRef="${billRef}" ` +
       `matched=${matchedTenantId ? "yes" : "no"} duplicate=${wasDuplicate}`,
     );
 
     return json(200, { ResultCode: 0, ResultDesc: "Accepted" });
   } catch (e) {
-    console.error(`[mpesa-c2b-confirmation] unhandled error for ${transId}:`, (e as Error)?.message);
+    console.error(`[c2b-confirmation] unhandled error for ${transId}:`, (e as Error)?.message);
     return json(500, { ResultCode: 1, ResultDesc: "Internal server error" });
   }
 });
