@@ -65,30 +65,39 @@ security definer
 set search_path = public
 as $$
 declare
-  v_existing record;
+  v_existing_id uuid;
+  v_existing_tenant_id text;
+  v_existing_unit_id text;
   v_payment_id uuid;
   v_match record;
   v_status text;
   v_created_at timestamptz := now();
   v_twin_id uuid;
+  v_resolved_tenant_id text;
+  v_resolved_unit_id text;
 begin
   -- Idempotency / STK-pairing: a row with the same transaction_id might
   -- already exist either because this is a duplicate Safaricom retry OR
   -- because mpesa-callback wrote the receipt number onto a pending STK
   -- row first. Either way, we don't want a second row.
-  select id, matched_tenant_id, matched_unit_id, source
-    into v_existing
+  select id, matched_tenant_id, matched_unit_id
+    into v_existing_id, v_existing_tenant_id, v_existing_unit_id
   from public.payments
   where transaction_id = p_transaction_id
   limit 1;
 
-  if v_existing.id is not null then
+  if v_existing_id is not null then
     -- Attempt to resolve the bill ref match so the tenant ledger gets
     -- updated even if the preceding STK row had no matched_tenant (e.g.
     -- AccountReference wasn't the unit tag).
     select *
       into v_match
     from public.find_active_tenant_by_unit_tag(p_bill_ref);
+
+    -- Resolve to plain scalars — record-field references inside NOT EXISTS
+    -- subqueries are misinterpreted as table names by PostgreSQL.
+    v_resolved_tenant_id := coalesce(v_existing_tenant_id, v_match.tenant_id);
+    v_resolved_unit_id   := coalesce(v_existing_unit_id,   v_match.unit_id);
 
     -- Mirror C2B metadata onto the STK row — this preserves BillRefNumber,
     -- names, business_short_code for the reconciliation page without
@@ -104,21 +113,22 @@ begin
            matched_tenant_id = coalesce(matched_tenant_id, v_match.tenant_id),
            matched_unit_id = coalesce(matched_unit_id, v_match.unit_id),
            reconciliation_status = case
-             when coalesce(matched_tenant_id, v_match.tenant_id) is not null then 'reconciled'
+             when v_resolved_tenant_id is not null then 'reconciled'
              else coalesce(reconciliation_status, 'unreconciled')
            end,
            raw_payload = coalesce(raw_payload, p_raw),
            updated_at = now()
-     where id = v_existing.id;
+     where id = v_existing_id;
 
     -- Append to tenant ledger only if it wasn't already recorded by
     -- the STK callback path (legacy callback does not update the
     -- tenant ledger — that's done here via the C2B hook).
-    if coalesce(v_existing.matched_tenant_id, v_match.tenant_id) is not null
+    if v_resolved_tenant_id is not null
        and not exists (
-         select 1 from public.tenants t,
+         select 1
+           from public.tenants t,
                 jsonb_array_elements(coalesce(t.payment_history, '[]'::jsonb)) ph
-          where t.id = coalesce(v_existing.matched_tenant_id, v_match.tenant_id)
+          where t.id = v_resolved_tenant_id
             and ph->>'reference' = p_transaction_id
        )
     then
@@ -135,13 +145,13 @@ begin
                ) || coalesce(payment_history, '[]'::jsonb)
              ),
              updated_at = now()
-       where id = coalesce(v_existing.matched_tenant_id, v_match.tenant_id);
+       where id = v_resolved_tenant_id;
     end if;
 
-    payment_id := v_existing.id;
+    payment_id := v_existing_id;
     was_duplicate := true;
-    matched_tenant_id := coalesce(v_existing.matched_tenant_id, v_match.tenant_id);
-    matched_unit_id := coalesce(v_existing.matched_unit_id, v_match.unit_id);
+    matched_tenant_id := v_resolved_tenant_id;
+    matched_unit_id   := v_resolved_unit_id;
     return next;
     return;
   end if;
