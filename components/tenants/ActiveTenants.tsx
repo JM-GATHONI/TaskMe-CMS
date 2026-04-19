@@ -2290,20 +2290,27 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <tr>
                                 <th className="px-4 py-2">Date</th>
                                 <th className="px-4 py-2">Type</th>
+                                <th className="px-4 py-2">Txn Code</th>
                                 <th className="px-4 py-2 text-right">Amount</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {(tenant.paymentHistory || []).map((pay, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-gray-600">{pay.date}</td>
-                                    <td className="px-4 py-3 text-gray-600">{pay.method}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-800">{pay.amount}</td>
-                                </tr>
-                            ))}
+                            {(tenant.paymentHistory || []).map((pay, idx) => {
+                                const ref = String((pay as any).reference ?? '').trim();
+                                return (
+                                    <tr key={idx} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-gray-600">{pay.date}</td>
+                                        <td className="px-4 py-3 text-gray-600">{pay.method}</td>
+                                        <td className="px-4 py-3 font-mono text-xs text-gray-700">
+                                            {ref || <span className="text-gray-300">—</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-gray-800">{pay.amount}</td>
+                                    </tr>
+                                );
+                            })}
                             {(tenant.paymentHistory || []).length === 0 && (
                                 <tr>
-                                    <td colSpan={3} className="px-4 py-6 text-center text-gray-400">No payment history found.</td>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400">No payment history found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2662,20 +2669,14 @@ const ActiveTenants: React.FC = () => {
                         return Math.max(0, expected - Number(tenant.depositPaid || 0));
                     })();
 
-                    const isNewTenant = isAllocated && depositOwed > 0;
-
-                    // Label hint for the card
-                    const totalDueLabel = (() => {
-                        if (!isNewTenant) return 'Total Due';
-                        if (tenant.proratedDeposit?.enabled) return 'Rent + Installment';
-                        return 'Total Due (Rent+Dep)';
-                    })();
-
-                    // New tenant: rent + deposit bundle; Old tenant: rent + bills + fines + late fees
+                    // Card "Total Due" should match the tenant-detail "Total Invoiced"
+                    // line: everything they owe right now — rent, deposit/installment,
+                    // outstanding bills, fines, and any accrued late fees. Previously
+                    // the card switched to a rent-only view once the deposit was paid,
+                    // which left other outstanding bills off the headline number.
+                    const totalDueLabel = 'Total Due';
                     const totalDue = !isAllocated ? 0
-                        : isNewTenant
-                            ? rentDue + depositOwed
-                            : rentDue + pendingBills + pendingFines + automatedLateFine;
+                        : rentDue + depositOwed + pendingBills + pendingFines + automatedLateFine;
 
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);
