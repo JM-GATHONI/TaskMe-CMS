@@ -7,6 +7,7 @@ import { uploadToBucket } from '../../utils/supabaseStorage';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
+import { canonicalizePhone, digitsOnly } from '../../utils/phone';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -213,7 +214,12 @@ export const ApplicationFormModal: React.FC<{
             unit: unit?.unitNumber,
             rentAmount: rent,
             depositMonths,
-            depositPaid: prev.depositExempt ? 0 : rent * depositMonths,
+            // Expected deposit — drives invoicing and the "Fully Paid" check.
+            // depositPaid stays at whatever the tenant has actually paid
+            // (default 0); it must not be pre-filled to the full amount or
+            // the card will falsely show the deposit as settled.
+            depositExpected: prev.depositExempt ? 0 : rent * depositMonths,
+            depositPaid: prev.depositPaid && Number(prev.depositPaid) > 0 ? prev.depositPaid : 0,
         }));
     };
 
@@ -221,6 +227,19 @@ export const ApplicationFormModal: React.FC<{
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    // Digit-only guard for phone/ID fields. Strips anything non-numeric.
+    const handleDigitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: digitsOnly(value) }));
+    };
+
+    const STANDARD_RELATIONSHIPS = ['Spouse', 'Parent', 'Sibling', 'Child'];
+    const currentRelationship = String((formData as any).nextOfKinRelationship ?? '');
+    const isCustomRelationship = currentRelationship.length > 0 && !STANDARD_RELATIONSHIPS.includes(currentRelationship);
+    // Tracks whether the "Other" option is active so the free-text box appears
+    // even before the user has typed a value.
+    const [showOtherRelationship, setShowOtherRelationship] = useState<boolean>(isCustomRelationship);
 
     const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -281,22 +300,21 @@ export const ApplicationFormModal: React.FC<{
             let calculated = 0;
             let note = "";
 
-            if (day < 10) {
-                // 1st to 9th: Full Rent
+            if (day <= 9) {
+                // 1st to 9th: Full Rent + Deposit
                 calculated = monthlyRent;
-                note = "Full month rent charged (Joined 1st-9th)";
-            } else if (day <= 25) {
-                // 10th to 25th: Prorated
-                // Days remaining inclusive
-                const daysRemaining = Math.max(0, 30 - day + 1); 
+                note = "Full month rent charged (joined 1st-9th)";
+            } else if (day <= 24) {
+                // 10th to 24th: Prorated rent + Deposit
+                const daysRemaining = Math.max(0, 30 - day + 1);
                 calculated = (monthlyRent / 30) * daysRemaining;
-                note = `Prorated: ${daysRemaining} days remaining`;
+                note = `Prorated: ${daysRemaining} days remaining (joined 10th-24th)`;
             } else {
-                // After 25th: Prorated + Next Month
+                // 25th onward: Prorated remainder + full next month's rent + Deposit
                 const daysRemaining = Math.max(0, 30 - day + 1);
                 const prorated = (monthlyRent / 30) * daysRemaining;
                 calculated = prorated + monthlyRent;
-                note = "Prorated days + Next Month's Rent (Joined after 25th)";
+                note = "Prorated days + next month's rent (joined 25th+)";
             }
             
             setRentDue(Math.round(calculated));
@@ -330,6 +348,25 @@ export const ApplicationFormModal: React.FC<{
         const resolvedRent = activeUnitResolved?.rent ?? activePropertyResolved?.defaultMonthlyRent ?? formData.rentAmount ?? 0;
 
         const payload = leaseSigned ? ensureLeaseDates(formData) : formData;
+
+        // Status lifecycle for Tenant records:
+        //   • Existing Active/Overdue/Notice/etc. tenants keep their status.
+        //   • New tenant with unit allocated but no payment → PendingPayment.
+        //   • Tenant without a unit → PendingAllocation.
+        //   • Applications keep their own status (formData.status).
+        let resolvedStatus: TenantProfile['status'] | string = formData.status;
+        if (formData.recordType === 'Tenant') {
+            const hasUnit = !!(selectedPropertyId && selectedUnitId);
+            const hasPaid = Array.isArray(formData.paymentHistory) && formData.paymentHistory.some(p => p?.status === 'Paid');
+            const currentStatus = String(record?.status || formData.status || '');
+            const isLifecyclePending = ['Pending', 'PendingAllocation', 'PendingPayment', ''].includes(currentStatus);
+            if (isLifecyclePending || !record?.id) {
+                resolvedStatus = hasPaid ? 'Active' : (hasUnit ? 'PendingPayment' : 'PendingAllocation');
+            } else {
+                resolvedStatus = currentStatus;
+            }
+        }
+
         onSave({
             ...payload,
             propertyId: selectedPropertyId,
@@ -338,8 +375,7 @@ export const ApplicationFormModal: React.FC<{
             property: resolvedPropertyName, // legacy
             unitId: selectedUnitId,
             unit: resolvedUnitNumber,
-            // Tenant allocation implies they should show under Active Tenants.
-            status: formData.recordType === 'Tenant' ? 'Active' : formData.status,
+            status: resolvedStatus,
             rentAmount: resolvedRent,
         });
     };
@@ -490,7 +526,7 @@ export const ApplicationFormModal: React.FC<{
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">ID Number</label>
-                                    <input name="idNumber" value={formData.idNumber || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+                                    <input name="idNumber" value={formData.idNumber || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={10} className="w-full p-2 border rounded" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">KRA PIN</label>
@@ -498,13 +534,65 @@ export const ApplicationFormModal: React.FC<{
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Primary Phone*</label>
-                                    <input name="phone" value={formData.phone || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+                                    <input name="phone" value={formData.phone || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
                                     <input name="email" value={formData.email || ''} onChange={handleChange} className="w-full p-2 border rounded" />
                                 </div>
-                                
+
+                                {/* Alternative contact + Next of Kin (all optional) */}
+                                <div className="md:col-span-2 border-t pt-4 mt-2">
+                                    <h4 className="text-sm font-bold text-gray-800 mb-3">Additional Contact &amp; Next of Kin</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Alternative Phone</label>
+                                            <input name="alternativePhone" value={(formData as any).alternativePhone || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Next of Kin Full Name</label>
+                                            <input name="nextOfKinName" value={(formData as any).nextOfKinName || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Next of Kin Phone</label>
+                                            <input name="nextOfKinPhone" value={(formData as any).nextOfKinPhone || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Relationship to Tenant</label>
+                                            <select
+                                                value={showOtherRelationship || isCustomRelationship ? 'Other' : currentRelationship}
+                                                onChange={(e) => {
+                                                    const v = e.target.value;
+                                                    if (v === 'Other') {
+                                                        setShowOtherRelationship(true);
+                                                        setFormData(prev => ({ ...prev, nextOfKinRelationship: '' } as any));
+                                                    } else {
+                                                        setShowOtherRelationship(false);
+                                                        setFormData(prev => ({ ...prev, nextOfKinRelationship: v } as any));
+                                                    }
+                                                }}
+                                                className="w-full p-2 border rounded bg-white"
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="Spouse">Spouse</option>
+                                                <option value="Parent">Parent</option>
+                                                <option value="Sibling">Sibling</option>
+                                                <option value="Child">Child</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                            {(showOtherRelationship || isCustomRelationship) && (
+                                                <input
+                                                    name="nextOfKinRelationship"
+                                                    value={currentRelationship}
+                                                    onChange={handleChange}
+                                                    placeholder="Specify relationship"
+                                                    className="w-full p-2 border rounded mt-2"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Source & Referral Section */}
                                 <div className="md:col-span-2 border-t pt-4 mt-2">
                                     <h4 className="text-sm font-bold text-gray-800 mb-3">Lead Source</h4>
@@ -1207,7 +1295,7 @@ const ProfileHubModal: React.FC<{
 };
 
 const Applications: React.FC = () => {
-    const { applications, tenants, properties, addApplication, updateApplication, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
+    const { applications, tenants, properties, addApplication, updateApplication, addTenant, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | undefined>(undefined);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1376,10 +1464,10 @@ const Applications: React.FC = () => {
     };
 
     const handleSave = (data: UnifiedRecord) => {
-        // --- 1. Handle Active Tenant (Reallocation or Edit) ---
+        // --- 1. Handle Active Tenant (Reallocation, Edit, or brand-new Tenant) ---
         if (data.recordType === 'Tenant') {
-            const oldRecord = tenants.find(t => t.id === data.id);
-            
+            const oldRecord = data.id ? tenants.find(t => t.id === data.id) : undefined;
+
             // Check for Property/Unit Change (Reallocation) via Edit Modal
             if (oldRecord && (oldRecord.propertyId !== data.propertyId || oldRecord.unitId !== data.unitId)) {
                 // 1. Vacate Old Unit
@@ -1398,17 +1486,39 @@ const Applications: React.FC = () => {
                 }
             }
 
-            // Update Tenant Record
-            updateTenant(data.id!, {
-                ...data,
-                propertyId: data.propertyId,
-                propertyName: data.propertyName,
-                unitId: data.unitId,
-                unit: data.unit
-            } as TenantProfile);
-            
-            alert(oldRecord && oldRecord.unitId !== data.unitId ? "Tenant reallocated successfully!" : "Tenant details updated.");
-        } 
+            if (oldRecord) {
+                updateTenant(oldRecord.id, {
+                    ...data,
+                    propertyId: data.propertyId,
+                    propertyName: data.propertyName,
+                    unitId: data.unitId,
+                    unit: data.unit
+                } as TenantProfile);
+                alert(oldRecord.unitId !== data.unitId ? "Tenant reallocated successfully!" : "Tenant details updated.");
+            } else {
+                // Brand-new tenant created directly (no application path). Previously
+                // this hit updateTenant with an id that didn't exist and silently
+                // dropped the record — see bug #13 ("tenants saved but invisible").
+                const newTenant = {
+                    ...data,
+                    id: data.id || `tenant-${Date.now()}`,
+                    paymentHistory: Array.isArray(data.paymentHistory) ? data.paymentHistory : [],
+                    outstandingBills: Array.isArray((data as any).outstandingBills) ? (data as any).outstandingBills : [],
+                    outstandingFines: Array.isArray((data as any).outstandingFines) ? (data as any).outstandingFines : [],
+                    maintenanceRequests: Array.isArray((data as any).maintenanceRequests) ? (data as any).maintenanceRequests : [],
+                    onboardingDate: (data as any).onboardingDate || new Date().toISOString().split('T')[0],
+                } as TenantProfile;
+                if (newTenant.propertyId && newTenant.unitId) {
+                    const newProp = properties.find(p => p.id === newTenant.propertyId);
+                    if (newProp) {
+                        const updatedUnits = newProp.units.map(u => u.id === newTenant.unitId ? { ...u, status: 'Occupied' } : u);
+                        updateProperty(newProp.id, { units: updatedUnits as Unit[] });
+                    }
+                }
+                addTenant(newTenant);
+                alert("Tenant added.");
+            }
+        }
         // --- 2. Handle Application ---
         else {
             if (data.id && applications.find(a => a.id === data.id)) {
@@ -1427,7 +1537,10 @@ const Applications: React.FC = () => {
             if (!t) return null;
             if (t.authUserId && isUuid(t.authUserId)) return t.authUserId;
             if (isUuid(t.id)) return t.id;
-            const byPhone = tenants.find(x => x.phone === t.phone && x.authUserId && isUuid(x.authUserId));
+            const targetCanonical = canonicalizePhone(t.phone);
+            const byPhone = targetCanonical
+                ? tenants.find(x => canonicalizePhone(x.phone) === targetCanonical && x.authUserId && isUuid(x.authUserId))
+                : undefined;
             return byPhone?.authUserId ?? null;
         }
         if (record.recordType === 'Application') {
@@ -1437,9 +1550,12 @@ const Applications: React.FC = () => {
             // STK polling cannot be completed reliably.
             return null;
         }
-        const byPhone = tenants.find(
-            x => x.phone === record.phone && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)),
-        );
+        const recordCanonical = canonicalizePhone(record.phone);
+        const byPhone = recordCanonical
+            ? tenants.find(
+                x => canonicalizePhone(x.phone) === recordCanonical && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)),
+            )
+            : undefined;
         if (!byPhone) return null;
         return byPhone.authUserId && isUuid(byPhone.authUserId) ? byPhone.authUserId : (isUuid(byPhone.id) ? byPhone.id : null);
     };
@@ -1455,9 +1571,11 @@ const Applications: React.FC = () => {
         if (record.recordType === 'Tenant' && record.id) {
             const t = tenants.find(x => x.id === record.id);
             if (!t) return;
+            const isPending = t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment';
             updateTenant(record.id, {
                 paymentHistory: [payment, ...(t.paymentHistory || [])],
-                status: t.status === 'Pending' ? 'Active' : t.status,
+                status: isPending ? 'Active' : t.status,
+                activationDate: isPending ? new Date().toISOString().split('T')[0] : (t as any).activationDate,
             });
             return;
         }
@@ -1562,8 +1680,13 @@ const Applications: React.FC = () => {
                 username: '',
                 email: String(app.email || ''),
                 phone: String(app.phone || ''),
+                alternativePhone: (app as any).alternativePhone || undefined,
+                nextOfKinName: (app as any).nextOfKinName || undefined,
+                nextOfKinPhone: (app as any).nextOfKinPhone || undefined,
+                nextOfKinRelationship: (app as any).nextOfKinRelationship || undefined,
                 idNumber: String(app.idNumber || ''),
                 status: 'Active',
+                activationDate: new Date().toISOString().split('T')[0],
                 propertyId: app.propertyId,
                 propertyName: app.propertyName || prop.name,
                 unitId: app.unitId,
@@ -1572,6 +1695,13 @@ const Applications: React.FC = () => {
                 rentDueDate: app.rentDueDate,
                 rentGraceDays: graceDays,
                 depositPaid,
+                depositExpected: isDepositExempt
+                    ? 0
+                    : appRentExtension?.enabled
+                        ? (appRentExtension.depositPaidUpfront || 0)
+                        : appProrated?.enabled
+                            ? (appProrated.totalDepositAmount || 0)
+                            : (rentAmount * appDepositMonths),
                 onboardingDate: new Date().toISOString().split('T')[0],
                 nextDueDate: nextDueDateIso,
                 leaseSigned: !!app.leaseSigned,

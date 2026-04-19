@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { TenantProfile, Task, BillItem, FineItem, TenantRequest, RequestMessage, TaskPriority, TaskStatus, RecurringBillSettings, Notice, Message, Notification, OffboardingRecord, Bill } from '../../types';
 import Icon from '../Icon';
 import { supabase } from '../../utils/supabaseClient';
+import { canonicalizePhone } from '../../utils/phone';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
@@ -56,8 +57,27 @@ function tenantFullyAllocated(t: TenantProfile): boolean {
 }
 
 function isInactiveApplicantTenant(t: TenantProfile): boolean {
-    return t.status === 'Pending' || !tenantFullyAllocated(t);
+    return (
+        t.status === 'Pending' ||
+        t.status === 'PendingAllocation' ||
+        t.status === 'PendingPayment' ||
+        !tenantFullyAllocated(t)
+    );
 }
+
+// Chip filter options. "All" shows every non-vacated/blacklisted tenant;
+// the new PendingAllocation / PendingPayment chips surface tenants that
+// previously only showed under the "Inactive" toggle, so a new registration
+// is visible from the default Active Tenants view the moment it's saved.
+const STATUS_FILTERS: Array<{ key: string; label: string }> = [
+    { key: 'All', label: 'All' },
+    { key: 'Active', label: 'Active' },
+    { key: 'PendingAllocation', label: 'Pending Allocation' },
+    { key: 'PendingPayment', label: 'Pending Payment' },
+    { key: 'Overdue', label: 'Overdue' },
+    { key: 'Notice', label: 'Notice' },
+    { key: 'Vacated', label: 'Vacated' },
+];
 
 // --- HELPER: Get Arrears Text ---
 const getArrearsText = (tenant: TenantProfile) => {
@@ -230,7 +250,7 @@ const RecordPaymentModal: React.FC<{
 
 
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName: string; tenantId: string }> = ({ onClose, amount, tenantName, tenantId }) => {
-    const { updateTenant, tenants, addNotification, addMessage, addOverpayment } = useData();
+    const { updateTenant, tenants, addNotification, addMessage, addOverpayment, properties } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success' | 'timed_out'>('input');
     const [phone, setPhone] = useState('');
     const [txCode, setTxCode] = useState('');
@@ -279,7 +299,10 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     };
                     const cycle = computeRentPaymentCycleUpdate(t, amt, newPayment.date);
                     updates.nextDueDate = cycle.nextDueDateIso;
-                    if (t.status === 'Pending') updates.status = 'Active';
+                    if (t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment') {
+                        updates.status = 'Active';
+                        (updates as any).activationDate = new Date().toISOString().split('T')[0];
+                    }
                     if (Number(t.depositPaid || 0) <= 0 && amt >= Number(t.rentAmount || 0)) {
                         updates.depositPaid = Number(t.rentAmount || 0);
                     }
@@ -310,6 +333,14 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                             : 0;
                         const overpayAmt = amt - (expectedRent + expectedInstallment);
                         if (overpayAmt > 0) {
+                            // Auto-apply: forward credit to next month and log as 'Applied'
+                            // so the Overpayments ledger keeps an audit trail without
+                            // requiring manual reconciliation.
+                            const nextMonth = (() => {
+                                const d = new Date(newPayment.date);
+                                d.setMonth(d.getMonth() + 1);
+                                return d.toISOString().slice(0, 7);
+                            })();
                             addOverpayment({
                                 id: `ovp-${Date.now()}`,
                                 tenantName: t.name,
@@ -317,8 +348,8 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                                 amount: overpayAmt,
                                 reference: ref,
                                 dateReceived: newPayment.date,
-                                appliedMonth: newPayment.date.slice(0, 7),
-                                status: 'Held',
+                                appliedMonth: nextMonth,
+                                status: 'Applied',
                             });
                         }
                     }
@@ -371,12 +402,30 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
         return followStkPaymentCompletion(supabase, paymentUserId, checkoutRequestId, applyRow);
     }, [paymentUserId, checkoutRequestId, tenantId, updateTenant, addNotification, addMessage]);
 
+    // Resolve the tenant's unit tag so it can be sent as AccountReference —
+    // this makes the subsequent C2B confirmation (which carries the same tag
+    // as BillRefNumber) reconcile back to this tenant automatically.
+    const unitTag = (() => {
+        if (!tenant?.propertyId || !tenant?.unitId) return null;
+        const prop = properties.find(p => p.id === tenant.propertyId);
+        const u = prop?.units?.find(x => x.id === tenant.unitId);
+        const tag = String((u as any)?.unitTag ?? '').trim();
+        return tag || null;
+    })();
+
     const handlePay = async () => {
         setErrorMsg(null);
 
         if (!paymentUserId) {
             setErrorMsg(
                 'This tenant is not linked to a Supabase login (auth user). STK cannot be recorded in the payments ledger. Use Record Payment for offline settlement, or onboard the tenant via Registration → Users so their ID matches their login.',
+            );
+            return;
+        }
+
+        if (!unitTag) {
+            setErrorMsg(
+                `This unit has no account tag (e.g. "OCK/02"). Safaricom needs an Account Reference for Paybill matching. Add a unit tag in Registration → Properties → ${tenant?.propertyName ?? 'this property'} → ${tenant?.unit ?? 'unit'} before retrying.`,
             );
             return;
         }
@@ -400,6 +449,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     amount: Math.round(Number(editableAmount) || 0),
                     leaseId: tenantId,
                     userId: paymentUserId,
+                    unitTag,
                 },
             });
 
@@ -1483,7 +1533,8 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
 // --- DETAIL VIEW ---
 
 const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> = ({ tenant, onBack }) => {
-    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties } = useData();
+    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
     const [chatInput, setChatInput] = useState('');
     const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
     const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
@@ -1651,16 +1702,31 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     // Derived Financials
     const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.
-    // Deposit status: exempt tenants and already-paid tenants owe 0; prorated tracks via proratedDeposit
+
+    // Expected full deposit for a standard (non-prorated, non-extension) tenant.
+    // Prefer depositExpected (set at registration and not mutated by payments)
+    // and fall back to rentAmount × depositMonths for legacy rows.
+    const depositMonthsRaw = Number((tenant as any).depositMonths ?? 1);
+    const depositMonths = Number.isFinite(depositMonthsRaw) && depositMonthsRaw > 0 ? depositMonthsRaw : 1;
+    const depositExpectedStandard = Number((tenant as any).depositExpected ?? 0) > 0
+        ? Number((tenant as any).depositExpected)
+        : (Number(tenant.rentAmount || 0) * depositMonths);
+
+    // Deposit status: exempt tenants and already-paid tenants owe 0; prorated tracks via proratedDeposit.
+    const depositPaidAmt = Number(tenant.depositPaid || 0);
     const depositDue = tenant.depositExempt
         ? 0
         : tenant.proratedDeposit?.enabled
             ? Math.max(0, tenant.proratedDeposit.totalDepositAmount - tenant.proratedDeposit.amountPaidSoFar)
-            : Number(tenant.depositPaid || 0) > 0 ? 0 : Number(tenant.rentAmount || 0);
+            : Math.max(0, depositExpectedStandard - depositPaidAmt);
+
+    // Fully-paid check: compares paid vs expected rather than "any amount > 0".
+    // Fixes the "Fully Paid" badge showing up for freshly-registered tenants
+    // where a legacy path set depositPaid > 0 without covering the full amount.
     const isDepositFullyPaid = !tenant.depositExempt && (
         tenant.proratedDeposit?.enabled
             ? tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
-            : Number(tenant.depositPaid || 0) > 0
+            : depositExpectedStandard > 0 && depositPaidAmt + 0.5 >= depositExpectedStandard
     );
     const recurrentBills = Object.values(tenant.recurringBills || {}).reduce((a: number, b) => a + (b as number), 0);
     const pendingBills = (tenant.outstandingBills || []).filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.amount, 0);
@@ -1676,7 +1742,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     // If tenant is overdue from previous months, that should be in outstandingBills as 'Rent Arrears'
     // So 'rentDue' here is strictly current month rent.
     
-    const balanceDue = Math.max(0, totalExpected - amountPaidThisMonth);
+    // Allow negative balance so any overpayment shows as a credit / advance
+    // (auto-applied overpayments still get logged via Overpayments ledger).
+    const balanceDue = totalExpected - amountPaidThisMonth;
+    const isCreditBalance = balanceDue < 0;
+    const creditAmount = isCreditBalance ? Math.abs(balanceDue) : 0;
 
     // First rent+deposit payment (or onboarding) – used for display-only "Last Due Date".
     const firstPaidDateStr = paidDates.length > 0
@@ -2107,6 +2177,45 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                 <span>KES {Number(depositDue).toLocaleString()}</span>
                             </div>
                         )}
+                        {/* Deposit-exempt admin control:
+                            - Any admin can waive the deposit while it's still unpaid.
+                            - Only Super Admin can un-exempt, or waive a deposit
+                              that has already been (partially/fully) collected. */}
+                        {(() => {
+                            const depositAlreadyCollected = depositPaidAmt > 0
+                                || (tenant.proratedDeposit?.amountPaidSoFar ?? 0) > 0;
+                            const canWaive = !tenant.depositExempt && (!depositAlreadyCollected || isSuperAdmin);
+                            const canRestore = !!tenant.depositExempt && isSuperAdmin;
+                            if (!canWaive && !canRestore) return null;
+                            return (
+                                <div className="pt-2 border-t border-dashed border-gray-200 flex items-center justify-between gap-2">
+                                    <span className="text-[11px] text-gray-500">
+                                        {tenant.depositExempt ? 'Deposit is currently waived.' : 'Waive security deposit for this tenant.'}
+                                        {depositAlreadyCollected && !tenant.depositExempt && (
+                                            <span className="block text-amber-700 font-medium">Deposit already collected — super-admin only.</span>
+                                        )}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (tenant.depositExempt) {
+                                                if (!window.confirm('Restore security deposit requirement for this tenant?')) return;
+                                                updateTenant(tenant.id, { depositExempt: false } as any);
+                                            } else {
+                                                const msg = depositAlreadyCollected
+                                                    ? 'This tenant has already paid part or all of their deposit. Waiving it now will mark them exempt but will NOT refund anything. Continue?'
+                                                    : 'Waive security deposit for this tenant?';
+                                                if (!window.confirm(msg)) return;
+                                                updateTenant(tenant.id, { depositExempt: true } as any);
+                                            }
+                                        }}
+                                        className={`text-[11px] font-bold px-2 py-1 rounded border ${tenant.depositExempt ? 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50' : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'}`}
+                                    >
+                                        {tenant.depositExempt ? 'Restore deposit' : 'Waive deposit'}
+                                    </button>
+                                </div>
+                            );
+                        })()}
                         {/* Rent extension notice */}
                         {tenant.rentExtension?.enabled && (
                             <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded p-2 mt-1">
@@ -2153,9 +2262,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     </div>
 
                     <div className="border-t pt-3 mt-2 flex justify-between items-center">
-                        <span className="font-bold text-gray-800 text-base">Balance Due</span>
-                        <span className={`text-xl font-extrabold ${balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            KES {Number(balanceDue ?? 0).toLocaleString()}
+                        <span className="font-bold text-gray-800 text-base">
+                            {isCreditBalance ? 'Credit (Advance)' : 'Balance Due'}
+                        </span>
+                        <span className={`text-xl font-extrabold ${isCreditBalance ? 'text-emerald-600' : balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {isCreditBalance ? '- ' : ''}KES {Number(isCreditBalance ? creditAmount : balanceDue).toLocaleString()}
                         </span>
                     </div>
                 </div>
@@ -2193,20 +2304,27 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <tr>
                                 <th className="px-4 py-2">Date</th>
                                 <th className="px-4 py-2">Type</th>
+                                <th className="px-4 py-2">Txn Code</th>
                                 <th className="px-4 py-2 text-right">Amount</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {(tenant.paymentHistory || []).map((pay, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-gray-600">{pay.date}</td>
-                                    <td className="px-4 py-3 text-gray-600">{pay.method}</td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-800">{pay.amount}</td>
-                                </tr>
-                            ))}
+                            {(tenant.paymentHistory || []).map((pay, idx) => {
+                                const ref = String((pay as any).reference ?? '').trim();
+                                return (
+                                    <tr key={idx} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-gray-600">{pay.date}</td>
+                                        <td className="px-4 py-3 text-gray-600">{pay.method}</td>
+                                        <td className="px-4 py-3 font-mono text-xs text-gray-700">
+                                            {ref || <span className="text-gray-300">—</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-gray-800">{pay.amount}</td>
+                                    </tr>
+                                );
+                            })}
                             {(tenant.paymentHistory || []).length === 0 && (
                                 <tr>
-                                    <td colSpan={3} className="px-4 py-6 text-center text-gray-400">No payment history found.</td>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400">No payment history found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -2320,11 +2438,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             {activeModal === 'fines' && <FinesManagementModal tenant={tenant} onClose={() => setActiveModal(null)} />}
             {activeModal === 'status' && <StatusManagementModal tenant={tenant} onClose={() => setActiveModal(null)} />}
             {activeModal === 'request' && <NewRequestModal tenant={tenant} onClose={() => setActiveModal(null)} onSave={handleNewRequest} />}
-            {activeModal === 'pay' && <MpesaStkModal onClose={() => setActiveModal(null)} amount={balanceDue} tenantName={tenant.name} tenantId={tenant.id} />}
+            {activeModal === 'pay' && <MpesaStkModal onClose={() => setActiveModal(null)} amount={Math.max(0, balanceDue)} tenantName={tenant.name} tenantId={tenant.id} />}
             {activeModal === 'recordPayment' && (
-                <RecordPaymentModal 
-                    tenant={tenant} 
-                    balance={balanceDue} 
+                <RecordPaymentModal
+                    tenant={tenant}
+                    balance={Math.max(0, balanceDue)}
                     onClose={() => setActiveModal(null)} 
                     onRecord={handleRecordPayment} 
                 />
@@ -2365,7 +2483,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 const ActiveTenants: React.FC = () => {
     const { tenants, applications, isDataLoading } = useData();
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('All');
+    const [activeFilter, setActiveFilter] = useState('Active');
     const [listMode, setListMode] = useState<'active' | 'inactive'>('active');
    
     // Check URL for specific tenant view on load or change
@@ -2394,14 +2512,26 @@ const ActiveTenants: React.FC = () => {
 
     const filteredTenants = useMemo(() => {
         const pool = listMode === 'inactive' ? inactivePool : tenants;
+        const q = searchQuery.trim().toLowerCase();
+        const qCanonical = canonicalizePhone(searchQuery);
 
         return pool.filter(t => {
-            const matchesSearch =
-                t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.phone.includes(searchQuery);
+            const matchesSearch = !q ? true : (
+                (t.name || '').toLowerCase().includes(q) ||
+                (t.unit || '').toLowerCase().includes(q) ||
+                (t.propertyName || '').toLowerCase().includes(q) ||
+                (t.idNumber || '').toLowerCase().includes(q) ||
+                (t.phone || '').includes(searchQuery) ||
+                (!!qCanonical && canonicalizePhone(t.phone) === qCanonical) ||
+                (!!qCanonical && canonicalizePhone((t as any).alternativePhone) === qCanonical)
+            );
             if (listMode === 'inactive') return matchesSearch;
-            const matchesFilter = activeFilter === 'All' || t.status === activeFilter;
+            const matchesFilter =
+                activeFilter === 'All' ||
+                t.status === activeFilter ||
+                // Treat legacy 'Pending' rows as PendingAllocation (no unit) or PendingPayment (has unit)
+                (activeFilter === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
+                (activeFilter === 'PendingPayment' && t.status === 'Pending' && tenantFullyAllocated(t));
             return matchesSearch && matchesFilter;
         });
     }, [tenants, inactivePool, listMode, searchQuery, activeFilter]);
@@ -2465,8 +2595,8 @@ const ActiveTenants: React.FC = () => {
                     <div className="flex items-center gap-3 bg-white p-2 rounded-lg border shadow-sm">
                         <Icon name="search" className="w-5 h-5 text-gray-400 ml-2" />
                         <input
-                            className="outline-none text-sm w-48"
-                            placeholder="Search name, unit..."
+                            className="outline-none text-sm w-56"
+                            placeholder="Search name, unit, ID, phone..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
@@ -2492,16 +2622,25 @@ const ActiveTenants: React.FC = () => {
             {/* Filters */}
             {listMode === 'active' && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
-                    {['All', 'Active', 'Overdue', 'Notice', 'Vacated'].map(status => (
-                        <button
-                            key={status}
-                            type="button"
-                            onClick={() => setActiveFilter(status)}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${activeFilter === status ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border'}`}
-                        >
-                            {status}
-                        </button>
-                    ))}
+                    {STATUS_FILTERS.map(({ key, label }) => {
+                        const count = key === 'All'
+                            ? tenants.length
+                            : tenants.filter(t =>
+                                t.status === key ||
+                                (key === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
+                                (key === 'PendingPayment' && t.status === 'Pending' && tenantFullyAllocated(t))
+                            ).length;
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setActiveFilter(key)}
+                                className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors whitespace-nowrap ${activeFilter === key ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border'}`}
+                            >
+                                {label}{count > 0 ? ` (${count})` : ''}
+                            </button>
+                        );
+                    })}
                 </div>
             )}
 
@@ -2534,29 +2673,45 @@ const ActiveTenants: React.FC = () => {
                             const fullyPaid = tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount;
                             return fullyPaid ? 0 : (tenant.proratedDeposit.monthlyInstallment || 0);
                         }
-                        // Standard / multi-month: owed only if deposit has never been paid
-                        if (Number(tenant.depositPaid || 0) > 0) return 0;
+                        // Standard / multi-month: owed = expected - actually paid.
+                        // Previously this returned 0 as soon as depositPaid > 0, which
+                        // falsely cleared partial-deposit balances from the card.
                         const depositMonths = Number(tenant.depositMonths ?? 1);
-                        return (tenant.rentAmount || 0) * depositMonths;
+                        const expected = Number((tenant as any).depositExpected ?? 0) > 0
+                            ? Number((tenant as any).depositExpected)
+                            : (Number(tenant.rentAmount || 0) * depositMonths);
+                        return Math.max(0, expected - Number(tenant.depositPaid || 0));
                     })();
 
-                    const isNewTenant = isAllocated && depositOwed > 0;
-
-                    // Label hint for the card
-                    const totalDueLabel = (() => {
-                        if (!isNewTenant) return 'Total Due';
-                        if (tenant.proratedDeposit?.enabled) return 'Rent + Installment';
-                        return 'Total Due (Rent+Dep)';
-                    })();
-
-                    // New tenant: rent + deposit bundle; Old tenant: rent + bills + fines + late fees
+                    // Card "Total Due" should match the tenant-detail "Total Invoiced"
+                    // line: everything they owe right now — rent, deposit/installment,
+                    // outstanding bills, fines, and any accrued late fees. Previously
+                    // the card switched to a rent-only view once the deposit was paid,
+                    // which left other outstanding bills off the headline number.
+                    const totalDueLabel = 'Total Due';
                     const totalDue = !isAllocated ? 0
-                        : isNewTenant
-                            ? rentDue + depositOwed
-                            : rentDue + pendingBills + pendingFines + automatedLateFine;
+                        : rentDue + depositOwed + pendingBills + pendingFines + automatedLateFine;
 
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);
+
+                    // Partial-paid tag: tenant has sent some money but the
+                    // first rent + deposit hasn't fully cleared, so they
+                    // remain in PendingPayment / Pending instead of Active.
+                    const hasAnyPaid = (tenant.paymentHistory || []).some(p => p.status === 'Paid');
+                    const depositMonthsForCard = Number(tenant.depositMonths ?? 1);
+                    const expectedDepositForCard = Number((tenant as any).depositExpected ?? 0) > 0
+                        ? Number((tenant as any).depositExpected)
+                        : (Number(tenant.rentAmount || 0) * depositMonthsForCard);
+                    const depositCovered = tenant.depositExempt
+                        || tenant.rentExtension?.enabled
+                        || (tenant.proratedDeposit?.enabled
+                            ? tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
+                            : Number(tenant.depositPaid || 0) + 0.5 >= expectedDepositForCard);
+                    const showPartialPaid = isAllocated
+                        && hasAnyPaid
+                        && !depositCovered
+                        && (tenant.status === 'Pending' || tenant.status === 'PendingPayment');
 
                     return (
                         <div
@@ -2583,6 +2738,11 @@ const ActiveTenants: React.FC = () => {
                                         }`}>
                                             {!isAllocated ? 'Pending Allocation' : tenant.status}
                                         </span>
+                                        {showPartialPaid && (
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                                                Partial Paid
+                                            </span>
+                                        )}
                                         {tenant.houseStatus && tenant.houseStatus.length > 0 && (
                                             <div className="flex flex-wrap gap-1 justify-end">
                                                 {tenant.houseStatus.slice(0, 2).map(status => (

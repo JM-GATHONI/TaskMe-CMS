@@ -17,7 +17,18 @@ type StkPushRequest = {
   phone: string;
   amount: number;
   leaseId?: string | null;
+  // unitTag (e.g. "OCK/02") is the preferred AccountReference because the C2B
+  // confirmation Safaricom sends back later carries the same tag in BillRefNumber,
+  // which is what record_c2b_payment uses to find the tenant.
+  unitTag?: string | null;
 };
+
+function sanitizeUnitTag(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // Safaricom AccountReference: max 12 chars, alphanumeric + limited punctuation.
+  const cleaned = String(raw).trim().toUpperCase().slice(0, 12);
+  return cleaned || null;
+}
 
 // CORS: set CORS_ALLOWED_ORIGINS env var to restrict origins (comma-separated).
 // In production, set this to your app domain e.g. "https://app.task-me.ke"
@@ -136,6 +147,7 @@ Deno.serve(async (req) => {
 
     const phone = formatPhoneTo254(body.phone);
     const leaseId = body.leaseId ?? null;
+    const unitTag = sanitizeUnitTag(body.unitTag);
     const amount = Math.round(Number(body.amount ?? 0));
 
     if (!phone) {
@@ -163,7 +175,10 @@ Deno.serve(async (req) => {
       PartyB: MPESA_SHORTCODE,
       PhoneNumber: phone,
       CallBackURL: `${SUPABASE_URL}/functions/v1/mpesa-callback`,
-      AccountReference: leaseId ?? userId,
+      // Prefer the unit tag so the C2B confirmation (when Safaricom relays the
+      // transaction as a paybill) lands with the same BillRefNumber and can be
+      // matched back to this tenant's unit by record_c2b_payment.
+      AccountReference: unitTag ?? leaseId ?? userId,
       TransactionDesc: "TaskMe Rent Payment",
     };
 
@@ -200,11 +215,15 @@ Deno.serve(async (req) => {
         lease_id: leaseId,
         amount,
         phone,
+        msisdn: phone,
         checkout_request_id: checkoutRequestId,
         transaction_id: null,
         status: "pending",
         result_code: null,
         result_desc: null,
+        // Store the account reference we just sent so the C2B confirmation
+        // arriving later can be paired with this STK row.
+        bill_ref_number: unitTag,
       });
 
     if (insertErr) {

@@ -24,7 +24,11 @@ interface PaymentRow {
     last_name: string | null;
     matched_tenant_id: string | null;
     matched_unit_id: string | null;
+    paired_payment_id: string | null;
     result_desc: string | null;
+    // Injected client-side when two rows (STK + C2B) are paired so we render
+    // a single Inbound row with a "STK + C2B" badge instead of duplicates.
+    _pairedSources?: Array<'stk' | 'c2b' | 'manual'>;
 }
 
 type SourceFilter = 'all' | 'stk' | 'c2b' | 'manual';
@@ -150,12 +154,21 @@ const MpesaStkModal: React.FC<{
     tenant: TenantProfile;
     onComplete: () => void;
 }> = ({ onClose, tenant, onComplete }) => {
+    const { properties } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success' | 'failed'>('input');
     const [phone, setPhone] = useState(tenant.phone || '');
     const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
     const [txCode, setTxCode] = useState('');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [checkoutRequestId, setCheckoutRequestId] = useState<string | null>(null);
+
+    const unitTag = (() => {
+        if (!tenant?.propertyId || !tenant?.unitId) return null;
+        const prop = properties.find(p => p.id === tenant.propertyId);
+        const u = prop?.units?.find(x => x.id === tenant.unitId);
+        const tag = String((u as any)?.unitTag ?? '').trim();
+        return tag || null;
+    })();
 
     useEffect(() => {
         if (!checkoutRequestId) return;
@@ -181,11 +194,15 @@ const MpesaStkModal: React.FC<{
             setErrorMsg('Amount must be greater than zero');
             return;
         }
+        if (!unitTag) {
+            setErrorMsg(`This unit has no account tag. Add one under Registration → Properties → ${tenant.propertyName ?? 'this property'} → ${tenant.unit ?? 'unit'} before initiating STK.`);
+            return;
+        }
         setErrorMsg(null);
         setStep('processing');
         try {
             const { data, error } = await supabase.functions.invoke('mpesa-stk-push', {
-                body: { phone, amount: amt, leaseId: tenant.id },
+                body: { phone, amount: amt, leaseId: tenant.id, unitTag },
             });
             if (error) throw error;
             const id = String((data as any)?.checkoutRequestId ?? '').trim();
@@ -381,7 +398,7 @@ const Inbound: React.FC = () => {
         try {
             const { data, error } = await supabase
                 .from('payments')
-                .select('id,created_at,source,status,reconciliation_status,amount,transaction_id,checkout_request_id,bill_ref_number,msisdn,phone,first_name,middle_name,last_name,matched_tenant_id,matched_unit_id,result_desc')
+                .select('id,created_at,source,status,reconciliation_status,amount,transaction_id,checkout_request_id,bill_ref_number,msisdn,phone,first_name,middle_name,last_name,matched_tenant_id,matched_unit_id,paired_payment_id,result_desc')
                 .eq('status', 'completed')
                 .order('created_at', { ascending: false })
                 .limit(500);
@@ -413,10 +430,42 @@ const Inbound: React.FC = () => {
         return m;
     }, [tenants]);
 
+    // Collapse STK ↔ C2B pairs into a single row. The back-end pairing
+    // (record_c2b_payment) points paired_payment_id at the sibling row, so we
+    // pick one canonical row per pair (preferring C2B since it always carries
+    // the MpesaReceiptNumber) and mark it with _pairedSources for the badge.
+    const collapsedPayments = useMemo<PaymentRow[]>(() => {
+        const byId = new Map(payments.map(p => [p.id, p]));
+        const consumed = new Set<string>();
+        const out: PaymentRow[] = [];
+        for (const p of payments) {
+            if (consumed.has(p.id)) continue;
+            const twin = p.paired_payment_id ? byId.get(p.paired_payment_id) : undefined;
+            if (twin && !consumed.has(twin.id)) {
+                // Keep the C2B row (authoritative receipt#); fall back to STK.
+                const canonical = p.source === 'c2b' ? p : (twin.source === 'c2b' ? twin : p);
+                const other = canonical.id === p.id ? twin : p;
+                consumed.add(p.id);
+                consumed.add(twin.id);
+                out.push({
+                    ...canonical,
+                    _pairedSources: [canonical.source, other.source],
+                });
+            } else {
+                out.push(p);
+                consumed.add(p.id);
+            }
+        }
+        return out;
+    }, [payments]);
+
     const filteredPayments = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        return payments.filter(p => {
-            if (sourceFilter !== 'all' && p.source !== sourceFilter) return false;
+        return collapsedPayments.filter(p => {
+            if (sourceFilter !== 'all') {
+                const sources = p._pairedSources ?? [p.source];
+                if (!sources.includes(sourceFilter as any)) return false;
+            }
             if (!q) return true;
             const matchedTenant = p.matched_tenant_id ? tenantsById.get(p.matched_tenant_id) : null;
             const hay = [
@@ -431,7 +480,7 @@ const Inbound: React.FC = () => {
             ].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(q);
         });
-    }, [payments, searchQuery, sourceFilter, tenantsById]);
+    }, [collapsedPayments, searchQuery, sourceFilter, tenantsById]);
 
     const totalCollected = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const unmatchedC2B = useMemo(() => payments.filter(p => p.source === 'c2b' && !p.matched_tenant_id).length, [payments]);
@@ -553,13 +602,23 @@ const Inbound: React.FC = () => {
                                 const meta = SOURCE_META[p.source];
                                 const matched = p.matched_tenant_id ? tenantsById.get(p.matched_tenant_id) : null;
                                 const isUnmatched = p.source === 'c2b' && !p.matched_tenant_id;
+                                const isPaired = Array.isArray(p._pairedSources) && p._pairedSources.length > 1;
                                 return (
                                     <tr key={p.id} className={`hover:bg-gray-50 ${isUnmatched ? 'bg-amber-50/40' : ''}`}>
                                         <td className="px-4 py-3 text-gray-600">{new Date(p.created_at).toLocaleString()}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${meta.className}`}>
-                                                {meta.label}
-                                            </span>
+                                            {isPaired ? (
+                                                <span
+                                                    className="inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700 border-emerald-200"
+                                                    title="STK push + C2B confirmation merged into one payment"
+                                                >
+                                                    STK + C2B
+                                                </span>
+                                            ) : (
+                                                <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${meta.className}`}>
+                                                    {meta.label}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3">
                                             {matched ? (
