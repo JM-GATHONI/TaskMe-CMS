@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { TenantProfile, Task, BillItem, FineItem, TenantRequest, RequestMessage, TaskPriority, TaskStatus, RecurringBillSettings, Notice, Message, Notification, OffboardingRecord, Bill } from '../../types';
 import Icon from '../Icon';
 import { supabase } from '../../utils/supabaseClient';
+import { canonicalizePhone } from '../../utils/phone';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
@@ -56,8 +57,27 @@ function tenantFullyAllocated(t: TenantProfile): boolean {
 }
 
 function isInactiveApplicantTenant(t: TenantProfile): boolean {
-    return t.status === 'Pending' || !tenantFullyAllocated(t);
+    return (
+        t.status === 'Pending' ||
+        t.status === 'PendingAllocation' ||
+        t.status === 'PendingPayment' ||
+        !tenantFullyAllocated(t)
+    );
 }
+
+// Chip filter options. "All" shows every non-vacated/blacklisted tenant;
+// the new PendingAllocation / PendingPayment chips surface tenants that
+// previously only showed under the "Inactive" toggle, so a new registration
+// is visible from the default Active Tenants view the moment it's saved.
+const STATUS_FILTERS: Array<{ key: string; label: string }> = [
+    { key: 'All', label: 'All' },
+    { key: 'Active', label: 'Active' },
+    { key: 'PendingAllocation', label: 'Pending Allocation' },
+    { key: 'PendingPayment', label: 'Pending Payment' },
+    { key: 'Overdue', label: 'Overdue' },
+    { key: 'Notice', label: 'Notice' },
+    { key: 'Vacated', label: 'Vacated' },
+];
 
 // --- HELPER: Get Arrears Text ---
 const getArrearsText = (tenant: TenantProfile) => {
@@ -2365,7 +2385,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 const ActiveTenants: React.FC = () => {
     const { tenants, applications, isDataLoading } = useData();
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('All');
+    const [activeFilter, setActiveFilter] = useState('Active');
     const [listMode, setListMode] = useState<'active' | 'inactive'>('active');
    
     // Check URL for specific tenant view on load or change
@@ -2394,14 +2414,26 @@ const ActiveTenants: React.FC = () => {
 
     const filteredTenants = useMemo(() => {
         const pool = listMode === 'inactive' ? inactivePool : tenants;
+        const q = searchQuery.trim().toLowerCase();
+        const qCanonical = canonicalizePhone(searchQuery);
 
         return pool.filter(t => {
-            const matchesSearch =
-                t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.phone.includes(searchQuery);
+            const matchesSearch = !q ? true : (
+                (t.name || '').toLowerCase().includes(q) ||
+                (t.unit || '').toLowerCase().includes(q) ||
+                (t.propertyName || '').toLowerCase().includes(q) ||
+                (t.idNumber || '').toLowerCase().includes(q) ||
+                (t.phone || '').includes(searchQuery) ||
+                (!!qCanonical && canonicalizePhone(t.phone) === qCanonical) ||
+                (!!qCanonical && canonicalizePhone((t as any).alternativePhone) === qCanonical)
+            );
             if (listMode === 'inactive') return matchesSearch;
-            const matchesFilter = activeFilter === 'All' || t.status === activeFilter;
+            const matchesFilter =
+                activeFilter === 'All' ||
+                t.status === activeFilter ||
+                // Treat legacy 'Pending' rows as PendingAllocation (no unit) or PendingPayment (has unit)
+                (activeFilter === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
+                (activeFilter === 'PendingPayment' && t.status === 'Pending' && tenantFullyAllocated(t));
             return matchesSearch && matchesFilter;
         });
     }, [tenants, inactivePool, listMode, searchQuery, activeFilter]);
@@ -2465,8 +2497,8 @@ const ActiveTenants: React.FC = () => {
                     <div className="flex items-center gap-3 bg-white p-2 rounded-lg border shadow-sm">
                         <Icon name="search" className="w-5 h-5 text-gray-400 ml-2" />
                         <input
-                            className="outline-none text-sm w-48"
-                            placeholder="Search name, unit..."
+                            className="outline-none text-sm w-56"
+                            placeholder="Search name, unit, ID, phone..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
@@ -2492,16 +2524,25 @@ const ActiveTenants: React.FC = () => {
             {/* Filters */}
             {listMode === 'active' && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
-                    {['All', 'Active', 'Overdue', 'Notice', 'Vacated'].map(status => (
-                        <button
-                            key={status}
-                            type="button"
-                            onClick={() => setActiveFilter(status)}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${activeFilter === status ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border'}`}
-                        >
-                            {status}
-                        </button>
-                    ))}
+                    {STATUS_FILTERS.map(({ key, label }) => {
+                        const count = key === 'All'
+                            ? tenants.length
+                            : tenants.filter(t =>
+                                t.status === key ||
+                                (key === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
+                                (key === 'PendingPayment' && t.status === 'Pending' && tenantFullyAllocated(t))
+                            ).length;
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setActiveFilter(key)}
+                                className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors whitespace-nowrap ${activeFilter === key ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50 border'}`}
+                            >
+                                {label}{count > 0 ? ` (${count})` : ''}
+                            </button>
+                        );
+                    })}
                 </div>
             )}
 

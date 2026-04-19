@@ -344,6 +344,25 @@ export const ApplicationFormModal: React.FC<{
         const resolvedRent = activeUnitResolved?.rent ?? activePropertyResolved?.defaultMonthlyRent ?? formData.rentAmount ?? 0;
 
         const payload = leaseSigned ? ensureLeaseDates(formData) : formData;
+
+        // Status lifecycle for Tenant records:
+        //   • Existing Active/Overdue/Notice/etc. tenants keep their status.
+        //   • New tenant with unit allocated but no payment → PendingPayment.
+        //   • Tenant without a unit → PendingAllocation.
+        //   • Applications keep their own status (formData.status).
+        let resolvedStatus: TenantProfile['status'] | string = formData.status;
+        if (formData.recordType === 'Tenant') {
+            const hasUnit = !!(selectedPropertyId && selectedUnitId);
+            const hasPaid = Array.isArray(formData.paymentHistory) && formData.paymentHistory.some(p => p?.status === 'Paid');
+            const currentStatus = String(record?.status || formData.status || '');
+            const isLifecyclePending = ['Pending', 'PendingAllocation', 'PendingPayment', ''].includes(currentStatus);
+            if (isLifecyclePending || !record?.id) {
+                resolvedStatus = hasPaid ? 'Active' : (hasUnit ? 'PendingPayment' : 'PendingAllocation');
+            } else {
+                resolvedStatus = currentStatus;
+            }
+        }
+
         onSave({
             ...payload,
             propertyId: selectedPropertyId,
@@ -352,8 +371,7 @@ export const ApplicationFormModal: React.FC<{
             property: resolvedPropertyName, // legacy
             unitId: selectedUnitId,
             unit: resolvedUnitNumber,
-            // Tenant allocation implies they should show under Active Tenants.
-            status: formData.recordType === 'Tenant' ? 'Active' : formData.status,
+            status: resolvedStatus,
             rentAmount: resolvedRent,
         });
     };
@@ -1273,7 +1291,7 @@ const ProfileHubModal: React.FC<{
 };
 
 const Applications: React.FC = () => {
-    const { applications, tenants, properties, addApplication, updateApplication, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
+    const { applications, tenants, properties, addApplication, updateApplication, addTenant, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | undefined>(undefined);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1442,10 +1460,10 @@ const Applications: React.FC = () => {
     };
 
     const handleSave = (data: UnifiedRecord) => {
-        // --- 1. Handle Active Tenant (Reallocation or Edit) ---
+        // --- 1. Handle Active Tenant (Reallocation, Edit, or brand-new Tenant) ---
         if (data.recordType === 'Tenant') {
-            const oldRecord = tenants.find(t => t.id === data.id);
-            
+            const oldRecord = data.id ? tenants.find(t => t.id === data.id) : undefined;
+
             // Check for Property/Unit Change (Reallocation) via Edit Modal
             if (oldRecord && (oldRecord.propertyId !== data.propertyId || oldRecord.unitId !== data.unitId)) {
                 // 1. Vacate Old Unit
@@ -1464,17 +1482,39 @@ const Applications: React.FC = () => {
                 }
             }
 
-            // Update Tenant Record
-            updateTenant(data.id!, {
-                ...data,
-                propertyId: data.propertyId,
-                propertyName: data.propertyName,
-                unitId: data.unitId,
-                unit: data.unit
-            } as TenantProfile);
-            
-            alert(oldRecord && oldRecord.unitId !== data.unitId ? "Tenant reallocated successfully!" : "Tenant details updated.");
-        } 
+            if (oldRecord) {
+                updateTenant(oldRecord.id, {
+                    ...data,
+                    propertyId: data.propertyId,
+                    propertyName: data.propertyName,
+                    unitId: data.unitId,
+                    unit: data.unit
+                } as TenantProfile);
+                alert(oldRecord.unitId !== data.unitId ? "Tenant reallocated successfully!" : "Tenant details updated.");
+            } else {
+                // Brand-new tenant created directly (no application path). Previously
+                // this hit updateTenant with an id that didn't exist and silently
+                // dropped the record — see bug #13 ("tenants saved but invisible").
+                const newTenant = {
+                    ...data,
+                    id: data.id || `tenant-${Date.now()}`,
+                    paymentHistory: Array.isArray(data.paymentHistory) ? data.paymentHistory : [],
+                    outstandingBills: Array.isArray((data as any).outstandingBills) ? (data as any).outstandingBills : [],
+                    outstandingFines: Array.isArray((data as any).outstandingFines) ? (data as any).outstandingFines : [],
+                    maintenanceRequests: Array.isArray((data as any).maintenanceRequests) ? (data as any).maintenanceRequests : [],
+                    onboardingDate: (data as any).onboardingDate || new Date().toISOString().split('T')[0],
+                } as TenantProfile;
+                if (newTenant.propertyId && newTenant.unitId) {
+                    const newProp = properties.find(p => p.id === newTenant.propertyId);
+                    if (newProp) {
+                        const updatedUnits = newProp.units.map(u => u.id === newTenant.unitId ? { ...u, status: 'Occupied' } : u);
+                        updateProperty(newProp.id, { units: updatedUnits as Unit[] });
+                    }
+                }
+                addTenant(newTenant);
+                alert("Tenant added.");
+            }
+        }
         // --- 2. Handle Application ---
         else {
             if (data.id && applications.find(a => a.id === data.id)) {
@@ -1527,9 +1567,11 @@ const Applications: React.FC = () => {
         if (record.recordType === 'Tenant' && record.id) {
             const t = tenants.find(x => x.id === record.id);
             if (!t) return;
+            const isPending = t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment';
             updateTenant(record.id, {
                 paymentHistory: [payment, ...(t.paymentHistory || [])],
-                status: t.status === 'Pending' ? 'Active' : t.status,
+                status: isPending ? 'Active' : t.status,
+                activationDate: isPending ? new Date().toISOString().split('T')[0] : (t as any).activationDate,
             });
             return;
         }
@@ -1640,6 +1682,7 @@ const Applications: React.FC = () => {
                 nextOfKinRelationship: (app as any).nextOfKinRelationship || undefined,
                 idNumber: String(app.idNumber || ''),
                 status: 'Active',
+                activationDate: new Date().toISOString().split('T')[0],
                 propertyId: app.propertyId,
                 propertyName: app.propertyName || prop.name,
                 unitId: app.unitId,
