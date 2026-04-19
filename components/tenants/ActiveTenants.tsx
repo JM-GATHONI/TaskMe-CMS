@@ -333,6 +333,14 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                             : 0;
                         const overpayAmt = amt - (expectedRent + expectedInstallment);
                         if (overpayAmt > 0) {
+                            // Auto-apply: forward credit to next month and log as 'Applied'
+                            // so the Overpayments ledger keeps an audit trail without
+                            // requiring manual reconciliation.
+                            const nextMonth = (() => {
+                                const d = new Date(newPayment.date);
+                                d.setMonth(d.getMonth() + 1);
+                                return d.toISOString().slice(0, 7);
+                            })();
                             addOverpayment({
                                 id: `ovp-${Date.now()}`,
                                 tenantName: t.name,
@@ -340,8 +348,8 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                                 amount: overpayAmt,
                                 reference: ref,
                                 dateReceived: newPayment.date,
-                                appliedMonth: newPayment.date.slice(0, 7),
-                                status: 'Held',
+                                appliedMonth: nextMonth,
+                                status: 'Applied',
                             });
                         }
                     }
@@ -1734,7 +1742,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     // If tenant is overdue from previous months, that should be in outstandingBills as 'Rent Arrears'
     // So 'rentDue' here is strictly current month rent.
     
-    const balanceDue = Math.max(0, totalExpected - amountPaidThisMonth);
+    // Allow negative balance so any overpayment shows as a credit / advance
+    // (auto-applied overpayments still get logged via Overpayments ledger).
+    const balanceDue = totalExpected - amountPaidThisMonth;
+    const isCreditBalance = balanceDue < 0;
+    const creditAmount = isCreditBalance ? Math.abs(balanceDue) : 0;
 
     // First rent+deposit payment (or onboarding) – used for display-only "Last Due Date".
     const firstPaidDateStr = paidDates.length > 0
@@ -2250,9 +2262,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     </div>
 
                     <div className="border-t pt-3 mt-2 flex justify-between items-center">
-                        <span className="font-bold text-gray-800 text-base">Balance Due</span>
-                        <span className={`text-xl font-extrabold ${balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            KES {Number(balanceDue ?? 0).toLocaleString()}
+                        <span className="font-bold text-gray-800 text-base">
+                            {isCreditBalance ? 'Credit (Advance)' : 'Balance Due'}
+                        </span>
+                        <span className={`text-xl font-extrabold ${isCreditBalance ? 'text-emerald-600' : balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {isCreditBalance ? '- ' : ''}KES {Number(isCreditBalance ? creditAmount : balanceDue).toLocaleString()}
                         </span>
                     </div>
                 </div>
@@ -2424,11 +2438,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             {activeModal === 'fines' && <FinesManagementModal tenant={tenant} onClose={() => setActiveModal(null)} />}
             {activeModal === 'status' && <StatusManagementModal tenant={tenant} onClose={() => setActiveModal(null)} />}
             {activeModal === 'request' && <NewRequestModal tenant={tenant} onClose={() => setActiveModal(null)} onSave={handleNewRequest} />}
-            {activeModal === 'pay' && <MpesaStkModal onClose={() => setActiveModal(null)} amount={balanceDue} tenantName={tenant.name} tenantId={tenant.id} />}
+            {activeModal === 'pay' && <MpesaStkModal onClose={() => setActiveModal(null)} amount={Math.max(0, balanceDue)} tenantName={tenant.name} tenantId={tenant.id} />}
             {activeModal === 'recordPayment' && (
-                <RecordPaymentModal 
-                    tenant={tenant} 
-                    balance={balanceDue} 
+                <RecordPaymentModal
+                    tenant={tenant}
+                    balance={Math.max(0, balanceDue)}
                     onClose={() => setActiveModal(null)} 
                     onRecord={handleRecordPayment} 
                 />
@@ -2681,6 +2695,24 @@ const ActiveTenants: React.FC = () => {
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);
 
+                    // Partial-paid tag: tenant has sent some money but the
+                    // first rent + deposit hasn't fully cleared, so they
+                    // remain in PendingPayment / Pending instead of Active.
+                    const hasAnyPaid = (tenant.paymentHistory || []).some(p => p.status === 'Paid');
+                    const depositMonthsForCard = Number(tenant.depositMonths ?? 1);
+                    const expectedDepositForCard = Number((tenant as any).depositExpected ?? 0) > 0
+                        ? Number((tenant as any).depositExpected)
+                        : (Number(tenant.rentAmount || 0) * depositMonthsForCard);
+                    const depositCovered = tenant.depositExempt
+                        || tenant.rentExtension?.enabled
+                        || (tenant.proratedDeposit?.enabled
+                            ? tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
+                            : Number(tenant.depositPaid || 0) + 0.5 >= expectedDepositForCard);
+                    const showPartialPaid = isAllocated
+                        && hasAnyPaid
+                        && !depositCovered
+                        && (tenant.status === 'Pending' || tenant.status === 'PendingPayment');
+
                     return (
                         <div
                             key={tenant.id}
@@ -2706,6 +2738,11 @@ const ActiveTenants: React.FC = () => {
                                         }`}>
                                             {!isAllocated ? 'Pending Allocation' : tenant.status}
                                         </span>
+                                        {showPartialPaid && (
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                                                Partial Paid
+                                            </span>
+                                        )}
                                         {tenant.houseStatus && tenant.houseStatus.length > 0 && (
                                             <div className="flex flex-wrap gap-1 justify-end">
                                                 {tenant.houseStatus.slice(0, 2).map(status => (

@@ -94,7 +94,16 @@ export function getMonthlyRentStatus(
         !!String(tenant.unit ?? '').trim() &&
         !!String(tenant.propertyName ?? '').trim();
 
-    if (!allocated || paidForNextDuePeriod || tenant.status === 'Vacated') {
+    // Late fees only accrue once a tenant is in the Active lifecycle and the
+    // first move-in month has passed. Pending* / Vacated / Notice tenants are
+    // not in the rent cycle yet, and the activation month itself is fee-free
+    // — fines start the 6th of the FIRST FULL month after activation.
+    const isInLateFeeWindow = tenant.status === 'Active' || tenant.status === 'Overdue';
+    const activationStr = (tenant as any).activationDate ? String((tenant as any).activationDate) : null;
+    const activationMonthPrefix = activationStr ? activationStr.slice(0, 7) : null;
+    const inActivationMonth = activationMonthPrefix && activationMonthPrefix === todayPrefix;
+
+    if (!allocated || paidForNextDuePeriod || tenant.status === 'Vacated' || !isInLateFeeWindow || inActivationMonth) {
         return {
             dueDay,
             graceDays: grace,
