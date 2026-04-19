@@ -7,6 +7,7 @@ import { uploadToBucket } from '../../utils/supabaseStorage';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
+import { canonicalizePhone, digitsOnly } from '../../utils/phone';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -221,6 +222,19 @@ export const ApplicationFormModal: React.FC<{
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    // Digit-only guard for phone/ID fields. Strips anything non-numeric.
+    const handleDigitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: digitsOnly(value) }));
+    };
+
+    const STANDARD_RELATIONSHIPS = ['Spouse', 'Parent', 'Sibling', 'Child'];
+    const currentRelationship = String((formData as any).nextOfKinRelationship ?? '');
+    const isCustomRelationship = currentRelationship.length > 0 && !STANDARD_RELATIONSHIPS.includes(currentRelationship);
+    // Tracks whether the "Other" option is active so the free-text box appears
+    // even before the user has typed a value.
+    const [showOtherRelationship, setShowOtherRelationship] = useState<boolean>(isCustomRelationship);
 
     const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -490,7 +504,7 @@ export const ApplicationFormModal: React.FC<{
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">ID Number</label>
-                                    <input name="idNumber" value={formData.idNumber || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+                                    <input name="idNumber" value={formData.idNumber || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={10} className="w-full p-2 border rounded" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">KRA PIN</label>
@@ -498,13 +512,65 @@ export const ApplicationFormModal: React.FC<{
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Primary Phone*</label>
-                                    <input name="phone" value={formData.phone || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+                                    <input name="phone" value={formData.phone || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Email Address</label>
                                     <input name="email" value={formData.email || ''} onChange={handleChange} className="w-full p-2 border rounded" />
                                 </div>
-                                
+
+                                {/* Alternative contact + Next of Kin (all optional) */}
+                                <div className="md:col-span-2 border-t pt-4 mt-2">
+                                    <h4 className="text-sm font-bold text-gray-800 mb-3">Additional Contact &amp; Next of Kin</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Alternative Phone</label>
+                                            <input name="alternativePhone" value={(formData as any).alternativePhone || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Next of Kin Full Name</label>
+                                            <input name="nextOfKinName" value={(formData as any).nextOfKinName || ''} onChange={handleChange} className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Next of Kin Phone</label>
+                                            <input name="nextOfKinPhone" value={(formData as any).nextOfKinPhone || ''} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Relationship to Tenant</label>
+                                            <select
+                                                value={showOtherRelationship || isCustomRelationship ? 'Other' : currentRelationship}
+                                                onChange={(e) => {
+                                                    const v = e.target.value;
+                                                    if (v === 'Other') {
+                                                        setShowOtherRelationship(true);
+                                                        setFormData(prev => ({ ...prev, nextOfKinRelationship: '' } as any));
+                                                    } else {
+                                                        setShowOtherRelationship(false);
+                                                        setFormData(prev => ({ ...prev, nextOfKinRelationship: v } as any));
+                                                    }
+                                                }}
+                                                className="w-full p-2 border rounded bg-white"
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="Spouse">Spouse</option>
+                                                <option value="Parent">Parent</option>
+                                                <option value="Sibling">Sibling</option>
+                                                <option value="Child">Child</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                            {(showOtherRelationship || isCustomRelationship) && (
+                                                <input
+                                                    name="nextOfKinRelationship"
+                                                    value={currentRelationship}
+                                                    onChange={handleChange}
+                                                    placeholder="Specify relationship"
+                                                    className="w-full p-2 border rounded mt-2"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Source & Referral Section */}
                                 <div className="md:col-span-2 border-t pt-4 mt-2">
                                     <h4 className="text-sm font-bold text-gray-800 mb-3">Lead Source</h4>
@@ -1427,7 +1493,10 @@ const Applications: React.FC = () => {
             if (!t) return null;
             if (t.authUserId && isUuid(t.authUserId)) return t.authUserId;
             if (isUuid(t.id)) return t.id;
-            const byPhone = tenants.find(x => x.phone === t.phone && x.authUserId && isUuid(x.authUserId));
+            const targetCanonical = canonicalizePhone(t.phone);
+            const byPhone = targetCanonical
+                ? tenants.find(x => canonicalizePhone(x.phone) === targetCanonical && x.authUserId && isUuid(x.authUserId))
+                : undefined;
             return byPhone?.authUserId ?? null;
         }
         if (record.recordType === 'Application') {
@@ -1437,9 +1506,12 @@ const Applications: React.FC = () => {
             // STK polling cannot be completed reliably.
             return null;
         }
-        const byPhone = tenants.find(
-            x => x.phone === record.phone && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)),
-        );
+        const recordCanonical = canonicalizePhone(record.phone);
+        const byPhone = recordCanonical
+            ? tenants.find(
+                x => canonicalizePhone(x.phone) === recordCanonical && ((x.authUserId && isUuid(x.authUserId)) || isUuid(x.id)),
+            )
+            : undefined;
         if (!byPhone) return null;
         return byPhone.authUserId && isUuid(byPhone.authUserId) ? byPhone.authUserId : (isUuid(byPhone.id) ? byPhone.id : null);
     };
@@ -1562,6 +1634,10 @@ const Applications: React.FC = () => {
                 username: '',
                 email: String(app.email || ''),
                 phone: String(app.phone || ''),
+                alternativePhone: (app as any).alternativePhone || undefined,
+                nextOfKinName: (app as any).nextOfKinName || undefined,
+                nextOfKinPhone: (app as any).nextOfKinPhone || undefined,
+                nextOfKinRelationship: (app as any).nextOfKinRelationship || undefined,
                 idNumber: String(app.idNumber || ''),
                 status: 'Active',
                 propertyId: app.propertyId,
