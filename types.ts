@@ -74,14 +74,33 @@ export interface Task {
   completionAttachments?: string[];
 }
 
+export type TenantStatus =
+  | 'PendingAllocation'
+  | 'PendingPayment'
+  | 'Active'
+  | 'Overdue'
+  | 'Notice'
+  | 'Vacated'
+  | 'Evicted'
+  | 'Blacklisted'
+  | 'Inactive'
+  /** Legacy — backfilled to PendingAllocation or PendingPayment. Still accepted for compatibility. */
+  | 'Pending';
+
 export interface TenantProfile {
   id: string;
   name: string;
   username?: string;
   email: string;
   phone: string;
+  /** Optional alternative contact number. */
+  alternativePhone?: string;
+  /** Next of kin fields — all optional. */
+  nextOfKinName?: string;
+  nextOfKinPhone?: string;
+  nextOfKinRelationship?: 'Spouse' | 'Parent' | 'Sibling' | 'Child' | 'Other' | string;
   idNumber: string;
-  status: 'Active' | 'Overdue' | 'Notice' | 'Vacated' | 'Evicted' | 'Blacklisted' | 'Pending';
+  status: TenantStatus;
   propertyId?: string;
   propertyName?: string;
   unitId?: string;
@@ -92,6 +111,13 @@ export interface TenantProfile {
   /** Grace days after due day before late fees accrue. Default 5 (due 1 + 5 → fines from day 6). */
   rentGraceDays?: number;
   depositPaid?: number;
+  /** Total deposit expected from this tenant (rent × depositMonths, or the
+   *  sum of prorated installments). Used by the deposit card to compute
+   *  the remaining deposit balance. */
+  depositExpected?: number;
+  /** ISO date the tenant first reached Active status. Used to gate late-fee
+   *  accrual (fees start 6th of the month AFTER this date's month). */
+  activationDate?: string;
   /** Next rent due date derived from successful payments. */
   nextDueDate?: string;
   onboardingDate: string;

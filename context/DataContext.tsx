@@ -129,7 +129,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [currentUser, setCurrentUser] = useState<User | StaffProfile | TenantProfile | null>(null);
 
     // Core Data (start empty; Supabase becomes source of truth)
-    const [tenants, setTenants, tenantsStatus] = useSupabaseBackedState<TenantProfile[]>([], 'tm_tenants_v11');
+    const [tenants, _rawSetTenants, tenantsStatus] = useSupabaseBackedState<TenantProfile[]>([], 'tm_tenants_v11');
+    // Wrapped setter: persists to the app_state blob (via _rawSetTenants) AND
+    // dual-writes to public.tenants (via app.upsert_tenants_bulk) so that
+    // backend RPCs like check_phone_unique and record_c2b_payment's tenant
+    // resolver have a normalized source of truth. See migration 0029.
+    const setTenants: React.Dispatch<React.SetStateAction<TenantProfile[]>> = React.useCallback((updater) => {
+      _rawSetTenants(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: TenantProfile[]) => TenantProfile[])(prev) : updater;
+        if (Array.isArray(next)) {
+          (async () => {
+            try {
+              const { error } = await supabase.schema('app').rpc('upsert_tenants_bulk', { p_tenants: next as unknown as object });
+              if (error) console.warn('[tenants] upsert_tenants_bulk failed:', error.message);
+            } catch (e) {
+              console.warn('[tenants] upsert_tenants_bulk error:', (e as Error)?.message);
+            }
+          })();
+        }
+        return next;
+      });
+    }, [_rawSetTenants]);
     const [properties, setProperties, propertiesStatus] = useSupabaseBackedState<Property[]>([], 'tm_properties_v11');
     const [landlords, setLandlords, landlordsStatus] = useSupabaseBackedState<User[]>([], 'tm_landlords_v11');
     const [tasks, setTasks, tasksStatus] = useSupabaseBackedState<Task[]>([], 'tm_tasks_v11');
@@ -258,6 +278,42 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // ── Fetch public.tenants (normalised table) ──────────────────────────────
+    // Merges rows from the normalized public.tenants table into the app_state
+    // tenants array on first load. public.tenants wins on conflict so that
+    // authoritative server-side fields (phone_canonical, status, activation_date)
+    // override any stale blob values. Uses _rawSetTenants to avoid triggering
+    // the dual-write during a server→client hydration pass.
+    const tenantsHydratedRef = React.useRef(false);
+    useEffect(() => {
+      if (!batchSuccess || tenantsHydratedRef.current) return;
+      tenantsHydratedRef.current = true;
+      let alive = true;
+      (async () => {
+        try {
+          const session = await getSupabaseSession();
+          if (!session) return;
+          const { data, error } = await supabase.schema('app').rpc('load_tenants');
+          if (error) { console.warn('[tenants] load_tenants failed:', error.message); return; }
+          if (!alive) return;
+          const rows = Array.isArray(data) ? (data as TenantProfile[]) : [];
+          if (rows.length === 0) return;
+          _rawSetTenants(prev => {
+            const byId = new Map<string, TenantProfile>(prev.map(t => [t.id, t]));
+            for (const t of rows) {
+              const existing = byId.get(t.id);
+              byId.set(t.id, existing ? { ...existing, ...t } : t);
+            }
+            return Array.from(byId.values());
+          });
+        } catch (e) {
+          console.warn('[tenants] hydrate error:', (e as Error)?.message);
+        }
+      })();
+      return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [batchSuccess]);
 
     // ── Merged staff: app_state + normalised table, deduped by email ─────────
     // Used as the single source of truth for all staff-related UI.
@@ -473,6 +529,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const deleteTenant = (id: string) => {
         setTenants(prev => prev.filter(t => t.id !== id));
         (async () => {
+            // Remove from the normalized table so RPCs/dup-checks stop seeing it.
+            const { error: delErr } = await supabase.schema('app').rpc('delete_tenant', { p_id: id });
+            if (delErr) console.warn('[Supabase] delete_tenant RPC error:', delErr.message);
             if (isAuthUUID(id)) {
                 const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
                 if (error) console.warn('[Supabase] admin_delete_auth_user (tenant) error:', error.message);
