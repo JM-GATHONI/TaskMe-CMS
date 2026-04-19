@@ -250,7 +250,7 @@ const RecordPaymentModal: React.FC<{
 
 
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName: string; tenantId: string }> = ({ onClose, amount, tenantName, tenantId }) => {
-    const { updateTenant, tenants, addNotification, addMessage, addOverpayment } = useData();
+    const { updateTenant, tenants, addNotification, addMessage, addOverpayment, properties } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success' | 'timed_out'>('input');
     const [phone, setPhone] = useState('');
     const [txCode, setTxCode] = useState('');
@@ -299,7 +299,10 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     };
                     const cycle = computeRentPaymentCycleUpdate(t, amt, newPayment.date);
                     updates.nextDueDate = cycle.nextDueDateIso;
-                    if (t.status === 'Pending') updates.status = 'Active';
+                    if (t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment') {
+                        updates.status = 'Active';
+                        (updates as any).activationDate = new Date().toISOString().split('T')[0];
+                    }
                     if (Number(t.depositPaid || 0) <= 0 && amt >= Number(t.rentAmount || 0)) {
                         updates.depositPaid = Number(t.rentAmount || 0);
                     }
@@ -391,12 +394,30 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
         return followStkPaymentCompletion(supabase, paymentUserId, checkoutRequestId, applyRow);
     }, [paymentUserId, checkoutRequestId, tenantId, updateTenant, addNotification, addMessage]);
 
+    // Resolve the tenant's unit tag so it can be sent as AccountReference —
+    // this makes the subsequent C2B confirmation (which carries the same tag
+    // as BillRefNumber) reconcile back to this tenant automatically.
+    const unitTag = (() => {
+        if (!tenant?.propertyId || !tenant?.unitId) return null;
+        const prop = properties.find(p => p.id === tenant.propertyId);
+        const u = prop?.units?.find(x => x.id === tenant.unitId);
+        const tag = String((u as any)?.unitTag ?? '').trim();
+        return tag || null;
+    })();
+
     const handlePay = async () => {
         setErrorMsg(null);
 
         if (!paymentUserId) {
             setErrorMsg(
                 'This tenant is not linked to a Supabase login (auth user). STK cannot be recorded in the payments ledger. Use Record Payment for offline settlement, or onboard the tenant via Registration → Users so their ID matches their login.',
+            );
+            return;
+        }
+
+        if (!unitTag) {
+            setErrorMsg(
+                `This unit has no account tag (e.g. "OCK/02"). Safaricom needs an Account Reference for Paybill matching. Add a unit tag in Registration → Properties → ${tenant?.propertyName ?? 'this property'} → ${tenant?.unit ?? 'unit'} before retrying.`,
             );
             return;
         }
@@ -420,6 +441,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     amount: Math.round(Number(editableAmount) || 0),
                     leaseId: tenantId,
                     userId: paymentUserId,
+                    unitTag,
                 },
             });
 
