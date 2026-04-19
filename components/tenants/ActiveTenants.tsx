@@ -1525,7 +1525,8 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
 // --- DETAIL VIEW ---
 
 const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> = ({ tenant, onBack }) => {
-    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties } = useData();
+    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
     const [chatInput, setChatInput] = useState('');
     const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
     const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
@@ -1693,16 +1694,31 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     // Derived Financials
     const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.
-    // Deposit status: exempt tenants and already-paid tenants owe 0; prorated tracks via proratedDeposit
+
+    // Expected full deposit for a standard (non-prorated, non-extension) tenant.
+    // Prefer depositExpected (set at registration and not mutated by payments)
+    // and fall back to rentAmount × depositMonths for legacy rows.
+    const depositMonthsRaw = Number((tenant as any).depositMonths ?? 1);
+    const depositMonths = Number.isFinite(depositMonthsRaw) && depositMonthsRaw > 0 ? depositMonthsRaw : 1;
+    const depositExpectedStandard = Number((tenant as any).depositExpected ?? 0) > 0
+        ? Number((tenant as any).depositExpected)
+        : (Number(tenant.rentAmount || 0) * depositMonths);
+
+    // Deposit status: exempt tenants and already-paid tenants owe 0; prorated tracks via proratedDeposit.
+    const depositPaidAmt = Number(tenant.depositPaid || 0);
     const depositDue = tenant.depositExempt
         ? 0
         : tenant.proratedDeposit?.enabled
             ? Math.max(0, tenant.proratedDeposit.totalDepositAmount - tenant.proratedDeposit.amountPaidSoFar)
-            : Number(tenant.depositPaid || 0) > 0 ? 0 : Number(tenant.rentAmount || 0);
+            : Math.max(0, depositExpectedStandard - depositPaidAmt);
+
+    // Fully-paid check: compares paid vs expected rather than "any amount > 0".
+    // Fixes the "Fully Paid" badge showing up for freshly-registered tenants
+    // where a legacy path set depositPaid > 0 without covering the full amount.
     const isDepositFullyPaid = !tenant.depositExempt && (
         tenant.proratedDeposit?.enabled
             ? tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
-            : Number(tenant.depositPaid || 0) > 0
+            : depositExpectedStandard > 0 && depositPaidAmt + 0.5 >= depositExpectedStandard
     );
     const recurrentBills = Object.values(tenant.recurringBills || {}).reduce((a: number, b) => a + (b as number), 0);
     const pendingBills = (tenant.outstandingBills || []).filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.amount, 0);
@@ -2149,6 +2165,45 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                 <span>KES {Number(depositDue).toLocaleString()}</span>
                             </div>
                         )}
+                        {/* Deposit-exempt admin control:
+                            - Any admin can waive the deposit while it's still unpaid.
+                            - Only Super Admin can un-exempt, or waive a deposit
+                              that has already been (partially/fully) collected. */}
+                        {(() => {
+                            const depositAlreadyCollected = depositPaidAmt > 0
+                                || (tenant.proratedDeposit?.amountPaidSoFar ?? 0) > 0;
+                            const canWaive = !tenant.depositExempt && (!depositAlreadyCollected || isSuperAdmin);
+                            const canRestore = !!tenant.depositExempt && isSuperAdmin;
+                            if (!canWaive && !canRestore) return null;
+                            return (
+                                <div className="pt-2 border-t border-dashed border-gray-200 flex items-center justify-between gap-2">
+                                    <span className="text-[11px] text-gray-500">
+                                        {tenant.depositExempt ? 'Deposit is currently waived.' : 'Waive security deposit for this tenant.'}
+                                        {depositAlreadyCollected && !tenant.depositExempt && (
+                                            <span className="block text-amber-700 font-medium">Deposit already collected — super-admin only.</span>
+                                        )}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (tenant.depositExempt) {
+                                                if (!window.confirm('Restore security deposit requirement for this tenant?')) return;
+                                                updateTenant(tenant.id, { depositExempt: false } as any);
+                                            } else {
+                                                const msg = depositAlreadyCollected
+                                                    ? 'This tenant has already paid part or all of their deposit. Waiving it now will mark them exempt but will NOT refund anything. Continue?'
+                                                    : 'Waive security deposit for this tenant?';
+                                                if (!window.confirm(msg)) return;
+                                                updateTenant(tenant.id, { depositExempt: true } as any);
+                                            }
+                                        }}
+                                        className={`text-[11px] font-bold px-2 py-1 rounded border ${tenant.depositExempt ? 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50' : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'}`}
+                                    >
+                                        {tenant.depositExempt ? 'Restore deposit' : 'Waive deposit'}
+                                    </button>
+                                </div>
+                            );
+                        })()}
                         {/* Rent extension notice */}
                         {tenant.rentExtension?.enabled && (
                             <div className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded p-2 mt-1">
@@ -2597,10 +2652,14 @@ const ActiveTenants: React.FC = () => {
                             const fullyPaid = tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount;
                             return fullyPaid ? 0 : (tenant.proratedDeposit.monthlyInstallment || 0);
                         }
-                        // Standard / multi-month: owed only if deposit has never been paid
-                        if (Number(tenant.depositPaid || 0) > 0) return 0;
+                        // Standard / multi-month: owed = expected - actually paid.
+                        // Previously this returned 0 as soon as depositPaid > 0, which
+                        // falsely cleared partial-deposit balances from the card.
                         const depositMonths = Number(tenant.depositMonths ?? 1);
-                        return (tenant.rentAmount || 0) * depositMonths;
+                        const expected = Number((tenant as any).depositExpected ?? 0) > 0
+                            ? Number((tenant as any).depositExpected)
+                            : (Number(tenant.rentAmount || 0) * depositMonths);
+                        return Math.max(0, expected - Number(tenant.depositPaid || 0));
                     })();
 
                     const isNewTenant = isAllocated && depositOwed > 0;

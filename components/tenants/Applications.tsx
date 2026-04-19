@@ -214,7 +214,12 @@ export const ApplicationFormModal: React.FC<{
             unit: unit?.unitNumber,
             rentAmount: rent,
             depositMonths,
-            depositPaid: prev.depositExempt ? 0 : rent * depositMonths,
+            // Expected deposit — drives invoicing and the "Fully Paid" check.
+            // depositPaid stays at whatever the tenant has actually paid
+            // (default 0); it must not be pre-filled to the full amount or
+            // the card will falsely show the deposit as settled.
+            depositExpected: prev.depositExempt ? 0 : rent * depositMonths,
+            depositPaid: prev.depositPaid && Number(prev.depositPaid) > 0 ? prev.depositPaid : 0,
         }));
     };
 
@@ -295,22 +300,21 @@ export const ApplicationFormModal: React.FC<{
             let calculated = 0;
             let note = "";
 
-            if (day < 10) {
-                // 1st to 9th: Full Rent
+            if (day <= 9) {
+                // 1st to 9th: Full Rent + Deposit
                 calculated = monthlyRent;
-                note = "Full month rent charged (Joined 1st-9th)";
-            } else if (day <= 25) {
-                // 10th to 25th: Prorated
-                // Days remaining inclusive
-                const daysRemaining = Math.max(0, 30 - day + 1); 
+                note = "Full month rent charged (joined 1st-9th)";
+            } else if (day <= 24) {
+                // 10th to 24th: Prorated rent + Deposit
+                const daysRemaining = Math.max(0, 30 - day + 1);
                 calculated = (monthlyRent / 30) * daysRemaining;
-                note = `Prorated: ${daysRemaining} days remaining`;
+                note = `Prorated: ${daysRemaining} days remaining (joined 10th-24th)`;
             } else {
-                // After 25th: Prorated + Next Month
+                // 25th onward: Prorated remainder + full next month's rent + Deposit
                 const daysRemaining = Math.max(0, 30 - day + 1);
                 const prorated = (monthlyRent / 30) * daysRemaining;
                 calculated = prorated + monthlyRent;
-                note = "Prorated days + Next Month's Rent (Joined after 25th)";
+                note = "Prorated days + next month's rent (joined 25th+)";
             }
             
             setRentDue(Math.round(calculated));
@@ -1691,6 +1695,13 @@ const Applications: React.FC = () => {
                 rentDueDate: app.rentDueDate,
                 rentGraceDays: graceDays,
                 depositPaid,
+                depositExpected: isDepositExempt
+                    ? 0
+                    : appRentExtension?.enabled
+                        ? (appRentExtension.depositPaidUpfront || 0)
+                        : appProrated?.enabled
+                            ? (appProrated.totalDepositAmount || 0)
+                            : (rentAmount * appDepositMonths),
                 onboardingDate: new Date().toISOString().split('T')[0],
                 nextDueDate: nextDueDateIso,
                 leaseSigned: !!app.leaseSigned,
