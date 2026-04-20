@@ -109,7 +109,7 @@ const UserForm: React.FC<{
         kraPin: (existingUser?.fullObject as any)?.kraPin || '',
         // Default the role to the selected category (prevents accidental routing to the wrong portal)
         role: existingUser?.role || category.roles?.[0] || availableRoles[0] || 'Tenant',
-        status: existingUser?.status || 'Active',
+        status: existingUser?.status || (category?.id === 'tenants' ? 'PendingAllocation' : 'Active'),
         // Requirement: default password for newly created users is 123456
         password: existingUser ? '' : '123456',
         

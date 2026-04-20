@@ -300,8 +300,22 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     const cycle = computeRentPaymentCycleUpdate(t, amt, newPayment.date);
                     updates.nextDueDate = cycle.nextDueDateIso;
                     if (t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment') {
-                        updates.status = 'Active';
-                        (updates as any).activationDate = new Date().toISOString().split('T')[0];
+                        const depExpected = Number((t as any).depositExpected ?? 0) > 0
+                            ? Number((t as any).depositExpected)
+                            : Number(t.rentAmount || 0) * Math.max(1, Number((t as any).depositMonths ?? 1));
+                        const depPaid = Number(t.depositPaid || 0);
+                        const depAlreadySettled = t.depositExempt
+                            || !!t.rentExtension?.enabled
+                            || (t.proratedDeposit?.enabled
+                                ? t.proratedDeposit.amountPaidSoFar + 0.5 >= t.proratedDeposit.totalDepositAmount
+                                : depExpected > 0 && depPaid + 0.5 >= depExpected);
+                        const depSettledByPayment = t.proratedDeposit?.enabled
+                            ? amt >= Number(t.rentAmount || 0) + (t.proratedDeposit.monthlyInstallment || 0)
+                            : amt >= Number(t.rentAmount || 0) + depExpected;
+                        if (depAlreadySettled || depSettledByPayment) {
+                            updates.status = 'Active';
+                            (updates as any).activationDate = new Date().toISOString().split('T')[0];
+                        }
                     }
                     if (Number(t.depositPaid || 0) <= 0 && amt >= Number(t.rentAmount || 0)) {
                         updates.depositPaid = Number(t.rentAmount || 0);
@@ -1928,7 +1942,16 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             paymentHistory: [newPayment, ...tenant.paymentHistory],
             nextDueDate: cycle.nextDueDateIso,
         };
-        if (tenant.status === 'Pending') updates.status = 'Active';
+        if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+            const alreadySettled = tenant.depositExempt || isDepositFullyPaid || !!tenant.rentExtension?.enabled;
+            const settledByPayment = tenant.proratedDeposit?.enabled
+                ? Number(amount) >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
+                : Number(amount) >= effectiveRent + depositExpectedStandard;
+            if (alreadySettled || settledByPayment) {
+                updates.status = 'Active';
+                (updates as any).activationDate = date;
+            }
+        }
         if (Number(tenant.depositPaid || 0) <= 0 && Number(amount || 0) >= Number(tenant.rentAmount || 0)) {
             updates.depositPaid = Number(tenant.rentAmount || 0);
         }
@@ -2083,6 +2106,42 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             </p>
                         </div>
                     </div>
+
+                    {/* Deposit Tracking Card */}
+                    {!tenant.depositExempt && (
+                        <div className="mt-4 border-t pt-4">
+                            <p className="text-xs text-gray-400 font-bold uppercase mb-2">Security Deposit</p>
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
+                                    <p className="text-xs text-gray-400 font-bold uppercase">Expected</p>
+                                    <p className="font-bold text-gray-700 text-sm">
+                                        KES {(tenant.proratedDeposit?.enabled
+                                            ? tenant.proratedDeposit.totalDepositAmount
+                                            : depositExpectedStandard).toLocaleString()}
+                                    </p>
+                                    {tenant.proratedDeposit?.enabled && (
+                                        <p className="text-[10px] text-indigo-600 mt-0.5">
+                                            {tenant.proratedDeposit.monthsPaid}/{tenant.proratedDeposit.durationMonths} installments
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
+                                    <p className="text-xs text-gray-400 font-bold uppercase">Paid</p>
+                                    <p className="font-bold text-green-700 text-sm">
+                                        KES {(tenant.proratedDeposit?.enabled
+                                            ? tenant.proratedDeposit.amountPaidSoFar
+                                            : depositPaidAmt).toLocaleString()}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
+                                    <p className="text-xs text-gray-400 font-bold uppercase">Balance</p>
+                                    <p className={`font-bold text-sm ${depositDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                        {depositDue > 0 ? `KES ${depositDue.toLocaleString()}` : 'Cleared'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
