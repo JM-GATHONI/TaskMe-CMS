@@ -1998,7 +1998,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                     const tag = String(explicit ?? tenant.unit ?? '').trim();
                                     return tag ? (
                                         <p className="text-xs text-white/90 mt-1">
-                                            Paybill Account: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded uppercase tracking-wider">{tag}</span>
+                                            Payment Account: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded uppercase tracking-wider">{tag}</span>
                                         </p>
                                     ) : (
                                         <p className="text-xs text-amber-200 mt-1">No unit assigned — allocate a unit to enable payments</p>
