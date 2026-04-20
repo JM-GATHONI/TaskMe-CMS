@@ -656,12 +656,6 @@ export const ApplicationFormModal: React.FC<{
                                     <input type="number" name="rentAmount" value={formData.rentAmount} onChange={handleAmountChange} className="w-full p-2 border rounded font-bold" />
                                 </div>
                                 
-                                {!formData.depositExempt && !formData.proratedDeposit?.enabled && !formData.rentExtension?.enabled && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">Deposit Amount</label>
-                                        <input type="number" name="depositPaid" value={formData.depositPaid} onChange={handleAmountChange} className="w-full p-2 border rounded" />
-                                    </div>
-                                )}
 
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Rent due day (1–28)</label>
@@ -1609,6 +1603,22 @@ const Applications: React.FC = () => {
             const appProrated = (app as any).proratedDeposit as TenantProfile['proratedDeposit'];
             const appRentExtension = (app as any).rentExtension as TenantProfile['rentExtension'];
 
+            // ── Proration: first-month rent based on join day ─────────────────
+            // Day 1–9  → full month; Day 10–24 → prorated remainder;
+            // Day 25+  → prorated days + next full month.
+            const joinDate = app.rentStartDate ? new Date(app.rentStartDate) : new Date();
+            const joinDay = joinDate.getDate();
+            let firstMonthRent: number;
+            if (joinDay <= 9) {
+                firstMonthRent = rentAmount;
+            } else if (joinDay <= 24) {
+                const daysLeft = Math.max(1, 30 - joinDay + 1);
+                firstMonthRent = Math.round((rentAmount / 30) * daysLeft);
+            } else {
+                const daysLeft = Math.max(1, 30 - joinDay + 1);
+                firstMonthRent = Math.round((rentAmount / 30) * daysLeft) + rentAmount;
+            }
+
             // ── Compute expected first payment ────────────────────────────────
             let expectedTotal: number;
             let depositPaid: number;
@@ -1616,7 +1626,7 @@ const Applications: React.FC = () => {
             let graceDays = Number(app.rentGraceDays ?? 5);
 
             if (isDepositExempt) {
-                expectedTotal = rentAmount;
+                expectedTotal = firstMonthRent;
                 depositPaid = 0;
                 const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
                 const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(dueDay); d.setHours(0, 0, 0, 0);
@@ -1624,20 +1634,18 @@ const Applications: React.FC = () => {
             } else if (appRentExtension?.enabled) {
                 expectedTotal = appRentExtension.depositPaidUpfront || 0;
                 depositPaid = appRentExtension.depositPaidUpfront || 0;
-                // First rent deferred; no grace period after the deferred date
                 nextDueDateIso = appRentExtension.rentDeferredUntil;
                 graceDays = 0;
             } else if (appProrated?.enabled) {
-                expectedTotal = rentAmount + (appProrated.monthlyInstallment || 0);
-                depositPaid = 0; // will be tracked via proratedDeposit.amountPaidSoFar
+                expectedTotal = firstMonthRent + (appProrated.monthlyInstallment || 0);
+                depositPaid = 0;
                 const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
                 const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(dueDay); d.setHours(0, 0, 0, 0);
                 nextDueDateIso = d.toISOString().split('T')[0];
             } else {
-                // Normal or multi-month: full deposit at first payment
-                const storedDeposit = Number((app as any).depositPaid || 0);
-                depositPaid = storedDeposit > 0 ? storedDeposit : rentAmount * appDepositMonths;
-                expectedTotal = rentAmount + depositPaid;
+                // Normal or multi-month: deposit at first payment (no pre-filled depositPaid)
+                depositPaid = rentAmount * appDepositMonths;
+                expectedTotal = firstMonthRent + depositPaid;
                 const dueDay = Math.min(28, Math.max(1, Number(app.rentDueDate ?? 1)));
                 const d = new Date(); d.setMonth(d.getMonth() + 1); d.setDate(dueDay); d.setHours(0, 0, 0, 0);
                 nextDueDateIso = d.toISOString().split('T')[0];
@@ -1695,6 +1703,7 @@ const Applications: React.FC = () => {
                 unitId: app.unitId,
                 unit: app.unit || unit.unitNumber,
                 rentAmount: rentAmount,
+                firstMonthRent: firstMonthRent !== rentAmount ? firstMonthRent : undefined,
                 rentDueDate: app.rentDueDate,
                 rentGraceDays: graceDays,
                 depositPaid,

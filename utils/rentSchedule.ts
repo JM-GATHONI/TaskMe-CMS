@@ -99,9 +99,14 @@ export function getMonthlyRentStatus(
     // not in the rent cycle yet, and the activation month itself is fee-free
     // — fines start the 6th of the FIRST FULL month after activation.
     const isInLateFeeWindow = tenant.status === 'Active' || tenant.status === 'Overdue';
-    const activationStr = (tenant as any).activationDate ? String((tenant as any).activationDate) : null;
+    // Fall back to onboardingDate when activationDate was never written (legacy
+    // records or tenants onboarded before the field was added), so the first
+    // month is always treated as fee-free regardless of when the field was set.
+    const activationStr = (tenant as any).activationDate
+        ? String((tenant as any).activationDate)
+        : (tenant.onboardingDate ? String(tenant.onboardingDate) : null);
     const activationMonthPrefix = activationStr ? activationStr.slice(0, 7) : null;
-    const inActivationMonth = activationMonthPrefix && activationMonthPrefix === todayPrefix;
+    const inActivationMonth = !!(activationMonthPrefix && activationMonthPrefix === todayPrefix);
 
     if (!allocated || paidForNextDuePeriod || tenant.status === 'Vacated' || !isInLateFeeWindow || inActivationMonth) {
         return {

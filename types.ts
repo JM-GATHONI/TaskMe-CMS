@@ -118,6 +118,9 @@ export interface TenantProfile {
   /** ISO date the tenant first reached Active status. Used to gate late-fee
    *  accrual (fees start 6th of the month AFTER this date's month). */
   activationDate?: string;
+  /** Prorated rent for the first (join) month only. Set at approval when the
+   *  tenant's join day is 10 or later; absent/zero means full rent from day 1. */
+  firstMonthRent?: number;
   /** Next rent due date derived from successful payments. */
   nextDueDate?: string;
   onboardingDate: string;

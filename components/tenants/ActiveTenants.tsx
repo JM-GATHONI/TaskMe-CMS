@@ -1697,14 +1697,25 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         .filter(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid')
         .reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
 
-    const isFullyPaid = amountPaidThisMonth >= (tenant.rentAmount || 0);
+    // Use prorated first-month rent when the tenant joined this month
+    // and firstMonthRent was stored at approval (join day 10 or later).
+    const activationMonthIso = (tenant as any).activationDate
+        ? String((tenant as any).activationDate).slice(0, 7)
+        : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null);
+    const isActivationMonth = activationMonthIso === currentMonthIso;
+    const firstMonthRentStored = Number((tenant as any).firstMonthRent || 0);
+    const effectiveRent = isActivationMonth && firstMonthRentStored > 0
+        ? firstMonthRentStored
+        : (tenant.rentAmount || 0);
+
+    const isFullyPaid = amountPaidThisMonth >= effectiveRent;
 
     const rentStat = getMonthlyRentStatus(tenant, { isRentPaidThisMonth: isFullyPaid });
     const daysLate = rentStat.daysLateThisMonth;
     const automatedLateFine = rentStat.automatedLateFine;
 
-    // Derived Financials
-    const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : tenant.rentAmount; // If active and paid, 0. Else full rent.
+    // Derived Financials — use prorated rent in activation month.
+    const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : effectiveRent;
 
     // Expected full deposit for a standard (non-prorated, non-extension) tenant.
     // Prefer depositExpected (set at registration and not mutated by payments)
@@ -2227,7 +2238,15 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             </div>
                         )}
                         <div className="flex justify-between">
-                            <span className="text-gray-600">Base Rent ({currentMonthName})</span>
+                            <span className="text-gray-600">
+                                {isActivationMonth && firstMonthRentStored > 0 && firstMonthRentStored !== (tenant.rentAmount || 0)
+                                    ? (() => {
+                                        const jDay = tenant.onboardingDate ? new Date(tenant.onboardingDate).getDate() : null;
+                                        const daysLeft = jDay ? Math.max(1, 30 - jDay + 1) : null;
+                                        return `Prorated Rent${daysLeft ? ` — ${daysLeft} days` : ''} (joined ${currentMonthName} ${jDay ?? ''})`;
+                                    })()
+                                    : `Base Rent (${currentMonthName})`}
+                            </span>
                             <span className="font-medium">KES {Number(rentDue ?? 0).toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
@@ -2657,7 +2676,14 @@ const ActiveTenants: React.FC = () => {
                     const isPaid = tenant.paymentHistory.some(p => p.date.startsWith(currentMonthIso) && p.status === 'Paid');
                     const rentStat = getMonthlyRentStatus(tenant, { isRentPaidThisMonth: isPaid });
                     const automatedLateFine = rentStat.automatedLateFine;
-                    const rentDue = !isAllocated ? 0 : (isPaid ? 0 : tenant.rentAmount);
+                    const cardActivationMonth = (tenant as any).activationDate
+                        ? String((tenant as any).activationDate).slice(0, 7)
+                        : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null);
+                    const cardFirstMonthRent = Number((tenant as any).firstMonthRent || 0);
+                    const cardEffectiveRent = (cardActivationMonth === currentMonthIso && cardFirstMonthRent > 0)
+                        ? cardFirstMonthRent
+                        : (tenant.rentAmount || 0);
+                    const rentDue = !isAllocated ? 0 : (isPaid ? 0 : cardEffectiveRent);
                     const pendingBills = !isAllocated
                         ? 0
                         : (tenant.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + b.amount, 0) || 0);
