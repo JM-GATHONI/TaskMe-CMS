@@ -2263,7 +2263,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
                     <div className="border-t pt-3 mt-2 flex justify-between items-center">
                         <span className="font-bold text-gray-800 text-base">
-                            {isCreditBalance ? 'Credit (Advance)' : 'Balance Due'}
+                            {isCreditBalance ? 'Credit (Advance)' : 'Total Due'}
                         </span>
                         <span className={`text-xl font-extrabold ${isCreditBalance ? 'text-emerald-600' : balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
                             {isCreditBalance ? '- ' : ''}KES {Number(isCreditBalance ? creditAmount : balanceDue).toLocaleString()}

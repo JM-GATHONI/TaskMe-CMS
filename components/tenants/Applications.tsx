@@ -111,7 +111,10 @@ export const ApplicationFormModal: React.FC<{
     properties: Property[];
 }> = ({ record, onClose, onSave, properties }) => {
     const { tenants, landlords, staff, vendors, renovationInvestors } = useData(); // Context for referrer lookups
-    const [activeTab, setActiveTab] = useState<'details' | 'lease' | 'documents'>('details');
+    // Open on 'lease' tab when tenant has no unit assigned yet so the user
+    // lands directly on the Rent & Deposit / proration section.
+    const needsUnitSetup = !record?.unitId && !record?.unit;
+    const [activeTab, setActiveTab] = useState<'details' | 'lease' | 'documents'>(needsUnitSetup ? 'lease' : 'details');
     
     // File inputs refs (reused)
     const fileInputRef = useRef<HTMLInputElement>(null);
