@@ -405,12 +405,15 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
     // Resolve the tenant's unit tag so it can be sent as AccountReference —
     // this makes the subsequent C2B confirmation (which carries the same tag
     // as BillRefNumber) reconcile back to this tenant automatically.
+    // Falls back to tenant.unit (e.g. "KRG11") when no explicit unitTag field
+    // is set on the unit record — the unit number IS the paybill account.
     const unitTag = (() => {
-        if (!tenant?.propertyId || !tenant?.unitId) return null;
+        if (!tenant?.unitId) return null;
         const prop = properties.find(p => p.id === tenant.propertyId);
         const u = prop?.units?.find(x => x.id === tenant.unitId);
-        const tag = String((u as any)?.unitTag ?? '').trim();
-        return tag || null;
+        const explicit = String((u as any)?.unitTag ?? '').trim();
+        const fallback = String(tenant?.unit ?? '').trim();
+        return explicit || fallback || null;
     })();
 
     const handlePay = async () => {
@@ -425,7 +428,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
 
         if (!unitTag) {
             setErrorMsg(
-                `This unit has no account tag (e.g. "OCK/02"). Safaricom needs an Account Reference for Paybill matching. Add a unit tag in Registration → Properties → ${tenant?.propertyName ?? 'this property'} → ${tenant?.unit ?? 'unit'} before retrying.`,
+                'This tenant has no unit assigned. Allocate a unit in Tenants → Applications before initiating STK push.',
             );
             return;
         }
@@ -1957,13 +1960,14 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                 <h1 className="text-2xl font-bold">{tenant.name}</h1>
                                 <p className="text-white/80">{tenant.unit}, {tenant.propertyName}</p>
                                 {(() => {
-                                    const tag = tenantProperty?.units?.find(u => u.id === tenant.unitId)?.unitTag;
+                                    const explicit = tenantProperty?.units?.find(u => u.id === tenant.unitId)?.unitTag;
+                                    const tag = String(explicit ?? tenant.unit ?? '').trim();
                                     return tag ? (
                                         <p className="text-xs text-white/90 mt-1">
                                             Paybill Account: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded uppercase tracking-wider">{tag}</span>
                                         </p>
                                     ) : (
-                                        <p className="text-xs text-amber-200 mt-1">No paybill account set for this unit</p>
+                                        <p className="text-xs text-amber-200 mt-1">No unit assigned — allocate a unit to enable payments</p>
                                     );
                                 })()}
                                 <p className="text-xs text-white/60 mt-1">Onboarded: {tenant.onboardingDate}</p>
