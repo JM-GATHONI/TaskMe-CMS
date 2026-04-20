@@ -1718,9 +1718,26 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null);
     const isActivationMonth = activationMonthIso === currentMonthIso;
     const firstMonthRentStored = Number((tenant as any).firstMonthRent || 0);
-    const effectiveRent = isActivationMonth && firstMonthRentStored > 0
-        ? firstMonthRentStored
-        : (tenant.rentAmount || 0);
+    // Compute prorated rent on-the-fly when firstMonthRent was not persisted at approval
+    // (e.g. tenant registered directly, not via the applications approval flow).
+    const proratedRentOnTheFly = (() => {
+        if (!isActivationMonth) return 0;
+        const joinDateStr = (tenant as any).activationDate || tenant.onboardingDate;
+        if (!joinDateStr) return 0;
+        const joinDate = new Date(joinDateStr);
+        const joinDay = joinDate.getDate();
+        if (joinDay <= 9) return 0; // full rent — no proration needed
+        const baseRent = Number(tenant.rentAmount || 0);
+        const lastDayOfMonth = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
+        const daysLeft = Math.max(0, lastDayOfMonth - joinDay); // days AFTER join day
+        const prorated = Math.round((baseRent / 30) * daysLeft);
+        return joinDay >= 25 ? prorated + baseRent : prorated; // 25+: add full next month
+    })();
+    const effectiveRent = isActivationMonth
+        ? (firstMonthRentStored > 0
+            ? firstMonthRentStored
+            : (proratedRentOnTheFly > 0 ? proratedRentOnTheFly : Number(tenant.rentAmount || 0)))
+        : Number(tenant.rentAmount || 0);
 
     const isFullyPaid = amountPaidThisMonth >= effectiveRent;
 
@@ -1742,10 +1759,20 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     // Deposit status: exempt tenants and already-paid tenants owe 0; prorated tracks via proratedDeposit.
     const depositPaidAmt = Number(tenant.depositPaid || 0);
+    // depositDue = total remaining balance (used in tracking card Expected/Paid/Balance).
     const depositDue = tenant.depositExempt
         ? 0
         : tenant.proratedDeposit?.enabled
             ? Math.max(0, tenant.proratedDeposit.totalDepositAmount - tenant.proratedDeposit.amountPaidSoFar)
+            : Math.max(0, depositExpectedStandard - depositPaidAmt);
+    // depositDueForInvoice = amount owed THIS period: one installment for prorated deposits,
+    // full remaining balance for standard deposits. Used in Total Invoiced.
+    const depositDueForInvoice = tenant.depositExempt
+        ? 0
+        : tenant.proratedDeposit?.enabled
+            ? (tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
+                ? 0
+                : tenant.proratedDeposit.monthlyInstallment)
             : Math.max(0, depositExpectedStandard - depositPaidAmt);
 
     // Fully-paid check: compares paid vs expected rather than "any amount > 0".
@@ -1762,7 +1789,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     
     // Total Expected = Rent + Recurrent + Bills + Fines + Automated Fine
     // Note: If rent is partially paid, we show total expected and subtract paid in UI
-    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDue;
+    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDueForInvoice;
     
     // Total Paid is amountPaidThisMonth (assuming bills are paid separately or included in general pot for this visual)
     // For simplicity in this view, we just show Balance = Expected - Paid
@@ -2298,11 +2325,16 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                         )}
                         <div className="flex justify-between">
                             <span className="text-gray-600">
-                                {isActivationMonth && firstMonthRentStored > 0 && firstMonthRentStored !== (tenant.rentAmount || 0)
+                                {isActivationMonth && effectiveRent > 0 && effectiveRent !== Number(tenant.rentAmount || 0)
                                     ? (() => {
-                                        const jDay = tenant.onboardingDate ? new Date(tenant.onboardingDate).getDate() : null;
-                                        const daysLeft = jDay ? Math.max(1, 30 - jDay + 1) : null;
-                                        return `Prorated Rent${daysLeft ? ` — ${daysLeft} days` : ''} (joined ${currentMonthName} ${jDay ?? ''})`;
+                                        const joinDateStr = (tenant as any).activationDate || tenant.onboardingDate;
+                                        const joinDate = joinDateStr ? new Date(joinDateStr) : null;
+                                        const jDay = joinDate ? joinDate.getDate() : null;
+                                        const lastDay = joinDate
+                                            ? new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate()
+                                            : 30;
+                                        const daysLeft = jDay != null ? Math.max(0, lastDay - jDay) : null;
+                                        return `Prorated Rent${daysLeft != null ? ` — ${daysLeft} days` : ''} (joined ${currentMonthName} ${jDay ?? ''})`;
                                     })()
                                     : `Base Rent (${currentMonthName})`}
                             </span>

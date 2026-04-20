@@ -309,12 +309,12 @@ export const ApplicationFormModal: React.FC<{
                 note = "Full month rent charged (joined 1st-9th)";
             } else if (day <= 24) {
                 // 10th to 24th: Prorated rent + Deposit
-                const daysRemaining = Math.max(0, 30 - day + 1);
+                const daysRemaining = Math.max(0, 30 - day); // days AFTER join day
                 calculated = (monthlyRent / 30) * daysRemaining;
                 note = `Prorated: ${daysRemaining} days remaining (joined 10th-24th)`;
             } else {
                 // 25th onward: Prorated remainder + full next month's rent + Deposit
-                const daysRemaining = Math.max(0, 30 - day + 1);
+                const daysRemaining = Math.max(0, 30 - day); // days AFTER join day
                 const prorated = (monthlyRent / 30) * daysRemaining;
                 calculated = prorated + monthlyRent;
                 note = "Prorated days + next month's rent (joined 25th+)";
@@ -1612,10 +1612,10 @@ const Applications: React.FC = () => {
             if (joinDay <= 9) {
                 firstMonthRent = rentAmount;
             } else if (joinDay <= 24) {
-                const daysLeft = Math.max(1, 30 - joinDay + 1);
+                const daysLeft = Math.max(0, 30 - joinDay); // days AFTER join day
                 firstMonthRent = Math.round((rentAmount / 30) * daysLeft);
             } else {
-                const daysLeft = Math.max(1, 30 - joinDay + 1);
+                const daysLeft = Math.max(0, 30 - joinDay); // days AFTER join day
                 firstMonthRent = Math.round((rentAmount / 30) * daysLeft) + rentAmount;
             }
 
