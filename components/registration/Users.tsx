@@ -5,6 +5,7 @@ import { User, StaffProfile, TenantProfile, RenovationInvestor, Vendor } from '.
 import Icon from '../Icon';
 import { hashPassword } from '../../utils/security';
 import { supabase } from '../../utils/supabaseClient';
+import { canonicalizePhone, digitsOnly } from '../../utils/phone';
 
 // Unified User Type for UI Display
 interface UnifiedUser {
@@ -112,6 +113,12 @@ const UserForm: React.FC<{
         // Requirement: default password for newly created users is 123456
         password: existingUser ? '' : '123456',
         
+        // Tenant-specific extended fields
+        alternativePhone: (existingUser?.fullObject as any)?.alternativePhone || '',
+        nextOfKinName: (existingUser?.fullObject as any)?.nextOfKinName || '',
+        nextOfKinPhone: (existingUser?.fullObject as any)?.nextOfKinPhone || '',
+        nextOfKinRelationship: (existingUser?.fullObject as any)?.nextOfKinRelationship || '',
+
         // Extended Fields
         assignedPropertyId: (existingUser?.fullObject as StaffProfile)?.assignedPropertyId || '',
         referrerId: (existingUser?.fullObject as RenovationInvestor)?.referrerId || '',
@@ -122,9 +129,14 @@ const UserForm: React.FC<{
         targetSalary: (existingUser?.fullObject as any)?.payrollInfo?.baseSalary?.toString?.() || ''
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [showOtherRelationship, setShowOtherRelationship] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleDigitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData({ ...formData, [e.target.name]: digitsOnly(e.target.value) });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -151,6 +163,10 @@ const UserForm: React.FC<{
     const isContractor = category.id === 'contractors' || formData.role === 'Contractor';
     const isAffiliate = category.id === 'affiliates' || formData.role === 'Affiliate';
     const isFieldAgent = category.id === 'field' || formData.role === 'Field Agent';
+    const isTenant = category.id === 'tenants' || formData.role === 'Tenant';
+    const currentRelationship = String(formData.nextOfKinRelationship ?? '');
+    const isCustomRelationship = currentRelationship !== '' &&
+        !['Spouse', 'Parent', 'Sibling', 'Child'].includes(currentRelationship);
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1500] p-4 backdrop-blur-sm" onClick={onClose}>
@@ -174,7 +190,7 @@ const UserForm: React.FC<{
                         
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
-                            <input name="phone" value={formData.phone} onChange={handleChange} placeholder="07..." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" required />
+                            <input name="phone" value={formData.phone} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" required />
                         </div>
                         <div className="col-span-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email *</label>
@@ -254,7 +270,7 @@ const UserForm: React.FC<{
                             <>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">ID Number</label>
-                                    <input name="idNumber" value={formData.idNumber} onChange={handleChange} placeholder="ID No." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
+                                    <input name="idNumber" value={formData.idNumber} onChange={handleDigitChange} inputMode="numeric" maxLength={10} placeholder="ID No." className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">KRA PIN</label>
@@ -288,6 +304,59 @@ const UserForm: React.FC<{
                             </>
                         )}
                     </div>
+
+                    {isTenant && (
+                        <div className="border-t pt-4">
+                            <p className="text-xs font-bold text-gray-500 uppercase mb-3">Additional Contact &amp; Next of Kin</p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Alternative Phone</label>
+                                    <input name="alternativePhone" value={formData.alternativePhone} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Next of Kin Name</label>
+                                    <input name="nextOfKinName" value={formData.nextOfKinName} onChange={handleChange} className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Next of Kin Phone</label>
+                                    <input name="nextOfKinPhone" value={formData.nextOfKinPhone} onChange={handleDigitChange} inputMode="numeric" maxLength={12} placeholder="0712345678" className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none" />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Relationship to Tenant</label>
+                                    <select
+                                        value={showOtherRelationship || isCustomRelationship ? 'Other' : currentRelationship}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === 'Other') {
+                                                setShowOtherRelationship(true);
+                                                setFormData({ ...formData, nextOfKinRelationship: '' });
+                                            } else {
+                                                setShowOtherRelationship(false);
+                                                setFormData({ ...formData, nextOfKinRelationship: v });
+                                            }
+                                        }}
+                                        className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-primary outline-none"
+                                    >
+                                        <option value="">-- Select --</option>
+                                        <option value="Spouse">Spouse</option>
+                                        <option value="Parent">Parent</option>
+                                        <option value="Sibling">Sibling</option>
+                                        <option value="Child">Child</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                    {(showOtherRelationship || isCustomRelationship) && (
+                                        <input
+                                            name="nextOfKinRelationship"
+                                            value={currentRelationship}
+                                            onChange={handleChange}
+                                            placeholder="Specify relationship"
+                                            className="w-full p-2 border rounded focus:ring-1 focus:ring-primary outline-none mt-2"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                          <div>
@@ -457,7 +526,7 @@ const Users: React.FC = () => {
             name: rest.name,
             username: rest.username,
             email: rest.email,
-            phone: rest.phone,
+            phone: canonicalizePhone(rest.phone) || rest.phone,
             idNumber: rest.idNumber || '',
             status: rest.status,
             passwordHash: passwordHash
@@ -508,7 +577,12 @@ const Users: React.FC = () => {
             // Update logic
             if (editUser.type === 'Staff') updateStaff(editUser.id, { ...rest, assignedPropertyId });
             else if (editUser.type === 'Landlord') updateLandlord(editUser.id, rest);
-            else if (editUser.type === 'Tenant') updateTenant(editUser.id, rest);
+            else if (editUser.type === 'Tenant') updateTenant(editUser.id, {
+                ...rest,
+                phone: canonicalizePhone(rest.phone) || rest.phone,
+                alternativePhone: canonicalizePhone(rest.alternativePhone) || rest.alternativePhone || undefined,
+                nextOfKinPhone: canonicalizePhone(rest.nextOfKinPhone) || rest.nextOfKinPhone || undefined,
+            });
             else if (editUser.type === 'Investor') updateRenovationInvestor(editUser.id, { ...rest, referrerId, referrerType });
             else if (editUser.type === 'Vendor') updateVendor(editUser.id, { ...rest, specialty });
             setEditUser(null);
@@ -556,10 +630,14 @@ const Users: React.FC = () => {
             if (activeCategory.id === 'landlords') {
                 addLandlord({ ...commonFieldsWithId, role: 'Landlord' } as User);
             } else if (activeCategory.id === 'tenants') {
-                addTenant({ 
-                    ...commonFieldsWithId, 
+                addTenant({
+                    ...commonFieldsWithId,
                     unit: '', rentAmount: 0, onboardingDate: new Date().toISOString().split('T')[0],
-                    paymentHistory: [], outstandingBills: [], outstandingFines: [], maintenanceRequests: [] 
+                    paymentHistory: [], outstandingBills: [], outstandingFines: [], maintenanceRequests: [],
+                    alternativePhone: canonicalizePhone(rest.alternativePhone) || rest.alternativePhone || undefined,
+                    nextOfKinName: rest.nextOfKinName || undefined,
+                    nextOfKinPhone: canonicalizePhone(rest.nextOfKinPhone) || rest.nextOfKinPhone || undefined,
+                    nextOfKinRelationship: rest.nextOfKinRelationship || undefined,
                 } as TenantProfile);
             } else if (activeCategory.id === 'investors') {
                 addRenovationInvestor({
