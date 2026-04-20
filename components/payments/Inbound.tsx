@@ -471,6 +471,7 @@ const Inbound: React.FC = () => {
             const hay = [
                 matchedTenant?.name,
                 matchedTenant?.unit,
+                (matchedTenant as any)?.idNumber,
                 p.transaction_id,
                 p.checkout_request_id,
                 p.bill_ref_number,
