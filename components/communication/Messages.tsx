@@ -59,12 +59,30 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
             switch (filter) {
                 case 'All': rawList = tenants; break;
                 case 'By Property': rawList = tenants.filter(t => t.propertyName === propId); break;
-                case 'Arrears': rawList = tenants.filter(t => t.status === 'Overdue'); break;
+                case 'Arrears': rawList = tenants.filter(t => {
+                    if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return false;
+                    const currentMonthIso = now.toISOString().slice(0, 7);
+                    const hasPaidThisMonth = (t.paymentHistory || []).some(p =>
+                        p.date?.startsWith(currentMonthIso) && p.status === 'Paid'
+                    );
+                    return !hasPaidThisMonth;
+                }); break;
                 case 'Fines (Unpaid)': rawList = tenants.filter(t => t.outstandingFines.some(f => f.status === 'Pending')); break;
                 case 'Fines (Paid)': rawList = tenants.filter(t => t.outstandingFines.some(f => f.status === 'Paid')); break;
-                case 'Deposits (Unpaid)': rawList = tenants.filter(t => !t.depositPaid || t.depositPaid <= 0); break;
+                case 'Deposits (Unpaid)': rawList = tenants.filter(t =>
+                    !['Vacated', 'Evicted'].includes(t.status) &&
+                    !t.depositExempt &&
+                    (!t.depositPaid || t.depositPaid <= 0)
+                ); break;
                 case 'Deposits (Paid)': rawList = tenants.filter(t => t.depositPaid > 0); break;
-                case 'Rent Balances': rawList = tenants.filter(t => t.status === 'Overdue' && t.rentAmount > 0); break;
+                case 'Rent Balances': rawList = tenants.filter(t => {
+                    if (!['Active', 'Overdue', 'Notice'].includes(t.status) || !t.rentAmount) return false;
+                    const currentMonthIso = now.toISOString().slice(0, 7);
+                    const hasPaidThisMonth = (t.paymentHistory || []).some(p =>
+                        p.date?.startsWith(currentMonthIso) && p.status === 'Paid'
+                    );
+                    return !hasPaidThisMonth;
+                }); break;
                 case 'New Tenants': rawList = tenants.filter(t => new Date(t.onboardingDate) >= thirtyDaysAgo); break;
                 case 'Evicted': rawList = tenants.filter(t => t.status === 'Evicted'); break;
                 default: rawList = tenants;

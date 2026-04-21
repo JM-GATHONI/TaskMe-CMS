@@ -61,23 +61,28 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
                 case 'All': rawList = tenants; break;
                 case 'By Property': rawList = tenants.filter(t => t.propertyName === propId); break;
                 case 'Arrears': rawList = tenants.filter(t => {
-                    // Check status OR outstanding rent bills
-                    const hasRentArrears = t.outstandingBills?.some(b =>
-                        (b.type === 'Rent Arrears' || b.type === 'Rent' || (b.description && b.description.toLowerCase().includes('rent'))) &&
-                        b.status === 'Pending'
+                    if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return false;
+                    const currentMonthIso = now.toISOString().slice(0, 7);
+                    const hasPaidThisMonth = (t.paymentHistory || []).some(p =>
+                        p.date?.startsWith(currentMonthIso) && p.status === 'Paid'
                     );
-                    return t.status === 'Overdue' || hasRentArrears;
+                    return !hasPaidThisMonth;
                 }); break;
                 case 'Fines (Unpaid)': rawList = tenants.filter(t => t.outstandingFines.some(f => f.status === 'Pending')); break;
                 case 'Fines (Paid)': rawList = tenants.filter(t => t.outstandingFines.some(f => f.status === 'Paid')); break;
-                case 'Deposits (Unpaid)': rawList = tenants.filter(t => !t.depositPaid || t.depositPaid <= 0); break;
+                case 'Deposits (Unpaid)': rawList = tenants.filter(t =>
+                    !['Vacated', 'Evicted'].includes(t.status) &&
+                    !t.depositExempt &&
+                    (!t.depositPaid || t.depositPaid <= 0)
+                ); break;
                 case 'Deposits (Paid)': rawList = tenants.filter(t => t.depositPaid > 0); break;
                 case 'Rent Balances': rawList = tenants.filter(t => {
-                    const hasRentArrears = t.outstandingBills?.some(b =>
-                        (b.type === 'Rent Arrears' || b.type === 'Rent' || (b.description && b.description.toLowerCase().includes('rent'))) &&
-                        b.status === 'Pending'
+                    if (!['Active', 'Overdue', 'Notice'].includes(t.status) || !t.rentAmount) return false;
+                    const currentMonthIso = now.toISOString().slice(0, 7);
+                    const hasPaidThisMonth = (t.paymentHistory || []).some(p =>
+                        p.date?.startsWith(currentMonthIso) && p.status === 'Paid'
                     );
-                    return hasRentArrears || (t.status === 'Overdue' && t.rentAmount > 0);
+                    return !hasPaidThisMonth;
                 }); break;
                 case 'New Tenants': rawList = tenants.filter(t => new Date(t.onboardingDate) >= thirtyDaysAgo); break;
                 case 'Evicted': rawList = tenants.filter(t => t.status === 'Evicted'); break;
