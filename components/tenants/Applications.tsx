@@ -140,7 +140,7 @@ export const ApplicationFormModal: React.FC<{
             d.setFullYear(d.getFullYear() + 1);
             return d.toISOString().split('T')[0];
         })(),
-        source: record?.source || 'Walk-in',
+        source: record?.source || '',
         // Deposit special cases
         depositExempt: record?.depositExempt || false,
         depositMonths: record?.depositMonths ?? 1,
@@ -440,7 +440,7 @@ export const ApplicationFormModal: React.FC<{
 
     const renderReferrerSelect = () => {
         const source = formData.source;
-        if (source === 'Walk-in' || source === 'Website') return null;
+        if (!source || source === 'Walk-in' || source === 'Website') return null;
 
         let options: {id: string, name: string, sub?: string}[] = [];
         let label = "Select Referrer";
@@ -621,6 +621,7 @@ export const ApplicationFormModal: React.FC<{
                                         <div className="md:col-span-2">
                                             <label className="block text-xs font-medium text-gray-700 mb-1">How did they find us?</label>
                                             <select name="source" value={formData.source} onChange={handleChange} className="w-full p-2 border rounded bg-white">
+                                                <option value="">-- Select Lead Source --</option>
                                                 <option value="Walk-in">Walk-in</option>
                                                 <option value="Website">Website</option>
                                                 <option value="Agent">Agent</option>
