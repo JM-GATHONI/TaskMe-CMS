@@ -89,8 +89,12 @@ const ReferralProgram: React.FC = () => {
     , [properties]);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
-        const base = `${window.location.origin}${window.location.pathname}#/user-app-portal/referral-landing`;
-        return `${base}?${type}=${encodeURIComponent(id)}&ref=${referralCode}`;
+        const baseUrl = 'https://taskme.re';
+        if (type === 'unit') {
+            return `${baseUrl}/book/${encodeURIComponent(id)}?ref=${referralCode}`;
+        } else {
+            return `${baseUrl}/invest?ref=${referralCode}`;
+        }
     };
 
     const handleCopyShare = (type: 'unit' | 'fund', id: string) => {

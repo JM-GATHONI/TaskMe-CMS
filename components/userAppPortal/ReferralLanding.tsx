@@ -788,9 +788,13 @@ const ReferralLanding: React.FC = () => {
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
-        const base = `${window.location.origin}${window.location.pathname}#/user-app-portal/referral-landing`;
-        const ref = referrerCode ? `&ref=${referrerCode}` : '';
-        return `${base}?${type}=${encodeURIComponent(id)}${ref}`;
+        const baseUrl = 'https://taskme.re';
+        const ref = referrerCode ? `?ref=${referrerCode}` : '';
+        if (type === 'unit') {
+            return `${baseUrl}/book/${encodeURIComponent(id)}${ref}`;
+        } else {
+            return `${baseUrl}/invest${ref}`;
+        }
     };
 
     const handleCopyLink = (type: 'unit' | 'fund', id: string) => {

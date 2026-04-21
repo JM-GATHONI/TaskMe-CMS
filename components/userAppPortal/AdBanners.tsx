@@ -36,7 +36,7 @@ const AdBanners: React.FC = () => {
                 price: `Target APY: ${f.targetApy}`,
                 image: f.projectPic || fallbackInvImg,
                 type: 'Investment',
-                shareLink: `${window.location.origin}${window.location.pathname}#/user-app-portal/refer-earn`,
+                shareLink: 'https://taskme.re/invest',
             }));
 
         // 3) Fallback: real uploaded marketing creatives (if no listings/funds yet).
