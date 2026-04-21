@@ -309,9 +309,17 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                             || (t.proratedDeposit?.enabled
                                 ? t.proratedDeposit.amountPaidSoFar + 0.5 >= t.proratedDeposit.totalDepositAmount
                                 : depExpected > 0 && depPaid + 0.5 >= depExpected);
+                        // Compute effective rent for t: use prorated firstMonthRent in activation month
+                        const tActMonthIso = (t as any).activationDate
+                            ? String((t as any).activationDate).slice(0, 7)
+                            : (t.onboardingDate ? t.onboardingDate.slice(0, 7) : null);
+                        const tNowMonthIso = new Date().toISOString().slice(0, 7);
+                        const tIsActMonth = tActMonthIso === tNowMonthIso;
+                        const tFirstMonthRent = Number((t as any).firstMonthRent || 0);
+                        const tEffectiveRent = (tIsActMonth && tFirstMonthRent > 0) ? tFirstMonthRent : Number(t.rentAmount || 0);
                         const depSettledByPayment = t.proratedDeposit?.enabled
-                            ? amt >= Number(t.rentAmount || 0) + (t.proratedDeposit.monthlyInstallment || 0)
-                            : amt >= Number(t.rentAmount || 0) + depExpected;
+                            ? amt >= tEffectiveRent + (t.proratedDeposit.monthlyInstallment || 0)
+                            : amt >= tEffectiveRent + depExpected;
                         if (depAlreadySettled || depSettledByPayment) {
                             updates.status = 'Active';
                             (updates as any).activationDate = new Date().toISOString().split('T')[0];
@@ -319,7 +327,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         // Update depositPaid for standard tenants only when the payment
                         // verifiably covers rent + full expected deposit (no auto-pay).
                         if (!t.depositExempt && !t.proratedDeposit?.enabled && !t.rentExtension?.enabled
-                            && depPaid < depExpected && amt >= Number(t.rentAmount || 0) + depExpected) {
+                            && depPaid < depExpected && amt >= tEffectiveRent + depExpected) {
                             updates.depositPaid = depExpected;
                         }
                     }
@@ -1757,7 +1765,8 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const automatedLateFine = rentStat.automatedLateFine;
 
     // Derived Financials — use prorated rent in activation month.
-    const rentDue = tenant.status === 'Active' && isFullyPaid ? 0 : effectiveRent;
+    // rentDue always reflects the original amount invoiced; balance = invoiced − paid handles zeroing.
+    const rentDue = effectiveRent;
 
     // Expected full deposit for a standard (non-prorated, non-extension) tenant.
     // Prefer depositExpected (set at registration and not mutated by payments)
@@ -1785,6 +1794,17 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 ? 0
                 : tenant.proratedDeposit.monthlyInstallment)
             : Math.max(0, depositExpectedStandard - depositPaidAmt);
+    // depositDueForInvoiceGross: for Total Invoiced, use the ORIGINAL deposit due for this period
+    // so the total does not shrink after payment is recorded. In the activation month the full
+    // expected deposit was billed; after it is paid depositDueForInvoice drops to 0 which would
+    // create a phantom credit — this gross value keeps the invoice stable.
+    const depositDueForInvoiceGross = (isActivationMonth && !tenant.depositExempt)
+        ? (tenant.proratedDeposit?.enabled
+            ? (tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
+                ? 0
+                : (tenant.proratedDeposit.monthlyInstallment ?? 0))
+            : depositExpectedStandard)
+        : depositDueForInvoice;
 
     // Fully-paid check: compares paid vs expected rather than "any amount > 0".
     // Fixes the "Fully Paid" badge showing up for freshly-registered tenants
@@ -1810,7 +1830,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         if (!d?.required || d?.exempt) return 0;
         return Math.max(0, (d.amount || 0) - (d.paid || 0));
     })();
-    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDueForInvoice + waterDepositOwed + electricityDepositOwed;
+    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDueForInvoiceGross + waterDepositOwed + electricityDepositOwed;
     
     // Total Paid is amountPaidThisMonth (assuming bills are paid separately or included in general pot for this visual)
     // For simplicity in this view, we just show Balance = Expected - Paid
@@ -2002,7 +2022,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         }
         if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
             && Number(tenant.depositPaid || 0) < depositExpectedStandard
-            && Number(amount || 0) >= Number(tenant.rentAmount || 0) + depositExpectedStandard) {
+            && Number(amount || 0) >= effectiveRent + depositExpectedStandard) {
             updates.depositPaid = depositExpectedStandard;
         }
         // Rent extension: restore grace days and clear extension flag
