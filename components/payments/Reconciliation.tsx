@@ -4,6 +4,7 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { TenantProfile } from '../../types';
 import { supabase } from '../../utils/supabaseClient';
+import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
 
 // Row shape from public.payments for the External Unmatched queue —
 // C2B payments whose BillRefNumber did not resolve to an active tenant.
@@ -213,7 +214,7 @@ type VerifyResult = {
 };
 
 const Reconciliation: React.FC = () => {
-    const { tenants, moveTenantPayment } = useData();
+    const { tenants, updateTenant, moveTenantPayment } = useData();
     const [activeTab, setActiveTab] = useState<'external' | 'internal'>('external');
 
     const [unmatched, setUnmatched] = useState<UnmatchedPayment[]>([]);
@@ -264,11 +265,80 @@ const Reconciliation: React.FC = () => {
 
     const handleMatch = async (tenantId: string) => {
         if (!selectedTx) return;
+        const tx = selectedTx;
         const { error } = await supabase.rpc('match_c2b_payment_to_tenant', {
-            p_payment_id: selectedTx.id,
+            p_payment_id: tx.id,
             p_tenant_id: tenantId,
         });
         if (error) throw new Error(error.message);
+
+        // Apply payment to tenant profile: add to paymentHistory and run full
+        // rent cycle update (nextDueDate, depositPaid, status → Active, etc.)
+        const tenant = tenants.find(t => t.id === tenantId);
+        if (tenant) {
+            const paymentDate = tx.created_at
+                ? tx.created_at.split('T')[0]
+                : new Date().toISOString().split('T')[0];
+            const amt = Number(tx.amount ?? 0);
+            const ref = String(tx.transaction_id ?? tx.bill_ref_number ?? tx.id ?? '').trim() || `C2B-${Date.now()}`;
+            const newPayment = {
+                date: paymentDate,
+                amount: `KES ${amt.toLocaleString()}`,
+                status: 'Paid' as const,
+                method: 'M-Pesa (C2B)',
+                reference: ref,
+            };
+            const cycle = computeRentPaymentCycleUpdate(tenant, amt, paymentDate);
+            const updates: Partial<TenantProfile> = {
+                paymentHistory: [newPayment, ...(tenant.paymentHistory || [])],
+                nextDueDate: cycle.nextDueDateIso,
+            };
+            // Activate pending tenants whose payment covers rent + deposit
+            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+                const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
+                    ? Number((tenant as any).depositMonths) : 1;
+                const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
+                    ? Number((tenant as any).depositExpected)
+                    : Number(tenant.rentAmount || 0) * depMonths;
+                const tActMonthIso = (tenant as any).activationDate
+                    ? String((tenant as any).activationDate).slice(0, 7)
+                    : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null);
+                const tNowMonthIso = paymentDate.slice(0, 7);
+                const tFirstMonthRent = Number((tenant as any).firstMonthRent || 0);
+                const effectiveRent = (tActMonthIso === tNowMonthIso && tFirstMonthRent > 0)
+                    ? tFirstMonthRent
+                    : Number(tenant.rentAmount || 0);
+                const depAlreadySettled = tenant.depositExempt
+                    || !!tenant.rentExtension?.enabled
+                    || (tenant.proratedDeposit?.enabled
+                        ? tenant.proratedDeposit.amountPaidSoFar + 0.5 >= tenant.proratedDeposit.totalDepositAmount
+                        : depExpected > 0 && Number(tenant.depositPaid || 0) + 0.5 >= depExpected);
+                const depSettledByPayment = tenant.proratedDeposit?.enabled
+                    ? amt >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
+                    : amt >= effectiveRent + depExpected;
+                if (depAlreadySettled || depSettledByPayment) {
+                    updates.status = 'Active';
+                    (updates as any).activationDate = paymentDate;
+                }
+                if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+                    && Number(tenant.depositPaid || 0) < depExpected
+                    && amt >= effectiveRent + depExpected) {
+                    updates.depositPaid = depExpected;
+                }
+            }
+            // Rent extension: restore grace days and clear flag
+            if (cycle.clearRentExtension && tenant.rentExtension) {
+                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                updates.rentExtension = { ...tenant.rentExtension, enabled: false };
+            }
+            // Prorated deposit: advance installment counter
+            if (cycle.proratedUpdate && tenant.proratedDeposit) {
+                updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
+                updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
+            }
+            updateTenant(tenantId, updates);
+        }
+
         setSelectedTx(null);
         loadUnmatched();
     };
