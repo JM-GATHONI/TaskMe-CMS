@@ -196,6 +196,11 @@ export interface TenantProfile {
     /** Stored to restore after the extension period ends. */
     originalGraceDays?: number;
   };
+  // ── Utility deposit fields ──────────────────────────────────────────────
+  /** Water connection deposit — one-time, refundable. */
+  waterDeposit?: { required: boolean; exempt: boolean; amount: number; paid: number };
+  /** Electricity connection deposit — one-time, refundable. */
+  electricityDeposit?: { required: boolean; exempt: boolean; amount: number; paid: number };
 }
 
 export interface Property {
@@ -216,6 +221,11 @@ export interface Property {
   rentIsUniform?: boolean;
   rentType?: 'Inclusive' | 'Exclusive';
   deposit?: { required: boolean; months: number };
+  /** Utility deposits collected once at tenancy start (separate from monthly bills). */
+  utilityDeposit?: {
+    water?: { required: boolean; amount: number };
+    electricity?: { required: boolean; amount: number };
+  };
   placementFee?: boolean; // If true, first month rent goes to agency
   /**
    * managementType controls the financial flow for this property:
@@ -360,6 +370,9 @@ export interface TenantApplication {
     depositPaidUpfront: number;
     originalGraceDays?: number;
   };
+  // ── Utility deposit fields (carried to TenantProfile on approval) ────────
+  waterDeposit?: { required: boolean; exempt: boolean; amount: number; paid: number };
+  electricityDeposit?: { required: boolean; exempt: boolean; amount: number; paid: number };
 }
 
 export interface LandlordApplication {

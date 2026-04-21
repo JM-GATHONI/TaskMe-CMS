@@ -892,7 +892,85 @@ export const ApplicationFormModal: React.FC<{
                                     )}
                                 </>)}
                             </div>
-                            
+
+                            {/* Utility Deposits */}
+                            <div className="bg-teal-50 p-4 rounded-lg border border-teal-100 mt-4">
+                                <h3 className="text-sm font-bold text-teal-800 mb-1">Utility Deposits (One-Time, Refundable)</h3>
+                                <p className="text-xs text-teal-600 mb-3">Collected once at start of tenancy — separate from security deposit and monthly bills.</p>
+                                {(['water', 'electricity'] as const).map(key => {
+                                    const dep = (formData as any)[`${key}Deposit`] as { required: boolean; exempt: boolean; amount: number; paid: number } | undefined;
+                                    const propDefault = (activeProperty as any)?.utilityDeposit?.[key];
+                                    const isRequired = dep?.required ?? false;
+                                    const isExempt = dep?.exempt ?? false;
+                                    return (
+                                        <div key={key} className="mb-3 p-3 bg-white border border-teal-100 rounded-lg">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isRequired}
+                                                        onChange={e => {
+                                                            const enabled = e.target.checked;
+                                                            setFormData((prev: any) => ({
+                                                                ...prev,
+                                                                [`${key}Deposit`]: {
+                                                                    required: enabled,
+                                                                    exempt: enabled ? false : true,
+                                                                    amount: enabled ? (propDefault?.amount ?? 0) : 0,
+                                                                    paid: 0,
+                                                                },
+                                                            }));
+                                                        }}
+                                                        className="h-4 w-4 text-teal-600 rounded"
+                                                    />
+                                                    <span className="capitalize text-sm font-semibold text-gray-700">{key} Deposit</span>
+                                                </label>
+                                                {propDefault?.required && !isRequired && (
+                                                    <span className="text-xs text-teal-600 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">Property default: KES {(propDefault.amount || 0).toLocaleString()}</span>
+                                                )}
+                                            </div>
+                                            {isRequired && (
+                                                <div className="flex items-center gap-4 ml-6">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isExempt}
+                                                            onChange={e => {
+                                                                const exempt = e.target.checked;
+                                                                setFormData((prev: any) => ({
+                                                                    ...prev,
+                                                                    [`${key}Deposit`]: { ...((prev as any)[`${key}Deposit`] || {}), exempt, amount: exempt ? 0 : (propDefault?.amount ?? 0) },
+                                                                }));
+                                                            }}
+                                                            className="h-4 w-4 rounded border-gray-300"
+                                                        />
+                                                        <span className="text-xs text-gray-600">Exempt</span>
+                                                    </label>
+                                                    {!isExempt && (
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs text-gray-500">Amount (KES):</span>
+                                                            <input
+                                                                type="number" min={0}
+                                                                value={dep?.amount || ''}
+                                                                onChange={e => {
+                                                                    const val = Number(e.target.value) || 0;
+                                                                    setFormData((prev: any) => ({
+                                                                        ...prev,
+                                                                        [`${key}Deposit`]: { ...((prev as any)[`${key}Deposit`] || {}), amount: val },
+                                                                    }));
+                                                                }}
+                                                                placeholder="0"
+                                                                className="w-28 p-1.5 border rounded text-sm font-semibold"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
                             {/* Recurring Bills */}
                             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
                                 <h3 className="text-sm font-bold text-gray-800 mb-3">Recurring Monthly Charges</h3>
@@ -1078,7 +1156,12 @@ const AppRecordPaymentModal: React.FC<{
             const depositAmt = Number(record.depositPaid || 0) || rent * depositMonths;
             return rent + depositAmt;
         }
-        return effectiveRent + depositOwedForModal;
+        const utilDep = (['water', 'electricity'] as const).reduce((s, k) => {
+            const d = (record as any)[`${k}Deposit`] as { required?: boolean; exempt?: boolean; amount?: number; paid?: number } | undefined;
+            if (!d?.required || d?.exempt) return s;
+            return s + Math.max(0, (d.amount || 0) - (d.paid || 0));
+        }, 0);
+        return effectiveRent + depositOwedForModal + utilDep;
     })();
 
     const [amount, setAmount] = useState(String(firstPaymentAmount));
@@ -1174,7 +1257,12 @@ const AppMpesaModal: React.FC<{
                 : baseRent * depMonths;
             return Math.max(0, expected - Number(record.depositPaid || 0));
         })();
-        return stkEffectiveRent + stkDepositOwed;
+        const stkUtilDep = (['water', 'electricity'] as const).reduce((s, k) => {
+            const d = (record as any)[`${k}Deposit`] as { required?: boolean; exempt?: boolean; amount?: number; paid?: number } | undefined;
+            if (!d?.required || d?.exempt) return s;
+            return s + Math.max(0, (d.amount || 0) - (d.paid || 0));
+        }, 0);
+        return stkEffectiveRent + stkDepositOwed + stkUtilDep;
     });
     const [checkoutId, setCheckoutId] = useState<string | null>(null);
     const [step, setStep] = useState<'input' | 'processing' | 'timed_out'>('input');
@@ -2003,9 +2091,16 @@ const Applications: React.FC = () => {
                             ? rentAmountForApps
                             : (!isAllocated ? 0 : (isPaid ? 0 : cardEffectiveRent));
 
+                        // Utility deposits owed (water + electricity), for both applications and tenants
+                        const utilityDepositOwed = (['water', 'electricity'] as const).reduce((sum, key) => {
+                            const dep = (record as any)[`${key}Deposit`] as { required?: boolean; exempt?: boolean; amount?: number; paid?: number } | undefined;
+                            if (!dep?.required || dep?.exempt) return sum;
+                            return sum + Math.max(0, (dep.amount || 0) - (dep.paid || 0));
+                        }, 0);
+
                         const totalDue = isApplication
-                            ? (rentAmountForApps + depositForApps)
-                            : (rentDue + depositOwed + pendingBills + pendingFines + automatedLateFine);
+                            ? (rentAmountForApps + depositForApps + utilityDepositOwed)
+                            : (rentDue + depositOwed + utilityDepositOwed + pendingBills + pendingFines + automatedLateFine);
 
                         const arrearsText = !isApplication ? getArrearsText(tenant) : null;
 

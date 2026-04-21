@@ -1795,9 +1795,19 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const pendingBills = (tenant.outstandingBills || []).filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.amount, 0);
     const fines = (tenant.outstandingFines || []).filter(f => f.type !== 'Late Rent' && f.status === 'Pending').reduce((sum, f) => sum + f.amount, 0);
     
-    // Total Expected = Rent + Recurrent + Bills + Fines + Automated Fine
+    // Total Expected = Rent + Recurrent + Bills + Fines + Automated Fine + Utility Deposits
     // Note: If rent is partially paid, we show total expected and subtract paid in UI
-    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDueForInvoice;
+    const waterDepositOwed = (() => {
+        const d = (tenant as any).waterDeposit as { required?: boolean; exempt?: boolean; amount?: number; paid?: number } | undefined;
+        if (!d?.required || d?.exempt) return 0;
+        return Math.max(0, (d.amount || 0) - (d.paid || 0));
+    })();
+    const electricityDepositOwed = (() => {
+        const d = (tenant as any).electricityDeposit as { required?: boolean; exempt?: boolean; amount?: number; paid?: number } | undefined;
+        if (!d?.required || d?.exempt) return 0;
+        return Math.max(0, (d.amount || 0) - (d.paid || 0));
+    })();
+    const totalExpected = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDueForInvoice + waterDepositOwed + electricityDepositOwed;
     
     // Total Paid is amountPaidThisMonth (assuming bills are paid separately or included in general pot for this visual)
     // For simplicity in this view, we just show Balance = Expected - Paid
@@ -2362,6 +2372,18 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <div className="flex justify-between text-red-600">
                                 <span>Late Fee</span>
                                 <span>KES {Number(automatedLateFine ?? 0).toLocaleString()}</span>
+                            </div>
+                        )}
+                        {waterDepositOwed > 0 && (
+                            <div className="flex justify-between text-teal-700">
+                                <span className="flex items-center gap-1">Water Deposit <span className="text-[10px] bg-teal-50 border border-teal-200 text-teal-700 px-1.5 py-0.5 rounded font-bold">Unpaid</span></span>
+                                <span>KES {Number(waterDepositOwed).toLocaleString()}</span>
+                            </div>
+                        )}
+                        {electricityDepositOwed > 0 && (
+                            <div className="flex justify-between text-teal-700">
+                                <span className="flex items-center gap-1">Electricity Deposit <span className="text-[10px] bg-teal-50 border border-teal-200 text-teal-700 px-1.5 py-0.5 rounded font-bold">Unpaid</span></span>
+                                <span>KES {Number(electricityDepositOwed).toLocaleString()}</span>
                             </div>
                         )}
                         <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-800">

@@ -480,6 +480,63 @@ const PropertyForm: React.FC<{
                                         ))}
                                     </div>
                                 </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-800 mb-2">Utility Deposits (One-Time, Refundable)</label>
+                                    <div className="bg-white border rounded-lg divide-y divide-gray-100 shadow-sm">
+                                        {(['water', 'electricity'] as const).map(key => {
+                                            const dep = (formData as any).utilityDeposit?.[key];
+                                            const isRequired = dep?.required ?? false;
+                                            return (
+                                                <div key={key} className="flex items-center justify-between p-3">
+                                                    <label className="flex items-center space-x-3 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isRequired}
+                                                            onChange={e => {
+                                                                const enabled = e.target.checked;
+                                                                setFormData((prev: any) => ({
+                                                                    ...prev,
+                                                                    utilityDeposit: {
+                                                                        ...(prev.utilityDeposit || {}),
+                                                                        [key]: { required: enabled, amount: dep?.amount ?? 0 },
+                                                                    },
+                                                                }));
+                                                            }}
+                                                            className="h-4 w-4 text-primary rounded focus:ring-primary"
+                                                        />
+                                                        <span className="capitalize text-gray-700 font-medium">{key} Deposit</span>
+                                                    </label>
+                                                    {isRequired && (
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs text-gray-500">Standard Amount:</span>
+                                                            <div className="relative w-28">
+                                                                <span className="absolute left-2 top-1.5 text-xs text-gray-400">KES</span>
+                                                                <input
+                                                                    type="number"
+                                                                    value={dep?.amount || ''}
+                                                                    onChange={e => {
+                                                                        const val = Number(e.target.value) || 0;
+                                                                        setFormData((prev: any) => ({
+                                                                            ...prev,
+                                                                            utilityDeposit: {
+                                                                                ...(prev.utilityDeposit || {}),
+                                                                                [key]: { required: true, amount: val },
+                                                                            },
+                                                                        }));
+                                                                    }}
+                                                                    placeholder="0"
+                                                                    className="w-full p-1 pl-8 border rounded text-sm font-semibold text-right"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">These are collected once at the start of tenancy — separate from monthly bills.</p>
+                                </div>
                             </div>
 
                             {formData.rentIsUniform ? (

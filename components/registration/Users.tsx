@@ -399,7 +399,7 @@ const Users: React.FC = () => {
         staff, landlords, tenants, roles, renovationInvestors, vendors, properties,
         addStaff, updateStaff, deleteStaff,
         addLandlord, updateLandlord, deleteLandlord,
-        addTenant, updateTenant, deleteTenant,
+        addTenant, updateTenant, deleteTenant, updateProperty,
         addRenovationInvestor, updateRenovationInvestor, deleteRenovationInvestor,
         addVendor, updateVendor, deleteVendor,
         checkPermission
@@ -714,7 +714,17 @@ const Users: React.FC = () => {
         if (window.confirm(`Are you sure you want to delete ${user.name}?`)) {
             if (user.type === 'Staff') deleteStaff(user.id);
             else if (user.type === 'Landlord') deleteLandlord(user.id);
-            else if (user.type === 'Tenant') deleteTenant(user.id);
+            else if (user.type === 'Tenant') {
+                const tenant = tenants.find(t => t.id === user.id);
+                if (tenant?.propertyId && tenant?.unitId) {
+                    const prop = properties.find(p => p.id === tenant.propertyId);
+                    if (prop) {
+                        const updatedUnits = prop.units.map(u => u.id === tenant.unitId ? { ...u, status: 'Vacant' as const } : u);
+                        updateProperty(prop.id, { units: updatedUnits as any });
+                    }
+                }
+                deleteTenant(user.id);
+            }
             else if (user.type === 'Investor') deleteRenovationInvestor(user.id);
             else if (user.type === 'Vendor') deleteVendor(user.id);
         }
