@@ -9,7 +9,13 @@ import Icon from '../Icon';
 const RoleEditModal: React.FC<{ role: Role | null; onClose: () => void; onSave: (r: Role) => void }> = ({ role, onClose, onSave }) => {
     // Default structure matching types.ts RolePermissions
     const getDefaultPerms = (): RolePermissions => {
-        const modules = ['Properties', 'Tenants', 'Landlords', 'Financials', 'Maintenance', 'Reports', 'Settings', 'Users'];
+        const modules = [
+            'Registration', 'Properties', 'Tenants', 'Landlords',
+            'Operations', 'Maintenance', 'Leases', 'Communication',
+            'Payments', 'Financials', 'HR', 'Accounting',
+            'Analytics', 'Reports', 'Marketplace', 'R-Reits',
+            'Settings', 'Users', 'Dashboard'
+        ];
         const p: RolePermissions = {};
         modules.forEach(m => {
              p[m] = {

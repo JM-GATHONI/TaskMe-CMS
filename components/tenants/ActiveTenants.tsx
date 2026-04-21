@@ -1553,8 +1553,11 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
 // --- DETAIL VIEW ---
 
 const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> = ({ tenant, onBack }) => {
-    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties, updateProperty, currentUser } = useData();
+    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties, updateProperty, currentUser, checkPermission } = useData();
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canEdit       = isSuperAdmin || checkPermission('Tenants', 'edit');
+    const canPay        = isSuperAdmin || checkPermission('Tenants', 'pay');
+    const canDeactivate = isSuperAdmin || checkPermission('Tenants', 'deactivate');
     const [chatInput, setChatInput] = useState('');
     const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
     const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
@@ -2108,6 +2111,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <p className="text-xs text-gray-400 font-bold uppercase">Email</p>
                             <div className="flex items-center gap-2">
                                 <p className="text-sm font-semibold text-gray-700">{tenant.email}</p>
+                                {canDeactivate && (
                                 <button 
                                     onClick={handleOpenOffboarding} 
                                     className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded border border-red-200 hover:bg-red-100 font-bold transition-colors shadow-sm"
@@ -2115,6 +2119,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                 >
                                     Offboard Tenant
                                 </button>
+                                )}
                             </div>
                         </div>
                         <div>
@@ -2194,24 +2199,42 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
             {/* Status Cards */}
             <div className="grid grid-cols-3 gap-4">
+                {canEdit ? (
                 <button onClick={() => setActiveModal('bills')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-blue-300">
                     <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-2 group-hover:scale-110 transition-transform">
                         <Icon name="payments" className="w-5 h-5" />
                     </div>
                     <p className="font-bold text-gray-700 text-sm">Bills</p>
                 </button>
+                ) : (
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 h-32 flex flex-col items-center justify-center opacity-40 cursor-not-allowed" title="No permission">
+                    <Icon name="payments" className="w-5 h-5 text-gray-400 mb-2" /><p className="font-bold text-gray-400 text-sm">Bills</p>
+                </div>
+                )}
+                {canEdit ? (
                 <button onClick={() => setActiveModal('fines')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-red-300">
                     <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-2 group-hover:scale-110 transition-transform">
                         <Icon name="arrears" className="w-5 h-5" />
                     </div>
                     <p className="font-bold text-gray-700 text-sm">Fines</p>
                 </button>
+                ) : (
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 h-32 flex flex-col items-center justify-center opacity-40 cursor-not-allowed" title="No permission">
+                    <Icon name="arrears" className="w-5 h-5 text-gray-400 mb-2" /><p className="font-bold text-gray-400 text-sm">Fines</p>
+                </div>
+                )}
+                {canEdit ? (
                 <button onClick={() => setActiveModal('status')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-green-300">
                     <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-2 group-hover:scale-110 transition-transform">
                         <Icon name="check" className="w-5 h-5" />
                     </div>
                     <p className="font-bold text-gray-700 text-sm">House Status</p>
                 </button>
+                ) : (
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 h-32 flex flex-col items-center justify-center opacity-40 cursor-not-allowed" title="No permission">
+                    <Icon name="check" className="w-5 h-5 text-gray-400 mb-2" /><p className="font-bold text-gray-400 text-sm">House Status</p>
+                </div>
+                )}
             </div>
 
             {/* Notices & Actions */}
@@ -2418,18 +2441,26 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3 mt-6">
+                    {canPay ? (
                     <button
                         onClick={() => setActiveModal('recordPayment')}
                         className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
                     >
                         Record Manual Pay
                     </button>
+                    ) : (
+                    <button disabled className="w-full bg-gray-100 text-gray-400 py-3 rounded-lg font-bold border border-gray-200 cursor-not-allowed">Record Manual Pay</button>
+                    )}
+                    {canPay ? (
                     <button
                         onClick={() => setActiveModal('pay')}
                         className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md transition-colors"
                     >
                         M-Pesa Push
                     </button>
+                    ) : (
+                    <button disabled className="w-full bg-gray-100 text-gray-400 py-3 rounded-lg font-bold border border-gray-200 cursor-not-allowed">M-Pesa Push</button>
+                    )}
                 </div>
             </div>
 

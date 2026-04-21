@@ -825,7 +825,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
              return (modulePerms as any)[action] === true;
         }
 
-        return true;
+        return false;
     };
 
     // Marketplace CRUD
