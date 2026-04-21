@@ -11,6 +11,8 @@ import { PropertyForm } from '../registration/Properties';
 import { CollectionManagerModal } from '../operations/TaskManagement';
 import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
+import { ComposeModal } from '../operations/communication/Messages';
+import { communicationApi } from '../../utils/communicationApi';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
 
@@ -324,6 +326,31 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
     const [isAddPropOpen, setIsAddPropOpen] = useState(false);
     const [isAddTenantOpen, setIsAddTenantOpen] = useState(false);
     const [isAddLandlordOpen, setIsAddLandlordOpen] = useState(false);
+    const [isComposeOpen, setIsComposeOpen] = useState(false);
+
+    // Message handler
+    const handleSendMessage = async (to: string, content: string, channel: string, isGroup = false, count = 1) => {
+        let apiResult;
+        if (channel === 'SMS') apiResult = await communicationApi.sendSMS(to, content, 'TASKME');
+        else if (channel === 'Email') apiResult = await communicationApi.sendEmail(to, 'New Message', content, 'noreply@taskme.re');
+        else if (channel === 'WhatsApp') apiResult = await communicationApi.sendWhatsApp(to, content);
+        else apiResult = await communicationApi.sendInApp(to, content);
+
+        if (apiResult.success) {
+            addMessage({
+                id: `msg-${Date.now()}`,
+                recipient: { name: to, phone: to },
+                content,
+                channel,
+                timestamp: new Date().toLocaleString(),
+                isIncoming: false,
+                status: 'Sent'
+            });
+            alert('Message sent successfully');
+        } else {
+            alert(`Failed to send: ${apiResult.error || 'Unknown error'}`);
+        }
+    };
 
     // --- Aggregated Data ---
     const agentProperties = useMemo(() => properties.filter(p => p.assignedAgentId === liveAgent.id), [properties, liveAgent.id]);
@@ -660,7 +687,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                             </span>
                         </div>
                         <div className="flex gap-3">
-                            <button className="px-4 py-2 bg-white text-blue-900 font-bold rounded-lg hover:bg-gray-100 transition-colors flex items-center text-sm shadow-md">
+                            <button onClick={() => setIsComposeOpen(true)} className="px-4 py-2 bg-white text-blue-900 font-bold rounded-lg hover:bg-gray-100 transition-colors flex items-center text-sm shadow-md">
                                 <Icon name="communication" className="w-4 h-4 mr-2" /> Message
                             </button>
                             <button 
@@ -1107,6 +1134,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                     onSave={handleSaveLandlord} 
                 />
             )}
+            {isComposeOpen && <ComposeModal onClose={() => setIsComposeOpen(false)} onSend={handleSendMessage} />}
         </div>
     );
 };
