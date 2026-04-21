@@ -375,22 +375,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     const handleForgotPassword = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!resetData.identifier) return alert("Please enter your email, username, or phone.");
-        // Trigger Supabase reset email (uses Supabase SMTP settings; configure to Resend).
-        supabase.auth.resetPasswordForEmail(resetData.identifier).catch((err) => {
-            console.warn('[Supabase] resetPasswordForEmail failed', err);
-        });
-        alert('Password reset is configured via Supabase. Please check your email for reset instructions.');
+        if (!resetData.identifier) return alert('Please enter your registered phone number.');
+        // SMS password reset is pending SMS provider integration.
+        // When SMS is live, an OTP will be sent to the phone number here.
+        // For now, advance to the code entry screen so the UI flow is ready.
+        setView('verify-reset');
     };
 
     const handleVerifyCode = (e: React.FormEvent) => {
         e.preventDefault();
-        alert('Use the password reset link sent to your email to complete this action.');
+        // Placeholder: SMS OTP verification will validate the code here.
+        // Advance to new-password entry once code is confirmed.
+        setView('new-password');
     };
 
-    const handleResetPassword = (e: React.FormEvent) => {
+    const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
-        alert('Password reset is handled by Supabase hosted pages.');
+        if (!resetData.newPassword || resetData.newPassword.length < 6) {
+            return alert('Password must be at least 6 characters.');
+        }
+        // When SMS OTP integration is live, this will call supabase.auth.updateUser
+        // after the OTP token exchange. For now, inform the user.
+        alert('SMS password reset is coming soon. Please contact support to reset your password.');
         setView('login');
     };
 
@@ -499,23 +505,27 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     {view === 'forgot' && (
                         <div className="space-y-4 animate-fade-in">
                             <div className="text-center">
-                                <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-2 text-blue-600">
-                                    <Icon name="mail" className="w-5 h-5" />
+                                <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-2 text-green-600">
+                                    <Icon name="communication" className="w-5 h-5" />
                                 </div>
-                                <h2 className="text-base font-bold text-gray-800">Reset Password</h2>
-                                <p className="text-[10px] text-gray-500 mt-1">Enter your details to receive a reset code.</p>
+                                <h2 className="text-base font-bold text-gray-800">Reset via SMS</h2>
+                                <p className="text-[10px] text-gray-500 mt-1">Enter your registered phone number. A reset code will be sent by SMS.</p>
                             </div>
                             <form onSubmit={handleForgotPassword} className="space-y-3">
-                                <input 
+                                <input
+                                    type="tel"
                                     value={resetData.identifier}
                                     onChange={(e) => setResetData({...resetData, identifier: e.target.value})}
                                     className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-primary outline-none text-sm"
-                                    placeholder="Enter Email or Phone"
+                                    placeholder="+254 7XX XXX XXX"
                                     required
                                     autoFocus
                                 />
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-[10px] text-yellow-700 text-center">
+                                    SMS reset is pending integration — contact support if urgent.
+                                </div>
                                 <button disabled={isLoading} className="w-full bg-gray-800 text-white py-2.5 rounded-lg font-bold hover:bg-black transition-colors text-sm">
-                                    {isLoading ? 'Sending...' : 'Send Reset Code'}
+                                    {isLoading ? 'Sending...' : 'Send SMS Code'}
                                 </button>
                             </form>
                             <button onClick={() => setView('login')} className="w-full text-center text-xs text-gray-500 hover:text-gray-800">

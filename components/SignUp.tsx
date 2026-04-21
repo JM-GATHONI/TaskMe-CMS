@@ -66,7 +66,6 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                 email,
                 password,
                 options: {
-                    emailConfirm: false,
                     data: {
                         role,
                         full_name: fullName,
