@@ -10,7 +10,7 @@ const FinesAndPenalties: React.FC = () => {
     const [currentFine, setCurrentFine] = useState<Partial<FineRule>>({});
 
     const handleAddNew = () => {
-        setCurrentFine({ type: 'Other', basis: 'Fixed Fee', value: 0, description: '', appliesTo: 'Tenant' });
+        setCurrentFine({ type: 'Other', basis: 'Fixed Fee', description: '', appliesTo: 'Tenant' });
         setIsEditing(true);
     };
 
@@ -84,7 +84,7 @@ const FinesAndPenalties: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
-                                    <input type="number" placeholder="Value" value={currentFine.value} onChange={e => setCurrentFine({...currentFine, value: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/>
+                                    <input type="number" placeholder="Value" value={currentFine.value ?? ''} onChange={e => setCurrentFine({...currentFine, value: e.target.value === '' ? undefined : (parseFloat(e.target.value) || 0)})} className="w-full p-2 border rounded"/>
                                 </div>
                             </div>
                         </div>

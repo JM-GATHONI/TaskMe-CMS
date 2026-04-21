@@ -12,10 +12,10 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
         dueDate: initialInvoice?.dueDate || '',
         items: initialInvoice?.items?.map(i => ({
             description: i.description,
-            quantity: i.quantity || 1,
-            unitPrice: i.unitPrice || i.amount,
+            quantity: i.quantity || '' as any,
+            unitPrice: i.unitPrice || '' as any,
             amount: i.amount
-        })) || [{ description: '', quantity: 1, unitPrice: 0, amount: 0 }]
+        })) || [{ description: '', quantity: '' as any, unitPrice: '' as any, amount: 0 }]
     });
     const [file, setFile] = useState<File | null>(null);
 
@@ -37,7 +37,7 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
     };
 
     const addItem = () => {
-        setFormData(prev => ({ ...prev, items: [...prev.items, { description: '', quantity: 1, unitPrice: 0, amount: 0 }] }));
+        setFormData(prev => ({ ...prev, items: [...prev.items, { description: '', quantity: '' as any, unitPrice: '' as any, amount: 0 }] }));
     };
 
     const removeItem = (index: number) => {
@@ -122,16 +122,18 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
                                     <td className="p-2">
                                         <input 
                                             type="number" 
-                                            value={item.quantity} 
-                                            onChange={e => handleItemChange(index, 'quantity', parseFloat(e.target.value))} 
+                                            value={item.quantity ?? ''} 
+                                            onChange={e => handleItemChange(index, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value))} 
+                                            placeholder="1"
                                             className="w-full p-1 border rounded text-center" 
                                         />
                                     </td>
                                     <td className="p-2">
                                         <input 
                                             type="number" 
-                                            value={item.unitPrice} 
-                                            onChange={e => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))} 
+                                            value={item.unitPrice ?? ''} 
+                                            onChange={e => handleItemChange(index, 'unitPrice', e.target.value === '' ? '' : parseFloat(e.target.value))} 
+                                            placeholder="0"
                                             className="w-full p-1 border rounded text-right" 
                                         />
                                     </td>
@@ -174,7 +176,7 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
         phone: initialInvoice?.phone || '',
         billingAddress: initialInvoice?.billingAddress || '',
         dueDate: initialInvoice?.dueDate || '',
-        items: initialInvoice?.items?.map(i => ({...i, quantity: i.quantity || 1, unitPrice: i.unitPrice || i.amount})) || [{ description: 'Rent', amount: 0, quantity: 1, unitPrice: 0 }]
+        items: initialInvoice?.items?.map(i => ({...i, quantity: i.quantity || '' as any, unitPrice: i.unitPrice || '' as any})) || [{ description: '', amount: 0, quantity: '' as any, unitPrice: '' as any }]
     });
 
     const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,7 +228,7 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
     };
 
     const addItem = () => {
-        setFormData(prev => ({ ...prev, items: [...prev.items, { description: '', amount: 0, quantity: 1, unitPrice: 0 }] }));
+        setFormData(prev => ({ ...prev, items: [...prev.items, { description: '', amount: 0, quantity: '' as any, unitPrice: '' as any }] }));
     };
 
     const removeItem = (index: number) => {
@@ -441,8 +443,8 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                             {formData.items.map((item, index) => (
                                 <tr key={index} className="border-b">
                                     <td className="p-2"><input value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} placeholder="Item Description" className="w-full p-1 border rounded" /></td>
-                                    <td className="p-2"><input type="number" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', parseFloat(e.target.value))} className="w-full p-1 border rounded text-center" /></td>
-                                    <td className="p-2"><input type="number" value={item.unitPrice} onChange={e => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))} className="w-full p-1 border rounded text-right" /></td>
+                                    <td className="p-2"><input type="number" value={item.quantity ?? ''} onChange={e => handleItemChange(index, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="1" className="w-full p-1 border rounded text-center" /></td>
+                                    <td className="p-2"><input type="number" value={item.unitPrice ?? ''} onChange={e => handleItemChange(index, 'unitPrice', e.target.value === '' ? '' : parseFloat(e.target.value))} placeholder="0" className="w-full p-1 border rounded text-right" /></td>
                                     <td className="p-2 text-right font-semibold">{Number(item.amount ?? 0).toLocaleString()}</td>
                                     <td className="p-2 text-center"><button onClick={() => removeItem(index)} className="text-red-500 font-bold">&times;</button></td>
                                 </tr>

@@ -21,11 +21,17 @@ const ChartContainer: React.FC<{ type: 'line' | 'bar'; data: any; options?: any;
 
 // Add Unit Modal for Field Ops
 const AddUnitModal: React.FC<{ property: Property; onClose: () => void; onAdd: (unit: Partial<Unit>) => void }> = ({ property, onClose, onAdd }) => {
-    const [formData, setFormData] = useState({ unitNumber: '', bedrooms: 1, bathrooms: 1, floor: 0, rent: property.defaultMonthlyRent || 0 });
+    const [formData, setFormData] = useState({ unitNumber: '', bedrooms: '', bathrooms: '', floor: '', rent: property.defaultMonthlyRent ? String(property.defaultMonthlyRent) : '' });
 
     const handleSubmit = () => {
         if(!formData.unitNumber) return alert("Unit Number Required");
-        onAdd(formData);
+        onAdd({
+            unitNumber: formData.unitNumber,
+            bedrooms: parseInt(formData.bedrooms) || 1,
+            bathrooms: parseInt(formData.bathrooms) || 1,
+            floor: parseInt(formData.floor) || 0,
+            rent: parseInt(formData.rent) || property.defaultMonthlyRent || 0
+        });
         onClose();
     };
 
@@ -38,21 +44,21 @@ const AddUnitModal: React.FC<{ property: Property; onClose: () => void; onAdd: (
                     <div className="grid grid-cols-2 gap-3">
                          <div className="flex flex-col">
                             <label className="text-xs text-gray-500 mb-1">Floor</label>
-                            <input type="number" value={formData.floor} onChange={e => setFormData({...formData, floor: parseInt(e.target.value)})} className="p-2 border rounded"/>
+                            <input type="number" value={formData.floor} onChange={e => setFormData({...formData, floor: e.target.value})} placeholder="0" className="p-2 border rounded"/>
                          </div>
                          <div className="flex flex-col">
                             <label className="text-xs text-gray-500 mb-1">Rent</label>
-                            <input type="number" value={formData.rent} onChange={e => setFormData({...formData, rent: parseInt(e.target.value)})} className="p-2 border rounded"/>
+                            <input type="number" value={formData.rent} onChange={e => setFormData({...formData, rent: e.target.value})} placeholder="0" className="p-2 border rounded"/>
                          </div>
                     </div>
                      <div className="grid grid-cols-2 gap-3">
                          <div className="flex flex-col">
                             <label className="text-xs text-gray-500 mb-1">Bedrooms</label>
-                            <input type="number" value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: parseInt(e.target.value)})} className="p-2 border rounded"/>
+                            <input type="number" value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} placeholder="1" className="p-2 border rounded"/>
                          </div>
                          <div className="flex flex-col">
                             <label className="text-xs text-gray-500 mb-1">Bathrooms</label>
-                            <input type="number" value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: parseInt(e.target.value)})} className="p-2 border rounded"/>
+                            <input type="number" value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: e.target.value})} placeholder="1" className="p-2 border rounded"/>
                          </div>
                     </div>
                 </div>
