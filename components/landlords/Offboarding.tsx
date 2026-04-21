@@ -1,30 +1,8 @@
 
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
+import { LandlordOffboardingRecord } from '../../types';
 import Icon from '../Icon';
-
-interface LandlordOffboardingRecord {
-    id: string;
-    landlordName: string;
-    propertyCount: number;
-    reason: string;
-    status: 'Notice Served' | 'Handover in Progress' | 'Accounts Settled' | 'Contract Terminated';
-    terminationDate: string;
-    checklist?: {
-        tenantsNotified: boolean;
-        legalNoticeDelivered: boolean;
-        keysHandedOver: boolean;
-        utilityTransferInitiated: boolean;
-    };
-    financials?: {
-        finalGrossRent: number;
-        outstandingRepairs: number;
-        legalFees: number;
-        retainerRefund: number;
-        netPayout: number;
-    };
-    documents?: Array<{ name: string; date: string }>;
-}
 
 const ManageOffboardingModal: React.FC<{ 
     record: LandlordOffboardingRecord; 
@@ -314,7 +292,7 @@ const ManageOffboardingModal: React.FC<{
 };
 
 const TerminateContractModal: React.FC<{ onClose: () => void; onConfirm: (record: LandlordOffboardingRecord) => void }> = ({ onClose, onConfirm }) => {
-    const { landlords } = useData();
+    const { landlords, properties } = useData();
     const [selectedLandlordId, setSelectedLandlordId] = useState('');
     const [reason, setReason] = useState('');
     const [date, setDate] = useState('');
@@ -323,11 +301,13 @@ const TerminateContractModal: React.FC<{ onClose: () => void; onConfirm: (record
         if (!selectedLandlordId || !reason || !date) return alert("All fields required");
         const landlord = landlords.find(l => l.id === selectedLandlordId);
         if (!landlord) return;
+        const realPropertyCount = properties.filter(p => p.landlordId === selectedLandlordId).length;
 
         const newRecord: LandlordOffboardingRecord = {
             id: `off-l-${Date.now()}`,
+            landlordId: selectedLandlordId,
             landlordName: landlord.name,
-            propertyCount: 2, // Mock count, normally calculated
+            propertyCount: realPropertyCount,
             reason,
             status: 'Notice Served',
             terminationDate: date,
@@ -369,28 +349,25 @@ const TerminateContractModal: React.FC<{ onClose: () => void; onConfirm: (record
 };
 
 const LandlordOffboarding: React.FC = () => {
-    const [records, setRecords] = useState<LandlordOffboardingRecord[]>([
-        { 
-            id: 'rec1', 
-            landlordName: 'Michael Scott', 
-            propertyCount: 1, 
-            reason: 'Property Sold', 
-            status: 'Handover in Progress', 
-            terminationDate: '2025-12-01',
-            checklist: { tenantsNotified: true, legalNoticeDelivered: true, keysHandedOver: false, utilityTransferInitiated: false }
-        }
-    ]);
+    const { landlordOffboardingRecords, addLandlordOffboardingRecord, updateLandlordOffboardingRecord, deleteLandlordOffboardingRecord } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [managingRecord, setManagingRecord] = useState<LandlordOffboardingRecord | null>(null);
 
+    const records = landlordOffboardingRecords;
+
     const handleTerminate = (record: LandlordOffboardingRecord) => {
-        setRecords([record, ...records]);
+        addLandlordOffboardingRecord(record);
         setIsModalOpen(false);
     };
 
     const handleUpdateRecord = (updated: LandlordOffboardingRecord) => {
-        setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+        updateLandlordOffboardingRecord(updated.id, updated);
         setManagingRecord(null);
+    };
+
+    const handleDeleteRecord = (id: string) => {
+        if (!window.confirm('Remove this offboarding record?')) return;
+        deleteLandlordOffboardingRecord(id);
     };
 
     const getStatusColor = (status: string) => {
@@ -445,15 +422,24 @@ const LandlordOffboarding: React.FC = () => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        {r.status !== 'Contract Terminated' && (
-                                            <button 
-                                                onClick={() => setManagingRecord(r)}
-                                                className="text-blue-600 hover:underline font-medium text-xs flex items-center justify-end ml-auto"
+                                        <div className="flex items-center justify-end gap-2">
+                                            {r.status !== 'Contract Terminated' && (
+                                                <button 
+                                                    onClick={() => setManagingRecord(r)}
+                                                    className="text-blue-600 hover:underline font-medium text-xs flex items-center"
+                                                >
+                                                    Manage <Icon name="settings" className="w-3 h-3 ml-1" />
+                                                </button>
+                                            )}
+                                            {r.status === 'Contract Terminated' && <span className="text-gray-400 text-xs">Archived</span>}
+                                            <button
+                                                onClick={() => handleDeleteRecord(r.id)}
+                                                className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                                                title="Remove record"
                                             >
-                                                Manage <Icon name="settings" className="w-3 h-3 ml-1" />
+                                                <Icon name="close" className="w-3.5 h-3.5" />
                                             </button>
-                                        )}
-                                        {r.status === 'Contract Terminated' && <span className="text-gray-400 text-xs">Archived</span>}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

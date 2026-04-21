@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob, MarketingBannerTemplate } from '../types';
+import { TenantProfile, Property, User, Unit, Task, TenantApplication, StaffProfile, FineRule, OffboardingRecord, GeospatialData, CommissionRule, DataContextType, LandlordApplication, LandlordOffboardingRecord, DeductionRule, Bill, BillItem, Invoice, Vendor, Message, CommunicationTemplate, Workflow, CommunicationAutomationRule, AuditLogEntry, EscalationRule, ExternalTransaction, Overpayment, SystemSettings, PreventiveTask, IncomeSource, Fund, Investment, WithdrawalRequest, RenovationInvestor, RFTransaction, RenovationProjectBill, Notification, Quotation, Role, RolePermissions, ScheduledReport, TaxRecord, MarketplaceListing, Lead, FundiJob, MarketingBannerTemplate } from '../types';
 import { GEOSPATIAL_DATA as INITIAL_GEOSPATIAL_DATA } from '../constants';
 import { websiteApi } from '../utils/websiteApi';
 import { supabase, getSupabaseSession, bustSessionCache } from '../utils/supabaseClient';
@@ -161,6 +161,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [staff, setStaff, staffStatus] = useSupabaseBackedState<StaffProfile[]>([], 'tm_staff_v11');
     const [fines, setFines, finesStatus] = useSupabaseBackedState<FineRule[]>([], 'tm_fines_v11'); 
     const [offboardingRecords, setOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>([], 'tm_offboarding_v11');
+    const [landlordOffboardingRecords, setLandlordOffboardingRecords] = useSupabaseBackedState<LandlordOffboardingRecord[]>([], 'tm_landlord_offboarding_v11');
     const [geospatialData, setGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
     const [commissionRules, setCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
     const [deductionRules, setDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>([], 'tm_deductions_v11');
@@ -595,6 +596,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const deleteFine = (id: string) => setFines(prev => prev.filter(f => f.id !== id));
     const addOffboardingRecord = (r: OffboardingRecord) => setOffboardingRecords(prev => [r, ...prev]);
     const updateOffboardingRecord = (id: string, d: Partial<OffboardingRecord>) => setOffboardingRecords(prev => prev.map(r => r.id === id ? {...r, ...d} : r));
+    const addLandlordOffboardingRecord = (r: LandlordOffboardingRecord) => setLandlordOffboardingRecords(prev => [r, ...prev]);
+    const updateLandlordOffboardingRecord = (id: string, d: Partial<LandlordOffboardingRecord>) => setLandlordOffboardingRecords(prev => prev.map(r => r.id === id ? {...r, ...d} : r));
+    const deleteLandlordOffboardingRecord = (id: string) => setLandlordOffboardingRecords(prev => prev.filter(r => r.id !== id));
     const addGeospatialNode = (level: any, parentPath: any, name: any) => {
         setGeospatialData(prev => {
             const newData = JSON.parse(JSON.stringify(prev));
@@ -919,7 +923,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
         <DataContext.Provider value={{
             tenants, properties, landlords, tasks, quotations, applications, landlordApplications,
-            staff: mergedStaff, fines, offboardingRecords, geospatialData, commissionRules, deductionRules,
+            staff: mergedStaff, fines, offboardingRecords, landlordOffboardingRecords, geospatialData, commissionRules, deductionRules,
             bills, invoices, vendors, messages, notifications, templates, workflows, automationRules, auditLogs, escalationRules,
             externalTransactions, overpayments, systemSettings, preventiveTasks, incomeSources,
             funds, investments, withdrawals, renovationInvestors, rfTransactions, renovationProjectBills,
@@ -933,7 +937,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addUnitToProperty, addTask, updateTask, addQuotation, updateQuotation, addApplication, updateApplication, deleteApplication,
             addLandlordApplication, updateLandlordApplication, deleteLandlordApplication, addLandlord, updateLandlord, deleteLandlord,
             addStaff, updateStaff, deleteStaff, addFine, updateFine, deleteFine, addOffboardingRecord,
-            updateOffboardingRecord, addGeospatialNode, addCommissionRule, updateCommissionRule,
+            updateOffboardingRecord, addLandlordOffboardingRecord, updateLandlordOffboardingRecord, deleteLandlordOffboardingRecord,
+            addGeospatialNode, addCommissionRule, updateCommissionRule,
             deleteCommissionRule, addDeductionRule, updateDeductionRule, deleteDeductionRule,
             addBill, updateBill, deleteBill, addTenantBill, addInvoice, updateInvoice,
             addMessage, addNotification, addVendor, updateVendor, deleteVendor, addAuditLog, updateExternalTransaction, addOverpayment, updateOverpayment, moveTenantPayment,

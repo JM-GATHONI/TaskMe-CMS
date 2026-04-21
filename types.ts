@@ -393,6 +393,30 @@ export interface LandlordApplication {
   };
 }
 
+export interface LandlordOffboardingRecord {
+  id: string;
+  landlordId: string;
+  landlordName: string;
+  propertyCount: number;
+  reason: string;
+  status: 'Notice Served' | 'Handover in Progress' | 'Accounts Settled' | 'Contract Terminated';
+  terminationDate: string;
+  checklist?: {
+    tenantsNotified: boolean;
+    legalNoticeDelivered: boolean;
+    keysHandedOver: boolean;
+    utilityTransferInitiated: boolean;
+  };
+  financials?: {
+    finalGrossRent: number;
+    outstandingRepairs: number;
+    legalFees: number;
+    retainerRefund: number;
+    netPayout: number;
+  };
+  documents?: Array<{ name: string; date: string }>;
+}
+
 export type BusinessUnit = 'Management' | 'Administration' | 'Security' | 'Rental Management' | 'R-Reits' | 'Cleaning' | 'Maintenance';
 export type SalaryType = 'Monthly' | 'Target Based' | 'Commission' | 'Per Project';
 export type LeaveType = 'Annual' | 'Sick' | 'Maternity' | 'Paternity' | 'Emergency' | 'Unpaid';
@@ -1222,6 +1246,7 @@ export interface DataContextType {
     staff: StaffProfile[];
     fines: FineRule[];
     offboardingRecords: OffboardingRecord[];
+    landlordOffboardingRecords: LandlordOffboardingRecord[];
     geospatialData: GeospatialData;
     commissionRules: CommissionRule[];
     deductionRules: DeductionRule[];
@@ -1290,6 +1315,9 @@ export interface DataContextType {
     deleteFine: (id: string) => void;
     addOffboardingRecord: (r: OffboardingRecord) => void;
     updateOffboardingRecord: (id: string, d: Partial<OffboardingRecord>) => void;
+    addLandlordOffboardingRecord: (r: LandlordOffboardingRecord) => void;
+    updateLandlordOffboardingRecord: (id: string, d: Partial<LandlordOffboardingRecord>) => void;
+    deleteLandlordOffboardingRecord: (id: string) => void;
     addGeospatialNode: (level: any, parentPath: any, name: any) => void;
     addCommissionRule: (r: CommissionRule) => void;
     updateCommissionRule: (id: string, d: Partial<CommissionRule>) => void;

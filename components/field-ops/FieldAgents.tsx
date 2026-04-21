@@ -961,7 +961,9 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                                     </div>
                                     <div>
                                         <h4 className="font-bold text-gray-800">{l.name}</h4>
-                                        <p className="text-xs text-gray-500">{l.phone}</p>
+                                        <p className="text-xs text-gray-500">
+                                            {agentProperties.filter(p => p.landlordId === l.id).map(p => p.name).join(', ') || 'No properties assigned'}
+                                        </p>
                                     </div>
                                 </div>
                             ))}

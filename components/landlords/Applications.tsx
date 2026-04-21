@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { LandlordApplication, User, Property } from '../../types';
 import { exportToCSV } from '../../utils/exportHelper';
@@ -332,19 +332,6 @@ const Applications: React.FC = () => {
     const [isNewModalOpen, setIsNewModalOpen] = useState(false);
     const [reviewApp, setReviewApp] = useState<ExtendedLandlordApp | null>(null);
     const [editApp, setEditApp] = useState<ExtendedLandlordApp | undefined>(undefined);
-
-    // Data Population logic
-    useEffect(() => {
-        if (landlordApplications.length === 0) {
-            const samples: ExtendedLandlordApp[] = [
-                { id: 'app-1', name: 'John Kamau', email: 'john.kamau@example.com', phone: '0712345678', idNumber: '23456789', status: 'Pending', date: new Date().toISOString().split('T')[0], notes: 'Has 3 commercial properties in CBD.', proposedProperties: [] },
-                { id: 'app-2', name: 'Alice Wanjiku', email: 'alice.w@example.com', phone: '0722334455', idNumber: '34567890', status: 'Approved', date: '2025-10-15', notes: 'Residential flats in Westlands.', proposedProperties: [] },
-                { id: 'app-3', name: 'Robert Ochieng', email: 'r.ochieng@example.com', phone: '0733445566', idNumber: '12345678', status: 'Rejected', date: '2025-09-20', notes: 'Documents incomplete.', proposedProperties: [] },
-                { id: 'app-4', name: 'Fatuma Ahmed', email: 'fatuma@properties.co.ke', phone: '0711223344', idNumber: '98765432', status: 'Pending', date: new Date().toISOString().split('T')[0], notes: 'Mixed use development owner.', proposedProperties: [] }
-            ];
-            samples.forEach(s => addLandlordApplication(s as unknown as LandlordApplication));
-        }
-    }, [landlordApplications, addLandlordApplication]);
 
     // Unified List of Landlords and Applications
     const unifiedList: ExtendedLandlordApp[] = useMemo(() => {

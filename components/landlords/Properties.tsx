@@ -115,7 +115,7 @@ const PropertyForm: React.FC<{
                 caretakerFee: { applicable: false, amount: 0 },
             },
             remittanceType: 'Collection Based',
-            remittanceCutoffDay: 5,
+            remittanceCutoffDay: 4,
             nearestLandmark: '',
             assignedAgentId: '',
         };
@@ -338,7 +338,7 @@ const PropertyForm: React.FC<{
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Landlord*</label>
                                 <select name="landlordId" value={formData.landlordId || ''} onChange={handleChange} className="w-full p-2 border rounded bg-white">
                                     <option value="">Select Landlord</option>
-                                    {landlords.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                    {[...landlords].sort((a, b) => a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -444,7 +444,7 @@ const PropertyForm: React.FC<{
                                     </div>
                                 </div>
 
-                                <div>
+                                {formData.rentType !== 'Exclusive' && <div>
                                     <label className="block text-sm font-medium text-gray-800 mb-2">Utilities & Bills Checklist</label>
                                     <div className="bg-white border rounded-lg divide-y divide-gray-100 shadow-sm">
                                         {(['water', 'electricity', 'garbage', 'serviceCharge', 'securityFee', 'cleaningFee', 'caretakerFee'] as const).map(billKey => (
@@ -479,7 +479,7 @@ const PropertyForm: React.FC<{
                                             </div>
                                         ))}
                                     </div>
-                                </div>
+                                </div>}
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-800 mb-2">Utility Deposits (One-Time, Refundable)</label>
@@ -654,7 +654,14 @@ const PropertyForm: React.FC<{
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Total Floors</label>
-                                <input type="number" name="floors" value={formData.floors || ''} onChange={handleChange} className="w-full p-2 border rounded max-w-xs"/>
+                                <input type="number" name="floors" value={formData.floors || ''} onChange={e => {
+                                    const newCount = parseInt(e.target.value) || 0;
+                                    const hasExistingConfig = (formData.floorplan || []).some(f => f.unitCount > 0);
+                                    if (hasExistingConfig && newCount !== (formData.floors || 0)) {
+                                        if (!window.confirm('Changing the floor count will delete existing floor/unit configuration that has already been set up. Continue?')) return;
+                                    }
+                                    handleChange(e);
+                                }} className="w-full p-2 border rounded max-w-xs"/>
                                 <p className="text-xs text-gray-500 mt-1">Floors are auto-generated based on this count.</p>
                             </div>
                             {formData.rentIsUniform && (
