@@ -241,6 +241,7 @@ const Outbound: React.FC = () => {
 
             if (catLower.includes('deposit refund') || vendorLower.includes('refund')) category = 'Deposit refund';
             else if (catLower.includes('landlord') || vendorLower.includes('payout')) category = 'Landlord payout';
+            else if (catLower.includes('referral')) category = 'Referral Commission';
             else if (catLower.includes('security')) category = 'Payment to security personnel';
             else if (catLower.includes('cleaning')) category = 'Payments to cleaners';
             else if (catLower.includes('maintenance') || catLower.includes('repair') || catLower.includes('contractor')) category = 'Services paid to contractors';

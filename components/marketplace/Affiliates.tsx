@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
-import { User, StaffProfile, Lead } from '../../types';
+import { User, StaffProfile, Lead, RFTransaction } from '../../types';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 
@@ -260,10 +260,79 @@ const AffiliateCard: React.FC<{ affiliate: LiveAffiliate; onViewPerformance: (af
     </div>
 );
 
+const ReviewPayoutModal: React.FC<{
+    payout: RFTransaction;
+    onClose: () => void;
+    onConfirm: (id: string, amount: number, reference: string, date: string) => void;
+}> = ({ payout, onClose, onConfirm }) => {
+    const [amount, setAmount] = useState(payout.amount || 0);
+    const [reference, setReference] = useState(payout.reference || '');
+    const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[1600] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">Review & Pay Commission</h3>
+                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
+                </div>
+                <div className="space-y-4">
+                    <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 text-sm space-y-1">
+                        <p className="text-gray-600">Affiliate: <span className="font-bold text-gray-800">{payout.partyName}</span></p>
+                        <p className="text-gray-600">Referral: <span className="font-bold text-gray-800">{payout.description || payout.reference}</span></p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (KES)</label>
+                        <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded" min={0} />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Date</label>
+                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2 border rounded" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Reference / Note</label>
+                        <input value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. MPESA REF or Bank TXN" className="w-full p-2 border rounded" />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded text-gray-700 font-medium">Cancel</button>
+                    <button
+                        onClick={() => {
+                            if (!amount || amount <= 0) return alert('Enter a valid amount.');
+                            if (!reference.trim()) return alert('Enter a payment reference.');
+                            onConfirm(payout.id, amount, reference.trim(), date);
+                        }}
+                        className="px-4 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700"
+                    >
+                        Confirm Payment
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Affiliates: React.FC = () => {
-    const { addLandlord, landlords, staff, leads, tenants, rfTransactions, renovationInvestors, applications } = useData();
+    const { addLandlord, landlords, staff, leads, tenants, rfTransactions, renovationInvestors, applications, updateRFTransaction, addBill } = useData();
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [selectedAffiliate, setSelectedAffiliate] = useState<LiveAffiliate | null>(null);
+    const [reviewPayout, setReviewPayout] = useState<RFTransaction | null>(null);
+
+    const handleConfirmPayout = (id: string, amount: number, reference: string, date: string) => {
+        updateRFTransaction(id, { status: 'Completed' as any, amount, reference, date });
+        addBill({
+            id: `bill-comm-${Date.now()}`,
+            vendor: reviewPayout?.partyName || '',
+            category: 'Referral Commission',
+            amount,
+            invoiceDate: date,
+            dueDate: date,
+            status: 'Paid',
+            description: reviewPayout?.description || reviewPayout?.reference || 'Referral Commission',
+            propertyId: '',
+        } as any);
+        alert(`Commission of KES ${amount.toLocaleString()} paid to ${reviewPayout?.partyName}.`);
+        setReviewPayout(null);
+    };
 
     // --- AGGREGATE AFFILIATE DATA ---
     const affiliates: LiveAffiliate[] = useMemo(() => {
@@ -431,7 +500,7 @@ const Affiliates: React.FC = () => {
                                     <td className="px-4 py-3 text-gray-500 text-xs uppercase font-bold">Referral</td>
                                     <td className="px-4 py-3 text-gray-600">{t.description || t.reference}</td>
                                     <td className="px-4 py-3 text-right font-bold text-green-600">KES {Number(t.amount ?? 0).toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right"><button type="button" className="text-blue-600 hover:underline text-xs font-bold">Review</button></td>
+                                    <td className="px-4 py-3 text-right"><button type="button" onClick={() => setReviewPayout(t)} className="text-blue-600 hover:underline text-xs font-bold">Review</button></td>
                                 </tr>
                             ))}
                             {pendingReferralPayouts.length === 0 && (
@@ -455,6 +524,13 @@ const Affiliates: React.FC = () => {
                 <AffiliatePerformanceModal 
                     affiliate={selectedAffiliate}
                     onClose={() => setSelectedAffiliate(null)}
+                />
+            )}
+            {reviewPayout && (
+                <ReviewPayoutModal
+                    payout={reviewPayout}
+                    onClose={() => setReviewPayout(null)}
+                    onConfirm={handleConfirmPayout}
                 />
             )}
         </div>

@@ -282,6 +282,7 @@ export interface User {
   branch?: string;
   avatarUrl?: string;
   passwordHash?: string;
+  referrerId?: string;
   referralConfig?: {
       rateType: '%' | 'KES';
       rateValue: number;
@@ -888,7 +889,7 @@ export interface CollectionLog {
   loggedBy: string;
 }
 
-export type ExpenseCategory = 'Maintenance' | 'Transaction Costs' | 'Tax' | 'Legal' | 'Marketing' | 'Office Rent' | 'Other' | 'Salary' | 'Cleaning' | 'Vendor' | 'Internet' | 'Licences' | 'Deposit Refund' | 'Landlord Payout' | 'Security' | 'Water' | 'Electricity' | 'Garbage' | 'Gas' | 'Service Charge';
+export type ExpenseCategory = 'Maintenance' | 'Transaction Costs' | 'Tax' | 'Legal' | 'Marketing' | 'Office Rent' | 'Other' | 'Salary' | 'Cleaning' | 'Vendor' | 'Internet' | 'Licences' | 'Deposit Refund' | 'Landlord Payout' | 'Security' | 'Water' | 'Electricity' | 'Garbage' | 'Gas' | 'Service Charge' | 'Referral Commission';
 export type RevenueStreamCategory = 'Agency Management Commission' | 'Fines & Penalties' | 'Late Payment Fine' | 'Bills' | 'Maintenance Interest (15%)' | 'Tenancy Placement Fee';
 
 export interface Payslip {
