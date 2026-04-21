@@ -142,7 +142,7 @@ export const PropertyForm: React.FC<{
                 caretakerFee: { applicable: false, amount: 0 },
             },
             remittanceType: 'Collection Based',
-            remittanceCutoffDay: 5,
+            remittanceCutoffDay: 4,
             nearestLandmark: '',
             assignedAgentId: '',
             monthlyRentalIncomeTaxPercent: 7.5,
@@ -642,7 +642,7 @@ export const PropertyForm: React.FC<{
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-600 mb-1">Cutoff Day</label>
-                                        <input type="number" name="remittanceCutoffDay" value={formData.remittanceCutoffDay || ''} onChange={handleChange} placeholder="e.g. 5" className="w-full p-2 border rounded text-sm"/>
+                                        <input type="number" name="remittanceCutoffDay" value={formData.remittanceCutoffDay || ''} onChange={handleChange} placeholder="e.g. 4" className="w-full p-2 border rounded text-sm"/>
                                     </div>
                                 </div>
                                 <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
