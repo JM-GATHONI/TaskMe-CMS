@@ -60,8 +60,7 @@ function isInactiveApplicantTenant(t: TenantProfile): boolean {
     return (
         t.status === 'Pending' ||
         t.status === 'PendingAllocation' ||
-        t.status === 'PendingPayment' ||
-        !tenantFullyAllocated(t)
+        t.status === 'PendingPayment'
     );
 }
 
