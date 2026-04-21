@@ -494,7 +494,8 @@ export const LandlordDetailView: React.FC<{
             const isPlacementFeeActive = prop?.placementFee !== false; 
 
             if (isPlacementFeeActive) {
-                const amount = t.rentAmount || 0;
+                const firstMonthRent = Number((t as any).firstMonthRent || 0);
+                const amount = firstMonthRent > 0 ? firstMonthRent : (t.rentAmount || 0);
                 placementFeeDeduction += amount;
                 detailedDeductions.push({
                     category: 'Placement Fees',
@@ -1223,7 +1224,7 @@ export const LandlordDetailView: React.FC<{
                                                         <td className="px-4 py-3 font-medium text-gray-800">{t.name}</td>
                                                         <td className="px-4 py-3 text-gray-600">{t.propertyName}</td>
                                                         <td className="px-4 py-3 text-gray-600">{t.unit}</td>
-                                                        <td className="px-4 py-3 text-right font-bold text-gray-800">KES {t.rentAmount.toLocaleString()}</td>
+                                                        <td className="px-4 py-3 text-right font-bold text-gray-800">KES {(isNew && Number((t as any).firstMonthRent || 0) > 0 ? Number((t as any).firstMonthRent) : t.rentAmount).toLocaleString()}</td>
                                                         <td className="px-4 py-3 text-center">
                                                             {isNew ? (
                                                                 <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">NEW</span>

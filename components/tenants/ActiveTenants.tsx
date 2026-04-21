@@ -2035,6 +2035,17 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
         }
         updateTenant(tenant.id, updates);
+        // Mirror into the payments ledger so it appears in Inbound > Manual filter.
+        supabase.from('payments').insert({
+            source: 'manual',
+            status: 'completed',
+            amount: Number(amount ?? 0),
+            transaction_id: normalizedRef,
+            matched_tenant_id: tenant.id,
+            matched_unit_id: tenant.unitId ?? null,
+            created_at: `${date}T00:00:00`,
+            result_desc: method,
+        }).then(() => {});
         setActiveModal(null);
         alert("Payment recorded successfully.");
     };
