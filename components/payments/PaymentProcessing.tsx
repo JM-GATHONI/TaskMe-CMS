@@ -9,15 +9,15 @@ interface PayableItem extends Bill {
 }
 
 const EditBillModal: React.FC<{ bill: Bill; onClose: () => void; onSave: (bill: Bill) => void }> = ({ bill, onClose, onSave }) => {
-    const [formData, setFormData] = useState<Bill>(bill);
+    const [formData, setFormData] = useState<Bill & { amount: any }>({ ...bill, amount: String(bill.amount ?? '') });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) : value }));
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const handleSubmit = () => {
-        onSave(formData);
+        onSave({ ...formData, amount: parseFloat(String(formData.amount)) || 0 });
     };
 
     return (

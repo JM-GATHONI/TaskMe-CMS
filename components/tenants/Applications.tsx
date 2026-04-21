@@ -1262,7 +1262,7 @@ const AppMpesaModal: React.FC<{
             if (!d?.required || d?.exempt) return s;
             return s + Math.max(0, (d.amount || 0) - (d.paid || 0));
         }, 0);
-        return stkEffectiveRent + stkDepositOwed + stkUtilDep;
+        return String(stkEffectiveRent + stkDepositOwed + stkUtilDep);
     });
     const [checkoutId, setCheckoutId] = useState<string | null>(null);
     const [step, setStep] = useState<'input' | 'processing' | 'timed_out'>('input');
@@ -1275,7 +1275,7 @@ const AppMpesaModal: React.FC<{
         return followStkPaymentCompletion(supabase, userId, checkoutId, (row) => {
             const status = String(row.status ?? '');
             if (status === 'completed') {
-                onPaid(amount, String(row.transaction_id ?? checkoutId));
+                onPaid(parseFloat(amount) || 0, String(row.transaction_id ?? checkoutId));
             } else if (status === 'failed' || status === 'cancelled') {
                 setError(String(row.result_desc ?? 'Payment did not complete.'));
                 setStep('input');
@@ -1297,7 +1297,7 @@ const AppMpesaModal: React.FC<{
             setError('Enter a valid Kenyan mobile number.');
             return;
         }
-        const roundedAmt = Math.round(amount);
+        const roundedAmt = Math.round(parseFloat(amount) || 0);
         if (!Number.isFinite(roundedAmt) || roundedAmt < 1) {
             setError('Enter a valid amount (minimum KES 1).');
             return;
@@ -1311,7 +1311,7 @@ const AppMpesaModal: React.FC<{
         setStep('processing');
         try {
             const { data, error: invokeError } = await supabase.functions.invoke('mpesa-stk-push', {
-                body: { phone, amount: Math.round(amount), leaseId: record.id ?? null, userId },
+                body: { phone, amount: Math.round(parseFloat(amount) || 0), leaseId: record.id ?? null, userId },
             });
             if (invokeError) throw invokeError;
             const id = String((data as any)?.checkoutRequestId ?? '').trim();
@@ -1333,7 +1333,7 @@ const AppMpesaModal: React.FC<{
                 {step === 'input' ? (
                     <div className="space-y-3">
                         <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 border rounded" placeholder="07..." />
-                        <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value) || 0)} className="w-full p-2 border rounded" placeholder="Amount" />
+                        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded" placeholder="Amount" />
                         <div className="flex justify-end gap-2">
                             <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded">Cancel</button>
                             <button onClick={handlePay} disabled={busy} className="px-4 py-2 bg-green-700 text-white rounded font-bold disabled:opacity-50">

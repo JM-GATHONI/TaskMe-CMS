@@ -165,7 +165,7 @@ const PayCommissionModal: React.FC<{
     onClose: () => void;
     onPay: (amount: number, reference: string, date: string) => void;
 }> = ({ referrerName, referredName, defaultAmount, onClose, onPay }) => {
-    const [amount, setAmount] = useState(defaultAmount || 0);
+    const [amount, setAmount] = useState(String(defaultAmount || ''));
     const [reference, setReference] = useState('');
     const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
     return (
@@ -182,7 +182,7 @@ const PayCommissionModal: React.FC<{
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (KES)</label>
-                        <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded" min={0} />
+                        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded" min={0} />
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Date</label>
@@ -197,9 +197,10 @@ const PayCommissionModal: React.FC<{
                     <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded text-gray-700 font-medium">Cancel</button>
                     <button
                         onClick={() => {
-                            if (!amount || amount <= 0) return alert('Enter a valid amount.');
+                            const parsedAmt = parseFloat(amount) || 0;
+                            if (!parsedAmt || parsedAmt <= 0) return alert('Enter a valid amount.');
                             if (!reference.trim()) return alert('Enter a payment reference.');
-                            onPay(amount, reference.trim(), date);
+                            onPay(parsedAmt, reference.trim(), date);
                         }}
                         className="px-4 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700"
                     >

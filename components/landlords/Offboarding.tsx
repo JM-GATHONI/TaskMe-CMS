@@ -16,18 +16,19 @@ const ManageOffboardingModal: React.FC<{
         keysHandedOver: false,
         utilityTransferInitiated: false
     });
-    const [financials, setFinancials] = useState(record.financials || {
-        finalGrossRent: 0,
-        outstandingRepairs: 0,
-        legalFees: 0,
-        retainerRefund: 0,
-        netPayout: 0
-    });
+    const [financials, setFinancials] = useState(record.financials
+        ? { ...record.financials,
+            finalGrossRent: String(record.financials.finalGrossRent ?? ''),
+            outstandingRepairs: String(record.financials.outstandingRepairs ?? ''),
+            legalFees: String(record.financials.legalFees ?? ''),
+            retainerRefund: String(record.financials.retainerRefund ?? ''),
+            netPayout: record.financials.netPayout ?? 0 }
+        : { finalGrossRent: '', outstandingRepairs: '', legalFees: '', retainerRefund: '', netPayout: 0 });
     const [documents, setDocuments] = useState(record.documents || []);
 
     // Calc Net Payout Effect
     React.useEffect(() => {
-        const net = (financials.finalGrossRent || 0) + (financials.retainerRefund || 0) - (financials.outstandingRepairs || 0) - (financials.legalFees || 0);
+        const net = (parseFloat(String(financials.finalGrossRent)) || 0) + (parseFloat(String(financials.retainerRefund)) || 0) - (parseFloat(String(financials.outstandingRepairs)) || 0) - (parseFloat(String(financials.legalFees)) || 0);
         if (net !== financials.netPayout) {
             setFinancials(prev => ({ ...prev, netPayout: net }));
         }
@@ -39,7 +40,7 @@ const ManageOffboardingModal: React.FC<{
 
     const handleFinancialChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFinancials(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+        setFinancials(prev => ({ ...prev, [name]: value }));
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,7 +61,13 @@ const ManageOffboardingModal: React.FC<{
         onUpdate({
             ...record,
             checklist,
-            financials,
+            financials: {
+                ...financials,
+                finalGrossRent: parseFloat(String(financials.finalGrossRent)) || 0,
+                outstandingRepairs: parseFloat(String(financials.outstandingRepairs)) || 0,
+                legalFees: parseFloat(String(financials.legalFees)) || 0,
+                retainerRefund: parseFloat(String(financials.retainerRefund)) || 0,
+            },
             documents,
             status: newStatus
         });

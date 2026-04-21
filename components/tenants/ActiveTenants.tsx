@@ -774,7 +774,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
 const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => void }> = ({ tenant, onClose }) => {
     const { updateTenant, fines: fineRules, addMessage, addNotification } = useData();
     const [selectedFineId, setSelectedFineId] = useState('');
-    const [amount, setAmount] = useState<number>(0);
+    const [amount, setAmount] = useState<string>('');
     const [comment, setComment] = useState('');
 
     const handleSelectFine = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -782,9 +782,9 @@ const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => voi
         setSelectedFineId(ruleId);
         const rule = fineRules.find(f => f.id === ruleId);
         if (rule) {
-            setAmount(rule.basis === 'Fixed Fee' ? rule.value : 0);
+            setAmount(rule.basis === 'Fixed Fee' ? String(rule.value) : '');
         } else {
-            setAmount(0);
+            setAmount('');
         }
     };
 
@@ -795,7 +795,7 @@ const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => voi
         const newFine: FineItem = {
             id: `fine-${Date.now()}`,
             type: rule.type,
-            amount: amount,
+            amount: parseFloat(amount) || 0,
             date: new Date().toISOString().split('T')[0],
             status: 'Pending'
         };
@@ -805,7 +805,7 @@ const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => voi
         updateTenant(tenant.id, { outstandingFines: updatedFines });
         
         // --- NOTIFICATION & SMS ---
-        const msgText = `You have been fined KES ${Number(amount ?? 0).toLocaleString()} for ${rule.type}, kindly pay to avoid further penalties.`;
+        const msgText = `You have been fined KES ${Number(parseFloat(amount) || 0).toLocaleString()} for ${rule.type}, kindly pay to avoid further penalties.`;
         
         // 1. SMS
         const sms: Message = {
@@ -855,7 +855,7 @@ const FinesManagementModal: React.FC<{ tenant: TenantProfile; onClose: () => voi
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Amount (KES)</label>
-                        <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} className="w-full p-2 border rounded" />
+                        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded" placeholder="0" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Comments</label>

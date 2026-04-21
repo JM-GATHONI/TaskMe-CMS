@@ -22,7 +22,7 @@ const DeductionFormModal: React.FC<{
     const [formData, setFormData] = useState<Partial<DeductionRule>>(rule || {
         name: '',
         type: 'Percentage',
-        value: 0,
+        value: '' as any,
         frequency: 'Monthly',
         applicability: property ? 'Specific Property' : 'Global',
         targetId: property ? property.id : '',
@@ -34,17 +34,18 @@ const DeductionFormModal: React.FC<{
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: name === 'value' ? parseFloat(value) : value
+            [name]: value
         }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.name || (!formData.value && formData.value !== 0)) {
+        const parsedValue = parseFloat(String(formData.value ?? ''));
+        if (!formData.name || isNaN(parsedValue)) {
             alert('Name and Value are required.');
             return;
         }
-        onSave({ ...formData, id: rule?.id || `ded-${Date.now()}` } as DeductionRule);
+        onSave({ ...formData, value: parsedValue, id: rule?.id || `ded-${Date.now()}` } as DeductionRule);
     };
 
     return (

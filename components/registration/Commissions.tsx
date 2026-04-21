@@ -12,7 +12,7 @@ const RuleFormModal: React.FC<{
     const [formData, setFormData] = useState<Partial<CommissionRule>>({
         trigger: 'Rent Collection',
         rateType: '%',
-        rateValue: 0,
+        rateValue: '' as any,
         description: '',
         appliesTo: 'Agent',
         deadlineDay: undefined
@@ -20,13 +20,13 @@ const RuleFormModal: React.FC<{
 
     useEffect(() => {
         if (rule) {
-            setFormData(rule);
+            setFormData({ ...rule, rateValue: String(rule.rateValue ?? '') as any, deadlineDay: rule.deadlineDay !== undefined ? String(rule.deadlineDay) as any : undefined });
         } else {
             // Defaults for new rule
             setFormData({
                 trigger: 'Rent Collection',
                 rateType: '%',
-                rateValue: 0,
+                rateValue: '' as any,
                 description: '',
                 appliesTo: 'Agent'
             });
@@ -37,18 +37,22 @@ const RuleFormModal: React.FC<{
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: name === 'rateValue' || name === 'deadlineDay' ? parseFloat(value) : value
+            [name]: value
         }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.trigger || !formData.rateValue) {
+        const parsedRate = parseFloat(String(formData.rateValue ?? ''));
+        if (!formData.trigger || isNaN(parsedRate)) {
             alert("Trigger and Rate Value are required.");
             return;
         }
+        const parsedDeadline = formData.deadlineDay !== undefined ? parseFloat(String(formData.deadlineDay)) : undefined;
         const finalRule = {
             ...formData,
+            rateValue: parsedRate,
+            deadlineDay: parsedDeadline,
             id: rule?.id || `rule-${Date.now()}`
         } as CommissionRule;
         onSave(finalRule);

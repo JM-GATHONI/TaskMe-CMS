@@ -265,7 +265,7 @@ const ReviewPayoutModal: React.FC<{
     onClose: () => void;
     onConfirm: (id: string, amount: number, reference: string, date: string) => void;
 }> = ({ payout, onClose, onConfirm }) => {
-    const [amount, setAmount] = useState(payout.amount || 0);
+    const [amount, setAmount] = useState(String(payout.amount || ''));
     const [reference, setReference] = useState(payout.reference || '');
     const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
     return (
@@ -282,7 +282,7 @@ const ReviewPayoutModal: React.FC<{
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (KES)</label>
-                        <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded" min={0} />
+                        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-2 border rounded" min={0} />
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Date</label>
@@ -297,9 +297,10 @@ const ReviewPayoutModal: React.FC<{
                     <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded text-gray-700 font-medium">Cancel</button>
                     <button
                         onClick={() => {
-                            if (!amount || amount <= 0) return alert('Enter a valid amount.');
+                            const parsedAmt = parseFloat(amount) || 0;
+                            if (!parsedAmt || parsedAmt <= 0) return alert('Enter a valid amount.');
                             if (!reference.trim()) return alert('Enter a payment reference.');
-                            onConfirm(payout.id, amount, reference.trim(), date);
+                            onConfirm(payout.id, parsedAmt, reference.trim(), date);
                         }}
                         className="px-4 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700"
                     >
