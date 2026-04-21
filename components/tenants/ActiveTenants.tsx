@@ -316,9 +316,12 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                             updates.status = 'Active';
                             (updates as any).activationDate = new Date().toISOString().split('T')[0];
                         }
-                    }
-                    if (Number(t.depositPaid || 0) <= 0 && amt >= Number(t.rentAmount || 0)) {
-                        updates.depositPaid = Number(t.rentAmount || 0);
+                        // Update depositPaid for standard tenants only when the payment
+                        // verifiably covers rent + full expected deposit (no auto-pay).
+                        if (!t.depositExempt && !t.proratedDeposit?.enabled && !t.rentExtension?.enabled
+                            && depPaid < depExpected && amt >= Number(t.rentAmount || 0) + depExpected) {
+                            updates.depositPaid = depExpected;
+                        }
                     }
                     // Rent extension: restore grace days and clear extension flag
                     if (cycle.clearRentExtension && t.rentExtension) {
@@ -1979,8 +1982,10 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 (updates as any).activationDate = date;
             }
         }
-        if (Number(tenant.depositPaid || 0) <= 0 && Number(amount || 0) >= Number(tenant.rentAmount || 0)) {
-            updates.depositPaid = Number(tenant.rentAmount || 0);
+        if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+            && Number(tenant.depositPaid || 0) < depositExpectedStandard
+            && Number(amount || 0) >= Number(tenant.rentAmount || 0) + depositExpectedStandard) {
+            updates.depositPaid = depositExpectedStandard;
         }
         // Rent extension: restore grace days and clear extension flag
         if (cycle.clearRentExtension && tenant.rentExtension) {
@@ -2365,7 +2370,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <span className="font-bold mt-0.5">⚠</span>
                             <div>
                                 <p className="font-bold">Placement Fee Month</p>
-                                <p>This tenant's first month rent (KES {Number(tenant.rentAmount ?? 0).toLocaleString()}) is directed to the agency as a placement fee. Management commission and MRI tax do not apply this month.</p>
+                                <p>This tenant's first month rent (KES {Number(effectiveRent ?? 0).toLocaleString()}) is directed to the agency as a placement fee. Management commission and MRI tax do not apply this month.</p>
                             </div>
                         </div>
                     )}
@@ -2771,9 +2776,24 @@ const ActiveTenants: React.FC = () => {
                         ? String((tenant as any).activationDate).slice(0, 7)
                         : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null);
                     const cardFirstMonthRent = Number((tenant as any).firstMonthRent || 0);
-                    const cardEffectiveRent = (cardActivationMonth === currentMonthIso && cardFirstMonthRent > 0)
-                        ? cardFirstMonthRent
-                        : (tenant.rentAmount || 0);
+                    const cardProratedRentOnTheFly = (() => {
+                        if (cardActivationMonth !== currentMonthIso) return 0;
+                        const joinDateStr = (tenant as any).activationDate || tenant.onboardingDate;
+                        if (!joinDateStr) return 0;
+                        const joinDate = new Date(joinDateStr);
+                        const joinDay = joinDate.getDate();
+                        if (joinDay <= 9) return 0;
+                        const baseRent = Number(tenant.rentAmount || 0);
+                        const lastDayOfMonth = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
+                        const daysLeft = Math.max(0, lastDayOfMonth - joinDay);
+                        const prorated = Math.round((baseRent / 30) * daysLeft);
+                        return joinDay >= 25 ? prorated + baseRent : prorated;
+                    })();
+                    const cardEffectiveRent = cardActivationMonth === currentMonthIso
+                        ? (cardFirstMonthRent > 0
+                            ? cardFirstMonthRent
+                            : (cardProratedRentOnTheFly > 0 ? cardProratedRentOnTheFly : Number(tenant.rentAmount || 0)))
+                        : Number(tenant.rentAmount || 0);
                     const rentDue = !isAllocated ? 0 : (isPaid ? 0 : cardEffectiveRent);
                     const pendingBills = !isAllocated
                         ? 0

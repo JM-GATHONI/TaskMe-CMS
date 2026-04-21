@@ -1352,15 +1352,15 @@ const Applications: React.FC = () => {
         } else if (rentExtension?.enabled) {
             depositPaid = rentExtension.depositPaidUpfront || 0;
         } else {
-            depositPaid = depositPaidRaw > 0 ? depositPaidRaw : rentAmount * depositMonths;
+            depositPaid = 0; // Must be set only via actual payment (Manual Pay, Mpesa STK or C2B)
         }
 
         if (rentAmount <= 0) {
             alert('Rent must be set before approving.');
             return;
         }
-        if (!isDepositExempt && depositPaid <= 0 && !proratedDeposit?.enabled) {
-            alert('Deposit must be set before approving (or mark tenant as Deposit Exempt).');
+        if (!isDepositExempt && !proratedDeposit?.enabled && !rentExtension?.enabled && rentAmount * depositMonths <= 0) {
+            alert('Deposit amount cannot be determined. Set the rent amount or mark tenant as Deposit Exempt.');
             return;
         }
 

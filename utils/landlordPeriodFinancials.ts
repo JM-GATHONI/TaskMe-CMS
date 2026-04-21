@@ -30,7 +30,7 @@ export function computePlacementFeeDeduction(
         const prop = properties.find(p => p.id === t.propertyId);
         const isPlacementFeeActive = prop?.placementFee !== false;
         if (isPlacementFeeActive) {
-            const amount = t.rentAmount || 0;
+            const amount = t.firstMonthRent || t.rentAmount || 0;
             placementFeeDeduction += amount;
             placementLines.push({ description: `Placement Fee: ${t.name}`, amount });
         }
@@ -87,7 +87,7 @@ export function computeCollectedRuleDeductions(
                     if (isAgencyFeeOnRentRule(r.name) && placementFeeDeduction > 0) {
                         const placementOnProp = propTenants
                             .filter(t => t.onboardingDate.startsWith(period) && prop.placementFee !== false)
-                            .reduce((s, t) => s + (t.rentAmount || 0), 0);
+                            .reduce((s, t) => s + (t.firstMonthRent || t.rentAmount || 0), 0);
                         base = Math.max(0, propCollected - placementOnProp);
                     }
                     amount = base * (r.value / 100);
@@ -199,7 +199,7 @@ export function computePartialManagementInvoice(
         .forEach(t => {
             const prop = myProperties.find(p => p.id === t.propertyId);
             if (prop?.placementFee !== false) {
-                const amt = t.rentAmount || 0;
+                const amt = t.firstMonthRent || t.rentAmount || 0;
                 placementTotal += amt;
                 invoiceLines.push({
                     description: `Placement Fee – ${t.name} (${prop?.name ?? ''})`,
