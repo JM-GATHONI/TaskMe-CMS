@@ -66,6 +66,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                 email,
                 password,
                 options: {
+                    emailConfirm: false,
                     data: {
                         role,
                         full_name: fullName,
@@ -353,10 +354,10 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                         </div>
                         <h2 className="text-base font-bold text-gray-800">Account Created</h2>
                         <p className="text-[10px] text-gray-500">
-                            Check your email to confirm your account, then sign in.
+                            Your account is ready. You can now sign in.
                         </p>
                         <a href="#/" className="block w-full py-2.5 rounded-lg font-bold text-sm bg-gradient-to-r from-primary to-primary-dark text-white shadow-md hover:shadow-lg transition-all text-center">
-                            Back to Login
+                            Sign In
                         </a>
                     </div>
                 </div>
