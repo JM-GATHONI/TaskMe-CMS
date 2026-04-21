@@ -6,6 +6,7 @@ import Icon from '../Icon';
 import { INITIAL_FUNDS } from '../../constants';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
+import { websiteLinks } from '../../utils/websiteLinks';
 import type { Property } from '../../types';
 
 import RegistrationModal from './RegistrationModal';
@@ -788,12 +789,11 @@ const ReferralLanding: React.FC = () => {
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
-        const baseUrl = 'https://taskme.re';
-        const ref = referrerCode ? `?ref=${referrerCode}` : '';
         if (type === 'unit') {
-            return `${baseUrl}/book/${encodeURIComponent(id)}${ref}`;
+            const prop = properties.find(p => p.units?.some((u: any) => u.id === id));
+            return websiteLinks.unit(id, referrerCode, prop?.websiteListingUrl);
         } else {
-            return `${baseUrl}/invest${ref}`;
+            return websiteLinks.invest(referrerCode);
         }
     };
 

@@ -773,6 +773,13 @@ export const PropertyForm: React.FC<{
                                         placeholder="Google Maps pin / location URL (optional)"
                                         className="p-2 border rounded bg-white w-full md:col-span-2"
                                     />
+                                    <input
+                                        name="websiteListingUrl"
+                                        value={(formData as any).websiteListingUrl || ''}
+                                        onChange={handleChange}
+                                        placeholder="Website listing URL (e.g. https://task-me.ke/properties/baraka-heights)"
+                                        className="p-2 border rounded bg-white w-full md:col-span-2"
+                                    />
                                 </>
                             )}
                         </div>

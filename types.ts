@@ -249,6 +249,8 @@ export interface Property {
   subLocation?: string;
   /** Google Maps share link / pin URL (coordinates, plus code, or map link). */
   pinLocationUrl?: string;
+  /** Public listing URL on the website (e.g. https://task-me.ke/properties/baraka-heights). Used for share links. */
+  websiteListingUrl?: string;
   profilePictureUrl?: string;
   rentByType?: Record<string, number>;
   floorplan?: FloorPlan[];

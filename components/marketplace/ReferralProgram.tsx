@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
+import { websiteLinks } from '../../utils/websiteLinks';
 
 const ReferralProgram: React.FC = () => {
     const { leads, rfTransactions, currentUser, commissionRules, properties } = useData();
@@ -38,7 +39,7 @@ const ReferralProgram: React.FC = () => {
         return 'TASKME';
     }, [currentUser]);
 
-    const referralLink = `https://taskme.re/ref/${referralCode}`;
+    const referralLink = websiteLinks.referral(referralCode);
 
     const recentActivity = useMemo(() => {
         const rows: { label: string; amount: number }[] = [];
@@ -89,11 +90,11 @@ const ReferralProgram: React.FC = () => {
     , [properties]);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
-        const baseUrl = 'https://taskme.re';
         if (type === 'unit') {
-            return `${baseUrl}/book/${encodeURIComponent(id)}?ref=${referralCode}`;
+            const prop = properties.find(p => p.units.some(u => u.id === id));
+            return websiteLinks.unit(id, referralCode, prop?.websiteListingUrl);
         } else {
-            return `${baseUrl}/invest?ref=${referralCode}`;
+            return websiteLinks.invest(referralCode);
         }
     };
 

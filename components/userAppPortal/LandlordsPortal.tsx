@@ -5,6 +5,7 @@ import { useProfileDisplay } from '../../hooks/useProfileDisplay';
 import { Property, Unit, User, Task, Bill, Fund, Investment, TenantProfile, LandlordApplication } from '../../types';
 import Icon from '../Icon';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
+import { websiteLinks } from '../../utils/websiteLinks';
 import { supabase } from '../../utils/supabaseClient';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, Filler } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
@@ -728,8 +729,8 @@ const LandlordsPortal: React.FC = () => {
     }, [rfTransactions, currentLandlord]);
 
     // Referrals
-    const referralLinkAgency = `https://taskme.re/join/landlord?ref=${currentLandlord?.id}`;
-    const referralLinkInvestor = `https://taskme.re/invest?ref=${currentLandlord?.id}`;
+    const referralLinkAgency = websiteLinks.joinLandlord(currentLandlord?.id);
+    const referralLinkInvestor = websiteLinks.invest(currentLandlord?.id);
 
     const handleCopy = (text: string) => { navigator.clipboard.writeText(text); alert("Link copied to clipboard!"); };
     const handleShare = (platform: string, link: string) => { alert(`Opening ${platform} to share: ${link}`); };

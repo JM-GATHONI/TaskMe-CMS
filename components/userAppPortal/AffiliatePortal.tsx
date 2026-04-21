@@ -4,6 +4,7 @@ import { Affiliate } from '../../types';
 import Icon from '../Icon';
 import AdBanners from './AdBanners';
 import { useData } from '../../context/DataContext';
+import { websiteLinks } from '../../utils/websiteLinks';
 
 const StatCard: React.FC<{ title: string; value: string | number; color: string; icon: string }> = ({ title, value, color, icon }) => (
     <div className={`bg-white p-5 rounded-xl shadow-sm border-l-4`} style={{ borderLeftColor: color }}>
@@ -83,7 +84,7 @@ const AffiliatePortal: React.FC = () => {
     const [copyText, setCopyText] = useState('Copy Link');
 
     const handleCopy = () => {
-        const link = `https://taskme.re/ref/${affiliate.referralCode}`;
+        const link = websiteLinks.referral(affiliate.referralCode);
         navigator.clipboard.writeText(link).then(() => {
             setCopyText('Copied!');
             setTimeout(() => setCopyText('Copy Link'), 2000);
@@ -108,7 +109,7 @@ const AffiliatePortal: React.FC = () => {
                         <div className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 inline-flex flex-col sm:flex-row items-center gap-4">
                             <div className="text-sm font-medium">Your Referral Link:</div>
                             <div className="bg-black/30 px-3 py-1.5 rounded-lg font-mono text-sm tracking-wide">
-                                https://taskme.re/ref/{affiliate.referralCode}
+                                {websiteLinks.referral(affiliate.referralCode)}
                             </div>
                             <button onClick={handleCopy} className="px-4 py-1.5 bg-white text-purple-900 font-bold rounded-lg hover:bg-purple-100 transition-colors text-sm">
                                 {copyText}

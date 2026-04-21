@@ -137,17 +137,18 @@ const ReferAndGrow: React.FC = () => {
 
     const handleShareUnit = (unit: any) => {
         const commission = getCommission(unit.rent);
-        const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${Number(unit.rent ?? 0).toLocaleString()}. \n\nInterested? Book it here using my referral code *${user.referralCode}* to get priority processing! \n\nLink: https://taskme.re/book/${unit.id}?ref=${user.referralCode}`;
+        const shareUrl = (() => { try { const { websiteLinks } = require('../../utils/websiteLinks'); return websiteLinks.unit(unit.id, user.referralCode, unit.websiteListingUrl); } catch { return `https://task-me.ke/book/${unit.id}?ref=${user.referralCode}`; } })();
+        const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${Number(unit.rent ?? 0).toLocaleString()}. \n\nInterested? Book it here using my referral code *${user.referralCode}* to get priority processing! \n\nLink: ${shareUrl}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
     const handleInviteInvestor = (fundName: string) => {
-        const msg = `Invest in ${fundName} with TaskMe Realty and earn 30% APY! Use my referral code *${user.referralCode}* when signing up. \n\nJoin here: https://taskme.re/invest?ref=${user.referralCode}`;
+        const msg = `Invest in ${fundName} with TaskMe Realty and earn 30% APY! Use my referral code *${user.referralCode}* when signing up. \n\nJoin here: https://task-me.ke/invest?ref=${user.referralCode}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
     const handleInviteLandlord = () => {
-        const msg = `Are you a landlord? Let TaskMe Realty manage your property. Use my code *${user.referralCode}* for a discount on management fees! \n\nGet a quote: https://taskme.re/list?ref=${user.referralCode}`;
+        const msg = `Are you a landlord? Let TaskMe Realty manage your property. Use my code *${user.referralCode}* for a discount on management fees! \n\nGet a quote: https://task-me.ke/list?ref=${user.referralCode}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     };
 

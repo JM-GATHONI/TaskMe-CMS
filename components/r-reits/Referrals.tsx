@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
+import { websiteLinks } from '../../utils/websiteLinks';
 
 const Referrals: React.FC = () => {
     const { renovationInvestors, investments, rfTransactions, currentUser } = useData();
@@ -19,8 +20,8 @@ const Referrals: React.FC = () => {
         return 'TASKME';
     }, [currentUser]);
 
-    const investorLink = `https://taskme.re/invest/ref/${referralCode}`;
-    const landlordLink = `https://taskme.re/list/ref/${referralCode}`;
+    const investorLink = websiteLinks.invest(referralCode);
+    const landlordLink = websiteLinks.landlord(referralCode);
     const currentLink = activeTab === 'Investor' ? investorLink : landlordLink;
 
     const liveStats = useMemo(() => {
