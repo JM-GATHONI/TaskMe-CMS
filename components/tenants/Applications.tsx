@@ -1031,17 +1031,54 @@ const AppRecordPaymentModal: React.FC<{
     const rent = Number(record.rentAmount || 0);
     const isApp = record.recordType === 'Application';
 
+    // For tenant records: compute prorated first-month rent (mirrors ActiveTenants card logic)
+    const effectiveRent = (() => {
+        if (isApp) return rent;
+        const currentMonthIso = new Date().toISOString().slice(0, 7);
+        const activationMonth = (record as any).activationDate
+            ? String((record as any).activationDate).slice(0, 7)
+            : (record.onboardingDate ? record.onboardingDate.slice(0, 7) : null);
+        if (activationMonth !== currentMonthIso) return rent;
+        const firstMonthRent = Number((record as any).firstMonthRent || 0);
+        if (firstMonthRent > 0) return firstMonthRent;
+        const joinDateStr = (record as any).activationDate || record.onboardingDate;
+        if (!joinDateStr) return rent;
+        const joinDate = new Date(joinDateStr);
+        const joinDay = joinDate.getDate();
+        if (joinDay <= 9) return rent;
+        const lastDayOfMonth = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
+        const daysLeft = Math.max(0, lastDayOfMonth - joinDay);
+        const prorated = Math.round((rent / 30) * daysLeft);
+        return joinDay >= 25 ? prorated + rent : prorated;
+    })();
+
+    // For tenant records: compute deposit still owed (mirrors ActiveTenants depositOwed logic)
+    const depositOwedForModal = (() => {
+        if (isApp) return 0; // handled separately below via depositAmt
+        if (record.depositExempt) return 0;
+        if (record.rentExtension?.enabled) return 0;
+        if (record.proratedDeposit?.enabled) {
+            const fullyPaid = (record.proratedDeposit.amountPaidSoFar ?? 0) >= record.proratedDeposit.totalDepositAmount;
+            return fullyPaid ? 0 : (record.proratedDeposit.monthlyInstallment || 0);
+        }
+        const depMonths = Number(record.depositMonths ?? 1);
+        const expected = Number((record as any).depositExpected ?? 0) > 0
+            ? Number((record as any).depositExpected)
+            : rent * depMonths;
+        return Math.max(0, expected - Number(record.depositPaid || 0));
+    })();
+
     // Compute expected first payment based on deposit mode
     const firstPaymentAmount = (() => {
-        if (record.depositExempt) return rent;
+        if (record.depositExempt) return effectiveRent;
         if (record.rentExtension?.enabled) return record.rentExtension.depositPaidUpfront || 0;
-        if (record.proratedDeposit?.enabled) return rent + (record.proratedDeposit.monthlyInstallment || 0);
+        if (record.proratedDeposit?.enabled) return effectiveRent + (record.proratedDeposit.monthlyInstallment || 0);
         if (isApp) {
             const depositMonths = record.depositMonths ?? 1;
             const depositAmt = Number(record.depositPaid || 0) || rent * depositMonths;
             return rent + depositAmt;
         }
-        return rent + Number(record.depositPaid || 0);
+        return effectiveRent + depositOwedForModal;
     })();
 
     const [amount, setAmount] = useState(String(firstPaymentAmount));
@@ -1099,7 +1136,46 @@ const AppMpesaModal: React.FC<{
     onPaid: (amount: number, reference: string) => void;
 }> = ({ record, getPaymentUserId, onClose, onPaid }) => {
     const [phone, setPhone] = useState(record.phone || '');
-    const [amount, setAmount] = useState(Number(record.rentAmount || 0) + Number(record.depositPaid || 0));
+    const [amount, setAmount] = useState(() => {
+        const baseRent = Number(record.rentAmount || 0);
+        const isApp = record.recordType === 'Application';
+        // Prorated rent for tenant activation month
+        const stkEffectiveRent = (() => {
+            if (isApp) return baseRent;
+            const currentMonthIso = new Date().toISOString().slice(0, 7);
+            const activationMonth = (record as any).activationDate
+                ? String((record as any).activationDate).slice(0, 7)
+                : (record.onboardingDate ? record.onboardingDate.slice(0, 7) : null);
+            if (activationMonth !== currentMonthIso) return baseRent;
+            const firstMonthRent = Number((record as any).firstMonthRent || 0);
+            if (firstMonthRent > 0) return firstMonthRent;
+            const joinDateStr = (record as any).activationDate || record.onboardingDate;
+            if (!joinDateStr) return baseRent;
+            const joinDate = new Date(joinDateStr);
+            const joinDay = joinDate.getDate();
+            if (joinDay <= 9) return baseRent;
+            const lastDay = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
+            const daysLeft = Math.max(0, lastDay - joinDay);
+            const prorated = Math.round((baseRent / 30) * daysLeft);
+            return joinDay >= 25 ? prorated + baseRent : prorated;
+        })();
+        // Deposit owed for tenant
+        const stkDepositOwed = (() => {
+            if (isApp) return Number(record.depositPaid || 0);
+            if (record.depositExempt) return 0;
+            if (record.rentExtension?.enabled) return 0;
+            if (record.proratedDeposit?.enabled) {
+                const fullyPaid = (record.proratedDeposit.amountPaidSoFar ?? 0) >= record.proratedDeposit.totalDepositAmount;
+                return fullyPaid ? 0 : (record.proratedDeposit.monthlyInstallment || 0);
+            }
+            const depMonths = Number(record.depositMonths ?? 1);
+            const expected = Number((record as any).depositExpected ?? 0) > 0
+                ? Number((record as any).depositExpected)
+                : baseRent * depMonths;
+            return Math.max(0, expected - Number(record.depositPaid || 0));
+        })();
+        return stkEffectiveRent + stkDepositOwed;
+    });
     const [checkoutId, setCheckoutId] = useState<string | null>(null);
     const [step, setStep] = useState<'input' | 'processing' | 'timed_out'>('input');
     const [busy, setBusy] = useState(false);
@@ -1881,13 +1957,55 @@ const Applications: React.FC = () => {
                             ? (tenant.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + f.amount, 0) || 0)
                             : 0;
 
+                        // --- Tenant: prorated first-month rent (mirrors ActiveTenants card logic) ---
+                        const cardActivationMonth = !isApplication
+                            ? ((tenant as any).activationDate
+                                ? String((tenant as any).activationDate).slice(0, 7)
+                                : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null))
+                            : null;
+                        const cardFirstMonthRent = !isApplication ? Number((tenant as any).firstMonthRent || 0) : 0;
+                        const cardProratedRentOnTheFly = (() => {
+                            if (isApplication || cardActivationMonth !== currentMonthIso) return 0;
+                            const joinDateStr = (tenant as any).activationDate || tenant.onboardingDate;
+                            if (!joinDateStr) return 0;
+                            const joinDate = new Date(joinDateStr);
+                            const joinDay = joinDate.getDate();
+                            if (joinDay <= 9) return 0;
+                            const baseRent = Number(tenant.rentAmount || 0);
+                            const lastDayOfMonth = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
+                            const daysLeft = Math.max(0, lastDayOfMonth - joinDay);
+                            const prorated = Math.round((baseRent / 30) * daysLeft);
+                            return joinDay >= 25 ? prorated + baseRent : prorated;
+                        })();
+                        const cardEffectiveRent = !isApplication
+                            ? (cardActivationMonth === currentMonthIso
+                                ? (cardFirstMonthRent > 0 ? cardFirstMonthRent : (cardProratedRentOnTheFly > 0 ? cardProratedRentOnTheFly : Number(tenant.rentAmount || 0)))
+                                : Number(tenant.rentAmount || 0))
+                            : rentAmountForApps;
+
+                        // --- Tenant: deposit owed (mirrors ActiveTenants card logic) ---
+                        const depositOwed = (() => {
+                            if (isApplication || !isAllocated) return 0;
+                            if (tenant.depositExempt) return 0;
+                            if (tenant.rentExtension?.enabled) return 0;
+                            if (tenant.proratedDeposit?.enabled) {
+                                const fullyPaid = (tenant.proratedDeposit.amountPaidSoFar ?? 0) >= tenant.proratedDeposit.totalDepositAmount;
+                                return fullyPaid ? 0 : (tenant.proratedDeposit.monthlyInstallment || 0);
+                            }
+                            const depMonths = Number((tenant as any).depositMonths ?? 1);
+                            const expected = Number((tenant as any).depositExpected ?? 0) > 0
+                                ? Number((tenant as any).depositExpected)
+                                : (Number(tenant.rentAmount || 0) * depMonths);
+                            return Math.max(0, expected - Number(tenant.depositPaid || 0));
+                        })();
+
                         const rentDue = isApplication
                             ? rentAmountForApps
-                            : (!isAllocated ? 0 : (isPaid ? 0 : (tenant.rentAmount ?? 0)));
+                            : (!isAllocated ? 0 : (isPaid ? 0 : cardEffectiveRent));
 
                         const totalDue = isApplication
                             ? (rentAmountForApps + depositForApps)
-                            : (rentDue + pendingBills + pendingFines + automatedLateFine);
+                            : (rentDue + depositOwed + pendingBills + pendingFines + automatedLateFine);
 
                         const arrearsText = !isApplication ? getArrearsText(tenant) : null;
 
