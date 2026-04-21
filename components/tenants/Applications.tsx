@@ -185,10 +185,28 @@ export const ApplicationFormModal: React.FC<{
     }, [selectedPropertyId, record, properties, selectedUnitId]);
 
     const activeProperty = properties.find(p => p.id === selectedPropertyId);
-    
-    // Filter units: Tenants can see their own unit + all Vacant units; Applications see only Vacant units
-    const availableUnits = activeProperty?.units.filter(u => 
-        u.status === 'Vacant' || (record?.recordType === 'Tenant' && u.id === record?.unitId)
+
+    // Units actually occupied: any non-Vacated tenant assigned to this property,
+    // excluding the record being edited (so a tenant can keep their own unit).
+    const occupiedUnitIds = useMemo(() => {
+        const OCCUPYING = ['Active', 'Pending', 'PendingAllocation', 'PendingPayment', 'Overdue', 'Notice'];
+        return new Set(
+            tenants
+                .filter(t =>
+                    t.propertyId === selectedPropertyId &&
+                    t.id !== record?.id &&
+                    OCCUPYING.includes(t.status)
+                )
+                .map(t => t.unitId)
+                .filter(Boolean)
+        );
+    }, [tenants, selectedPropertyId, record?.id]);
+
+    // Filter units: Vacant AND not actually occupied (cross-reference tenants as source of truth);
+    // also always include the current tenant's own unit so they can keep it when editing.
+    const availableUnits = activeProperty?.units.filter(u =>
+        (u.status === 'Vacant' && !occupiedUnitIds.has(u.id)) ||
+        (record?.recordType === 'Tenant' && u.id === record?.unitId)
     ) || [];
 
     const handlePropertyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {

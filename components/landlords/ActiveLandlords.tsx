@@ -68,7 +68,7 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
         if (unit.status === 'Unhabitable') return 'bg-gray-800 border-gray-900 text-white';
         if (unit.status === 'Distressed') return 'bg-purple-50 border-purple-200 text-purple-800';
         if (unit.status === 'Under Maintenance') return 'bg-yellow-50 border-yellow-200 text-yellow-800';
-        if (unit.status === 'Vacant') return 'bg-red-50 border-red-200 text-red-800';
+        if (!tenant && unit.status === 'Vacant') return 'bg-red-50 border-red-200 text-red-800';
         
         // Tenant statuses
         if (tenant?.houseStatus?.includes('Distressed')) return 'bg-purple-50 border-purple-200 text-purple-800';
@@ -451,7 +451,29 @@ export const LandlordDetailView: React.FC<{
     }, [allLandlordProperties, selectedPropertyIds]);
 
     const myTenants = useMemo(() => tenants.filter(t => myProperties.some(p => p.id === t.propertyId)), [tenants, myProperties]);
-    
+
+    // Self-heal: keep unit.status in sync with actual tenant occupancy.
+    // If a unit says 'Vacant' but has an active tenant, mark it 'Occupied'; and vice-versa.
+    const OCCUPYING_STATUSES = ['Active', 'Pending', 'PendingAllocation', 'PendingPayment', 'Overdue', 'Notice'];
+    useEffect(() => {
+        myProperties.forEach(prop => {
+            const staleUnits = prop.units.filter(u => {
+                const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
+                return (hasTenant && u.status === 'Vacant') || (!hasTenant && u.status === 'Occupied');
+            });
+            if (staleUnits.length > 0) {
+                const updatedUnits = prop.units.map(u => {
+                    const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
+                    if (hasTenant && u.status === 'Vacant') return { ...u, status: 'Occupied' as const };
+                    if (!hasTenant && u.status === 'Occupied') return { ...u, status: 'Vacant' as const };
+                    return u;
+                });
+                updateProperty(prop.id, { units: updatedUnits });
+            }
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [myTenants, myProperties]);
+
     const myTasks = useMemo(() => tasks.filter(t => myProperties.some(p => p.name === t.property)), [tasks, myProperties]);
    
     // Live Financials
