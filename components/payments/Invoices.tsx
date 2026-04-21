@@ -166,7 +166,7 @@ const UploadInboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onC
 
 // --- OUTBOUND INVOICE CREATOR MODAL (Professional Invoice) ---
 const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; onClose: () => void; onSave: (invoice: Invoice) => void; }> = ({ initialInvoice, onClose, onSave }) => {
-    const { tenants, landlords } = useData();
+    const { tenants, landlords, systemSettings } = useData();
     const [clientMode, setClientMode] = useState<'Existing' | 'New'>('Existing');
     const [selectedTenantId, setSelectedTenantId] = useState('');
     
@@ -195,8 +195,8 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                     ...prev,
                     tenantName: tenant.name,
                     email: tenant.email,
-                    phone: tenant.phone,
-                    billingAddress: `${tenant.propertyName} - ${tenant.unit}`
+                    phone: systemSettings.phone || tenant.phone,
+                    billingAddress: systemSettings.address || `${tenant.propertyName} - ${tenant.unit}`
                 }));
             } else {
                 const landlord = landlords.find(l => l.id === tId);
@@ -205,8 +205,8 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                         ...prev,
                         tenantName: landlord.name,
                         email: landlord.email,
-                        phone: landlord.phone,
-                        billingAddress: `Landlord - ${landlord.branch || 'Headquarters'}`
+                        phone: systemSettings.phone || landlord.phone,
+                        billingAddress: systemSettings.address || `Landlord - ${landlord.branch || 'Headquarters'}`
                     }));
                 }
             }
