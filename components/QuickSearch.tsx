@@ -27,6 +27,9 @@ const QuickSearch: React.FC = () => {
 
     const [query, setQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
+    const [activeDateRange, setActiveDateRange] = useState<string>('');
+    const [customDrFrom, setCustomDrFrom] = useState('');
+    const [customDrTo, setCustomDrTo] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     
     // Updated Filters
@@ -64,6 +67,13 @@ const QuickSearch: React.FC = () => {
                 const q = urlParams.get('q');
                 const f = urlParams.get('filters');
                 
+                const dr = urlParams.get('dr') || '';
+                const drFrom = urlParams.get('dr_from') || '';
+                const drTo = urlParams.get('dr_to') || '';
+                setActiveDateRange(dr);
+                setCustomDrFrom(drFrom);
+                setCustomDrTo(drTo);
+
                 if (q) {
                     const lowerQ = q.toLowerCase().trim();
                     if (KEYWORD_MAP[lowerQ]) {
@@ -94,6 +104,52 @@ const QuickSearch: React.FC = () => {
         }
     }, [query, activeFilter]);
 
+    // --- Date Range Helper ---
+    const isInDateRange = (dateStr?: string): boolean => {
+        if (!activeDateRange) return true;
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const target = new Date(d); target.setHours(0,0,0,0);
+        if (activeDateRange === 'Today') return target.getTime() === today.getTime();
+        if (activeDateRange === 'Yesterday') {
+            const y = new Date(today); y.setDate(today.getDate() - 1);
+            return target.getTime() === y.getTime();
+        }
+        if (activeDateRange.startsWith('Day:')) {
+            const specific = new Date(activeDateRange.slice(4)); specific.setHours(0,0,0,0);
+            return target.getTime() === specific.getTime();
+        }
+        if (activeDateRange === 'This Week') {
+            const dow = today.getDay(); const diff = dow === 0 ? 6 : dow - 1;
+            const start = new Date(today); start.setDate(today.getDate() - diff);
+            return target >= start && target <= today;
+        }
+        if (activeDateRange === 'Last Week') {
+            const dow = today.getDay(); const diff = dow === 0 ? 6 : dow - 1;
+            const endLW = new Date(today); endLW.setDate(today.getDate() - diff - 1);
+            const startLW = new Date(endLW); startLW.setDate(endLW.getDate() - 6);
+            return target >= startLW && target <= endLW;
+        }
+        if (activeDateRange === 'This Month') {
+            return target.getFullYear() === today.getFullYear() && target.getMonth() === today.getMonth();
+        }
+        if (activeDateRange === 'This Quarter') {
+            const q = Math.floor(today.getMonth() / 3);
+            const qStart = new Date(today.getFullYear(), q * 3, 1);
+            const qEnd = new Date(today.getFullYear(), q * 3 + 3, 0);
+            return target >= qStart && target <= qEnd;
+        }
+        if (activeDateRange === 'This Year') return target.getFullYear() === today.getFullYear();
+        if (activeDateRange === 'Custom' && customDrFrom && customDrTo) {
+            const from = new Date(customDrFrom); from.setHours(0,0,0,0);
+            const to = new Date(customDrTo); to.setHours(23,59,59,999);
+            return target >= from && target <= to;
+        }
+        return true;
+    };
+
     // --- Data Processing for Specific Views ---
 
     const tableData = useMemo(() => {
@@ -109,10 +165,9 @@ const QuickSearch: React.FC = () => {
         );
 
         if (activeFilter === 'Paid') {
-            // Show all paid transactions for searched tenants
             return searchedTenants.flatMap(t => 
                 t.paymentHistory
-                    .filter(p => p.status === 'Paid')
+                    .filter(p => p.status === 'Paid' && isInDateRange(p.date))
                     .map(p => ({
                         id: `${t.id}-${p.reference}`,
                         tenant: t.name,
@@ -150,9 +205,9 @@ const QuickSearch: React.FC = () => {
 
         if (activeFilter === 'Unpaid Fines') {
             return searchedTenants
-                .filter(t => t.outstandingFines.some(f => f.status === 'Pending'))
+                .filter(t => t.outstandingFines.some(f => f.status === 'Pending' && isInDateRange(f.date)))
                 .flatMap(t => t.outstandingFines
-                    .filter(f => f.status === 'Pending')
+                    .filter(f => f.status === 'Pending' && isInDateRange(f.date))
                     .map(fine => ({
                         id: fine.id,
                         tenant: t.name,
@@ -166,11 +221,10 @@ const QuickSearch: React.FC = () => {
         }
 
         if (activeFilter === 'Paid Fines') {
-            // Assuming fines with status 'Paid' are kept in history or outstandingFines
             return searchedTenants
-                .filter(t => t.outstandingFines.some(f => f.status === 'Paid'))
+                .filter(t => t.outstandingFines.some(f => f.status === 'Paid' && isInDateRange(f.date)))
                 .flatMap(t => t.outstandingFines
-                    .filter(f => f.status === 'Paid')
+                    .filter(f => f.status === 'Paid' && isInDateRange(f.date))
                     .map(fine => ({
                         id: fine.id,
                         tenant: t.name,
@@ -185,7 +239,7 @@ const QuickSearch: React.FC = () => {
 
         if (activeFilter === 'Deposits Paid') {
             return searchedTenants
-                .filter(t => t.depositPaid > 0 && ['Active', 'Overdue', 'Notice'].includes(t.status))
+                .filter(t => t.depositPaid > 0 && ['Active', 'Overdue', 'Notice'].includes(t.status) && isInDateRange(t.onboardingDate))
                 .map(t => ({
                     id: t.id,
                     tenant: t.name,
@@ -199,7 +253,7 @@ const QuickSearch: React.FC = () => {
 
         if (activeFilter === 'Deposit Refunds') {
             return searchedTenants
-                .filter(t => t.depositPaid > 0 && ['Vacated', 'Evicted', 'Blacklisted'].includes(t.status))
+                .filter(t => t.depositPaid > 0 && ['Vacated', 'Evicted', 'Blacklisted'].includes(t.status) && isInDateRange(t.leaseEnd))
                 .map(t => ({
                     id: t.id,
                     tenant: t.name,
@@ -212,7 +266,7 @@ const QuickSearch: React.FC = () => {
         }
 
         return [];
-    }, [tenants, query, activeFilter]);
+    }, [tenants, query, activeFilter, activeDateRange, customDrFrom, customDrTo]);
 
     // --- Calculate Totals ---
     const summaryStats = useMemo(() => {
@@ -309,6 +363,16 @@ const QuickSearch: React.FC = () => {
                         </button>
                     );
                 })}
+                {activeDateRange && (
+                    <span className="px-3 py-1.5 text-xs font-bold bg-primary/10 text-primary border border-primary/30 rounded-full flex items-center gap-1">
+                        <span>&#128197;</span>
+                        {activeDateRange.startsWith('Day:')
+                            ? `Date: ${new Date(activeDateRange.slice(4)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                            : activeDateRange === 'Custom' && customDrFrom && customDrTo
+                                ? `${customDrFrom} → ${customDrTo}`
+                                : activeDateRange}
+                    </span>
+                )}
             </div>
 
             <div className="flex flex-col md:flex-row items-center gap-2 mt-4 no-print">

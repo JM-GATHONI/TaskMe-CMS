@@ -287,6 +287,10 @@ const Dashboard: React.FC = () => {
     const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
     const { firstName, loading: profileLoading } = useProfileFirstName({ nameFallback: currentUser?.name });
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeFilterBtn, setActiveFilterBtn] = useState<string | null>(null);
+    const [activeDatePeriod, setActiveDatePeriod] = useState<string | null>(null);
+    const [customDateFrom, setCustomDateFrom] = useState('');
+    const [customDateTo, setCustomDateTo] = useState('');
     const [collectionsVsArrears, setCollectionsVsArrears] = useState<{ labels: string[]; collectionsM: number[]; arrearsM: number[] }>({ labels: [], collectionsM: [], arrearsM: [] });
 
     const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -585,8 +589,49 @@ const Dashboard: React.FC = () => {
             window.location.hash = '#/reports-analytics/reports/vacancy-reports';
             return;
         }
-        window.location.hash = `#/dashboard/search?filters=${encodeURIComponent(filter)}`;
+        setActiveFilterBtn(prev => prev === filter ? null : filter);
+        setActiveDatePeriod(null);
+        setCustomDateFrom('');
+        setCustomDateTo('');
     };
+
+    const handleTimePeriodSelect = (period: string) => {
+        if (!activeFilterBtn) return;
+        if (period === 'Custom') { setActiveDatePeriod('Custom'); return; }
+        setActiveDatePeriod(period);
+        const params = new URLSearchParams();
+        params.set('filters', activeFilterBtn);
+        params.set('dr', period);
+        window.location.hash = `#/dashboard/search?${params.toString()}`;
+    };
+
+    const handleCustomDateApply = () => {
+        if (!activeFilterBtn || !customDateFrom || !customDateTo) return alert('Select both From and To dates.');
+        const params = new URLSearchParams();
+        params.set('filters', activeFilterBtn);
+        params.set('dr', 'Custom');
+        params.set('dr_from', customDateFrom);
+        params.set('dr_to', customDateTo);
+        window.location.hash = `#/dashboard/search?${params.toString()}`;
+    };
+
+    const timePeriodButtons = useMemo(() => {
+        const today = new Date();
+        const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        const iso = (d: Date) => d.toISOString().split('T')[0];
+        const days = Array.from({ length: 5 }, (_, i) => {
+            const d = new Date(today); d.setDate(today.getDate() - i);
+            return { label: i === 0 ? 'Today' : i === 1 ? 'Yesterday' : fmt(d), value: i === 0 ? 'Today' : i === 1 ? 'Yesterday' : `Day:${iso(d)}` };
+        });
+        return [...days,
+            { label: 'This Week', value: 'This Week' },
+            { label: 'Last Week', value: 'Last Week' },
+            { label: 'This Month', value: 'This Month' },
+            { label: 'This Quarter', value: 'This Quarter' },
+            { label: 'This Year', value: 'This Year' },
+            { label: 'Custom Range', value: 'Custom' },
+        ];
+    }, []);
 
     const FILTER_BUTTONS = [
         { label: 'Paid', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
@@ -655,12 +700,49 @@ const Dashboard: React.FC = () => {
                         <button 
                             key={btn.label} 
                             onClick={() => handleQuickFilterClick(btn.label)}
-                            className={`px-3 py-1.5 text-sm font-semibold rounded-full transition-colors duration-200 shadow-sm ${btn.color}`}
+                            className={`px-3 py-1.5 text-sm font-semibold rounded-full transition-colors duration-200 shadow-sm ${
+                                activeFilterBtn === btn.label
+                                    ? 'bg-gray-800 text-white ring-2 ring-offset-1 ring-gray-700'
+                                    : btn.color
+                            }`}
                         >
-                            {btn.label}
+                            {btn.label}{activeFilterBtn === btn.label ? ' ▾' : ''}
                         </button>
                     ))}
                 </div>
+
+                {activeFilterBtn && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Filter <span className="text-primary">{activeFilterBtn}</span> by period:</span>
+                            <button onClick={() => { setActiveFilterBtn(null); setActiveDatePeriod(null); }} className="ml-auto text-xs text-gray-400 hover:text-red-500 font-bold">✕ Close</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {timePeriodButtons.map(btn => (
+                                <button
+                                    key={btn.value}
+                                    onClick={() => handleTimePeriodSelect(btn.value)}
+                                    className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
+                                        activeDatePeriod === btn.value
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+                        {activeDatePeriod === 'Custom' && (
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <label className="text-xs font-medium text-gray-600">From:</label>
+                                <input type="date" value={customDateFrom} onChange={e => setCustomDateFrom(e.target.value)} className="p-1.5 border rounded text-sm" />
+                                <label className="text-xs font-medium text-gray-600">To:</label>
+                                <input type="date" value={customDateTo} onChange={e => setCustomDateTo(e.target.value)} className="p-1.5 border rounded text-sm" />
+                                <button onClick={handleCustomDateApply} className="px-4 py-1.5 bg-primary text-white text-sm font-bold rounded hover:bg-primary-dark">Apply</button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
       )}
