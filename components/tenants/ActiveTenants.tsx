@@ -1553,7 +1553,7 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
 // --- DETAIL VIEW ---
 
 const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> = ({ tenant, onBack }) => {
-    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties, currentUser } = useData();
+    const { updateTenant, addTask, offboardingRecords, addOffboardingRecord, updateOffboardingRecord, addBill, properties, updateProperty, currentUser } = useData();
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
     const [chatInput, setChatInput] = useState('');
     const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
@@ -1651,6 +1651,11 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             } else if (record.finalBillAmount < 0) {
                 console.log("Tenant owes balance", Math.abs(record.finalBillAmount));
             }
+        }
+        const prop = properties.find(p => p.id === tenant.propertyId);
+        if (prop && tenant.unitId) {
+            const updatedUnits = prop.units.map(u => u.id === tenant.unitId ? { ...u, status: 'Vacant' as const } : u);
+            updateProperty(prop.id, { units: updatedUnits as any });
         }
         updateTenant(record.tenantId, { status: 'Vacated' });
         updateOffboardingRecord(record.id, { status: 'Completed' });

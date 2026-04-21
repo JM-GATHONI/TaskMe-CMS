@@ -186,9 +186,9 @@ export const ApplicationFormModal: React.FC<{
 
     const activeProperty = properties.find(p => p.id === selectedPropertyId);
     
-    // Filter units: Show current unit + all vacant units
+    // Filter units: Tenants can see their own unit + all Vacant units; Applications see only Vacant units
     const availableUnits = activeProperty?.units.filter(u => 
-        u.status === 'Vacant' || u.id === record?.unitId
+        u.status === 'Vacant' || (record?.recordType === 'Tenant' && u.id === record?.unitId)
     ) || [];
 
     const handlePropertyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1452,6 +1452,13 @@ const Applications: React.FC = () => {
             
         if (confirm(confirmMsg)) {
             if (record.recordType === 'Tenant') {
+                if (record.propertyId && record.unitId) {
+                    const prop = properties.find(p => p.id === record.propertyId);
+                    if (prop) {
+                        const updatedUnits = prop.units.map(u => u.id === record.unitId ? { ...u, status: 'Vacant' as const } : u);
+                        updateProperty(prop.id, { units: updatedUnits as any });
+                    }
+                }
                 deleteTenant(record.id);
             } else {
                 deleteApplication(record.id);
