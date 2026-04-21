@@ -2254,6 +2254,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     </div>
                 )}
 
+                {canEdit && (
                 <div className="grid grid-cols-3 gap-4">
                     <button onClick={() => openNoticeModal('Warning')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-yellow-300">
                          <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 mb-2 group-hover:scale-110 transition-transform">
@@ -2274,6 +2275,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                         <p className="font-bold text-gray-700 text-sm text-center">Force Vacation</p>
                     </button>
                 </div>
+                )}
             </div>
 
             {/* Balance Overview */}
@@ -2440,28 +2442,22 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     </div>
                 </div>
                 
+                {canPay && (
                 <div className="grid grid-cols-2 gap-3 mt-6">
-                    {canPay ? (
                     <button
                         onClick={() => setActiveModal('recordPayment')}
                         className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
                     >
                         Record Manual Pay
                     </button>
-                    ) : (
-                    <button disabled className="w-full bg-gray-100 text-gray-400 py-3 rounded-lg font-bold border border-gray-200 cursor-not-allowed">Record Manual Pay</button>
-                    )}
-                    {canPay ? (
                     <button
                         onClick={() => setActiveModal('pay')}
                         className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md transition-colors"
                     >
                         M-Pesa Push
                     </button>
-                    ) : (
-                    <button disabled className="w-full bg-gray-100 text-gray-400 py-3 rounded-lg font-bold border border-gray-200 cursor-not-allowed">M-Pesa Push</button>
-                    )}
                 </div>
+                )}
             </div>
 
             {/* Payment History */}

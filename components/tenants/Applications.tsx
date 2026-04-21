@@ -140,7 +140,7 @@ export const ApplicationFormModal: React.FC<{
             d.setFullYear(d.getFullYear() + 1);
             return d.toISOString().split('T')[0];
         })(),
-        source: record?.source || '',
+        source: record?.source || 'Walk-in',
         // Deposit special cases
         depositExempt: record?.depositExempt || false,
         depositMonths: record?.depositMonths ?? 1,
@@ -422,7 +422,7 @@ export const ApplicationFormModal: React.FC<{
 
     const renderReferrerSelect = () => {
         const source = formData.source;
-        if (!source || source === 'Walk-in' || source === 'Website') return null;
+        if (source === 'Walk-in' || source === 'Website') return null;
 
         let options: {id: string, name: string, sub?: string}[] = [];
         let label = "Select Referrer";
@@ -603,7 +603,6 @@ export const ApplicationFormModal: React.FC<{
                                         <div className="md:col-span-2">
                                             <label className="block text-xs font-medium text-gray-700 mb-1">How did they find us?</label>
                                             <select name="source" value={formData.source} onChange={handleChange} className="w-full p-2 border rounded bg-white">
-                                                <option value="">Select lead source</option>
                                                 <option value="Walk-in">Walk-in</option>
                                                 <option value="Website">Website</option>
                                                 <option value="Agent">Agent</option>
@@ -1457,7 +1456,13 @@ const ProfileHubModal: React.FC<{
 };
 
 const Applications: React.FC = () => {
-    const { applications, tenants, properties, addApplication, updateApplication, addTenant, updateTenant, updateProperty, deleteTenant, deleteApplication } = useData();
+    const { applications, tenants, properties, addApplication, updateApplication, addTenant, updateTenant, updateProperty, deleteTenant, deleteApplication, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate  = isSuperAdmin || checkPermission('Tenants', 'create');
+    const canEdit    = isSuperAdmin || checkPermission('Tenants', 'edit');
+    const canDelete  = isSuperAdmin || checkPermission('Tenants', 'delete');
+    const canApprove = isSuperAdmin || checkPermission('Tenants', 'approve');
+    const canPay     = isSuperAdmin || checkPermission('Tenants', 'pay');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | undefined>(undefined);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1973,10 +1978,12 @@ const Applications: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Master Registry</h1>
                     <p className="text-lg text-gray-500 mt-1">Unified view of all Applicants and Active Tenants. Manage details and reallocate units.</p>
                 </div>
+                {canCreate && (
                 <button onClick={handleAddNew} className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark shadow-sm flex items-center space-x-2">
                     <Icon name="register" className="w-5 h-5"/>
                     <span>New Application</span>
                 </button>
+                )}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">
@@ -2199,41 +2206,41 @@ const Applications: React.FC = () => {
                 <ProfileHubModal
                     record={profileHubRecord}
                     onClose={() => setProfileHubRecord(null)}
-                    onManualPay={() => {
+                    onManualPay={canPay ? () => {
                         if (profileHubRecord.recordType === 'Application' && String((profileHubRecord as any).status ?? '') !== 'Approved') {
                             alert('Please approve the application first.');
                             return;
                         }
                         setProfileHubRecord(null);
                         setManualPayRecord(profileHubRecord);
-                    }}
-                    onStkPay={() => {
+                    } : undefined}
+                    onStkPay={canPay ? () => {
                         if (profileHubRecord.recordType === 'Application' && String((profileHubRecord as any).status ?? '') !== 'Approved') {
                             alert('Please approve the application first.');
                             return;
                         }
                         setProfileHubRecord(null);
                         setStkPayRecord(profileHubRecord);
-                    }}
-                    onEdit={() => {
+                    } : undefined}
+                    onEdit={canEdit ? () => {
                         setProfileHubRecord(null);
                         handleEdit(profileHubRecord);
-                    }}
+                    } : undefined}
                     onMove={
-                        profileHubRecord.recordType === 'Tenant'
+                        canEdit && profileHubRecord.recordType === 'Tenant'
                             ? () => {
                                 setProfileHubRecord(null);
                                 handleMoveClick(profileHubRecord as TenantProfile);
                             }
                             : undefined
                     }
-                    onDelete={() => {
+                    onDelete={canDelete ? () => {
                         setProfileHubRecord(null);
                         handleDelete(profileHubRecord);
-                    }}
-                    onApprove={() => handleApproveApplication(profileHubRecord)}
+                    } : undefined}
+                    onApprove={canApprove ? () => handleApproveApplication(profileHubRecord) : undefined}
                     isApproved={profileHubRecord.recordType === 'Application' ? String((profileHubRecord as any).status ?? '') === 'Approved' : true}
-                    canApprove={profileHubRecord.recordType === 'Application' ? !!profileHubRecord.propertyId && !!profileHubRecord.unitId : false}
+                    canApprove={canApprove && profileHubRecord.recordType === 'Application' ? !!profileHubRecord.propertyId && !!profileHubRecord.unitId : false}
                 />
             )}
             
