@@ -258,6 +258,14 @@ export const PropertyForm: React.FC<{
             return;
         }
 
+        const existingUnits = formData.units || [];
+        if (existingUnits.length > 0) {
+            const confirmed = window.confirm(
+                `This property already has ${existingUnits.length} unit${existingUnits.length !== 1 ? 's' : ''} (including any manual edits, unit tags, and rent values).\n\nAuto-populating will permanently replace ALL existing units with ${expectedTotal} new ones.\n\nDo you want to continue?`
+            );
+            if (!confirmed) return;
+        }
+
         const nextUnits = buildUnitsFromFloorplan();
         setFormData((prev) => ({ ...prev, units: nextUnits }));
         setShowUnitTagEditor(true);
