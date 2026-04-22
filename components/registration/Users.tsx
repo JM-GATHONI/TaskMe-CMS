@@ -402,19 +402,28 @@ const Users: React.FC = () => {
         addTenant, updateTenant, deleteTenant, updateProperty,
         addRenovationInvestor, updateRenovationInvestor, deleteRenovationInvestor,
         addVendor, updateVendor, deleteVendor,
-        checkPermission
+        checkPermission, currentUser
     } = useData();
 
-    const canCreate = checkPermission('Users', 'create');
-    const canEdit   = checkPermission('Users', 'edit');
-    const canDelete = checkPermission('Users', 'delete');
-    
+    const isSuperAdmin    = (currentUser as any)?.role === 'Super Admin';
+    const isAssistantAdmin = (currentUser as any)?.role === 'Assistant Admin';
+
+    const canCreate = isSuperAdmin || isAssistantAdmin || checkPermission('Users', 'create');
+    const canEdit   = isSuperAdmin || isAssistantAdmin || checkPermission('Users', 'edit');
+    const canDelete = isSuperAdmin || checkPermission('Users', 'delete');
+
     // UI State
     const [activeCategoryId, setActiveCategoryId] = useState('system');
     const [isFormVisible, setIsFormVisible] = useState(false);
     const [resetUser, setResetUser] = useState<UnifiedUser | null>(null);
     const [editUser, setEditUser] = useState<UnifiedUser | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // System users can only be added by Super Admin or Assistant Admin.
+    // All other categories (tenants, landlords, etc.) allow anyone with canCreate.
+    const canAddCurrentCategory = activeCategoryId === 'system'
+        ? (isSuperAdmin || isAssistantAdmin)
+        : canCreate;
 
     // Roles that have their own dedicated category — excluded from System Users
     const PORTAL_ROLES = new Set(['Field Agent', 'Caretaker', 'Landlord', 'Tenant', 'Investor', 'Affiliate', 'Contractor']);
@@ -802,7 +811,7 @@ const Users: React.FC = () => {
                              />
                              <Icon name="search" className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                         </div>
-                        {canCreate && (
+                        {canAddCurrentCategory && (
                             <button
                                 onClick={() => { setEditUser(null); setIsFormVisible(true); }}
                                 className="bg-[#9D1F15] hover:bg-[#7A1810] text-white px-4 py-2 rounded text-sm font-bold flex items-center whitespace-nowrap transition-colors"
