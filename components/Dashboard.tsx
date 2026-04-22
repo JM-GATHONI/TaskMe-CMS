@@ -616,10 +616,11 @@ const Dashboard: React.FC = () => {
     };
 
     const timePeriodButtons = useMemo(() => {
+        // Generates: Today, Yesterday, +5 previous days by date (e.g., 10/04/2026)
         const today = new Date();
         const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
         const iso = (d: Date) => d.toISOString().split('T')[0];
-        const days = Array.from({ length: 5 }, (_, i) => {
+        const days = Array.from({ length: 7 }, (_, i) => {
             const d = new Date(today); d.setDate(today.getDate() - i);
             return { label: i === 0 ? 'Today' : i === 1 ? 'Yesterday' : fmt(d), value: i === 0 ? 'Today' : i === 1 ? 'Yesterday' : `Day:${iso(d)}` };
         });
