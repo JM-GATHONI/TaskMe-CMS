@@ -433,7 +433,9 @@ const ManualPaymentModal: React.FC<{
 // --- MAIN COMPONENT ---
 
 const Inbound: React.FC = () => {
-    const { tenants } = useData();
+    const { tenants, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canPay = isSuperAdmin || checkPermission('Financials', 'pay');
     const [payments, setPayments] = useState<PaymentRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -546,6 +548,7 @@ const Inbound: React.FC = () => {
         .reduce((s, p) => s + Number(p.amount || 0), 0);
 
     const handleOpenPaymentModal = () => {
+        if (!canPay) return alert('You do not have permission to record payments.');
         setPayStep('method');
         setSelectedPayTenant(null);
         setIsPayModalOpen(true);
@@ -585,7 +588,8 @@ const Inbound: React.FC = () => {
                     )}
                     <button
                         onClick={handleOpenPaymentModal}
-                        className="px-6 py-2 bg-primary text-white font-bold rounded-md hover:bg-primary-dark shadow-sm flex items-center"
+                        className="px-6 py-2 bg-primary text-white font-bold rounded-md hover:bg-primary-dark shadow-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={!canPay}
                     >
                         <Icon name="plus" className="w-5 h-5 mr-2" /> Record Payment
                     </button>

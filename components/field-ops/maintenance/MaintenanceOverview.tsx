@@ -97,7 +97,9 @@ const AddVendorModal: React.FC<{ onClose: () => void; onSave: (vendor: Vendor) =
 };
 
 const MaintenanceOverview: React.FC = () => {
-    const { tasks, vendors, addTask, addVendor } = useData();
+    const { tasks, vendors, addTask, addVendor, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Maintenance', 'create');
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
 
@@ -112,6 +114,7 @@ const MaintenanceOverview: React.FC = () => {
     }, [tasks]);
 
     const handleSaveTask = (task: Partial<Task>) => {
+        if (!canCreate) return alert('You do not have permission to initiate maintenance tasks.');
         const newTask = {
             ...task,
             id: `TASK-${Date.now()}`,
@@ -125,6 +128,7 @@ const MaintenanceOverview: React.FC = () => {
     };
 
     const handleSaveVendor = (v: Vendor) => {
+        if (!canCreate) return alert('You do not have permission to add vendors.');
         addVendor(v);
         setIsVendorModalOpen(false);
     };

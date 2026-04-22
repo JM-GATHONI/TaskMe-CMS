@@ -30,7 +30,9 @@ const BillCard: React.FC<{ title: string; status: BillStatus; children: React.Re
 
 // Component for meter-based bills like Water and Electricity
 const MeteredBill: React.FC<{ title: string; unit: string; category: string }> = ({ title, unit, category }) => {
-    const { addBill } = useData();
+    const { addBill, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canPay = isSuperAdmin || checkPermission('Financials', 'pay');
     const [cost, setCost] = useState('');
     const [prev, setPrev] = useState('');
     const [curr, setCurr] = useState('');
@@ -96,10 +98,10 @@ const MeteredBill: React.FC<{ title: string; unit: string; category: string }> =
             ) : (
                 <button
                     onClick={handleMarkAsPaid}
-                    disabled={!canCalculate}
+                    disabled={!canCalculate || !canPay}
                     className="w-full mt-2 px-4 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                    Record Payment
+                    {canPay ? 'Record Payment' : 'No Permission'}
                 </button>
             )}
         </BillCard>
@@ -108,11 +110,14 @@ const MeteredBill: React.FC<{ title: string; unit: string; category: string }> =
 
 // Component for fixed amount bills
 const FixedBill: React.FC<{ title: string, category: string }> = ({ title, category }) => {
-    const { addBill } = useData();
+    const { addBill, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const hasPayPerm = isSuperAdmin || checkPermission('Financials', 'pay');
     const [amount, setAmount] = useState('');
     const [status, setStatus] = useState<BillStatus>('Due');
 
     const handleMarkAsPaid = () => {
+        if (!hasPayPerm) { alert('You do not have permission to record payments.'); return; }
         if (!amount || parseFloat(amount) <= 0) {
             alert("Please enter a valid amount.");
             return;
@@ -138,7 +143,7 @@ const FixedBill: React.FC<{ title: string, category: string }> = ({ title, categ
         setStatus('Due');
     };
 
-    const canPay = !isNaN(parseFloat(amount)) && parseFloat(amount) > 0;
+    const canSubmit = !isNaN(parseFloat(amount)) && parseFloat(amount) > 0;
 
     return (
         <BillCard title={title} status={status}>
@@ -153,10 +158,10 @@ const FixedBill: React.FC<{ title: string, category: string }> = ({ title, categ
             ) : (
                  <button
                     onClick={handleMarkAsPaid}
-                    disabled={!canPay}
+                    disabled={!canSubmit || !hasPayPerm}
                     className="w-full mt-2 px-4 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                    Record Payment
+                    {hasPayPerm ? 'Record Payment' : 'No Permission'}
                 </button>
             )}
         </BillCard>

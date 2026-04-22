@@ -356,23 +356,31 @@ const TerminateContractModal: React.FC<{ onClose: () => void; onConfirm: (record
 };
 
 const LandlordOffboarding: React.FC = () => {
-    const { landlordOffboardingRecords, addLandlordOffboardingRecord, updateLandlordOffboardingRecord, deleteLandlordOffboardingRecord } = useData();
+    const { landlordOffboardingRecords, addLandlordOffboardingRecord, updateLandlordOffboardingRecord, deleteLandlordOffboardingRecord, checkPermission, currentUser } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [managingRecord, setManagingRecord] = useState<LandlordOffboardingRecord | null>(null);
+
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Landlords', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Landlords', 'edit');
+    const canDelete = isSuperAdmin || checkPermission('Landlords', 'delete');
 
     const records = landlordOffboardingRecords;
 
     const handleTerminate = (record: LandlordOffboardingRecord) => {
+        if (!canCreate) return alert('You do not have permission to initiate offboarding.');
         addLandlordOffboardingRecord(record);
         setIsModalOpen(false);
     };
 
     const handleUpdateRecord = (updated: LandlordOffboardingRecord) => {
+        if (!canEdit) return alert('You do not have permission to update offboarding records.');
         updateLandlordOffboardingRecord(updated.id, updated);
         setManagingRecord(null);
     };
 
     const handleDeleteRecord = (id: string) => {
+        if (!canDelete) return alert('You do not have permission to delete offboarding records.');
         if (!window.confirm('Remove this offboarding record?')) return;
         deleteLandlordOffboardingRecord(id);
     };
@@ -397,10 +405,10 @@ const LandlordOffboarding: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Landlord Offboarding</h1>
                     <p className="text-lg text-gray-500 mt-1">Manage contract terminations and property handovers.</p>
                 </div>
-                <button onClick={() => setIsModalOpen(true)} className="px-6 py-2 bg-red-600 text-white font-semibold rounded-md shadow-sm hover:bg-red-700 flex items-center">
+                {canCreate && <button onClick={() => setIsModalOpen(true)} className="px-6 py-2 bg-red-600 text-white font-semibold rounded-md shadow-sm hover:bg-red-700 flex items-center">
                     <Icon name="close" className="w-4 h-4 mr-2" />
                     Terminate Contract
-                </button>
+                </button>}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">
@@ -430,8 +438,8 @@ const LandlordOffboarding: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-2">
-                                            {r.status !== 'Contract Terminated' && (
-                                                <button 
+                                            {r.status !== 'Contract Terminated' && canEdit && (
+                                                <button
                                                     onClick={() => setManagingRecord(r)}
                                                     className="text-blue-600 hover:underline font-medium text-xs flex items-center"
                                                 >
@@ -439,13 +447,13 @@ const LandlordOffboarding: React.FC = () => {
                                                 </button>
                                             )}
                                             {r.status === 'Contract Terminated' && <span className="text-gray-400 text-xs">Archived</span>}
-                                            <button
+                                            {canDelete && <button
                                                 onClick={() => handleDeleteRecord(r.id)}
                                                 className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
                                                 title="Remove record"
                                             >
                                                 <Icon name="close" className="w-3.5 h-3.5" />
-                                            </button>
+                                            </button>}
                                         </div>
                                     </td>
                                 </tr>

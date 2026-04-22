@@ -268,21 +268,22 @@ const RecordBillModal: React.FC<{
 // --- MAIN COMPONENT ---
 
 const Deductions: React.FC = () => {
-    const { 
-        deductionRules, addDeductionRule, updateDeductionRule, deleteDeductionRule, 
+    const {
+        deductionRules, addDeductionRule, updateDeductionRule, deleteDeductionRule,
         landlords, properties, tenants,
-        tasks, bills, addBill, updateBill, deleteBill, addInvoice 
+        tasks, bills, addBill, updateBill, deleteBill, addInvoice,
+        checkPermission, currentUser
     } = useData();
 
     const [activeTab, setActiveTab] = useState<TabType>('properties');
     const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
     const [isBillModalOpen, setIsBillModalOpen] = useState(false);
-    
+
     const [editingRule, setEditingRule] = useState<DeductionRule | null>(null);
     const [editingBill, setEditingBill] = useState<Bill | null>(null);
     const [selectedPropertyForRule, setSelectedPropertyForRule] = useState<Property | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    
+
     // State for expanding property cards in list
     const [expandedProperties, setExpandedProperties] = useState<Record<string, boolean>>({});
 
@@ -290,18 +291,25 @@ const Deductions: React.FC = () => {
     const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7)); // "YYYY-MM"
     const [historyProperty, setHistoryProperty] = useState('All');
 
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreateRule = isSuperAdmin || checkPermission('Landlords', 'create');
+    const canEditRule = isSuperAdmin || checkPermission('Landlords', 'edit');
+    const canDeleteRule = isSuperAdmin || checkPermission('Landlords', 'delete');
+
     const handleBack = () => {
         window.location.hash = '#/landlords/overview';
     };
 
     // --- Rule Management ---
     const handleAddRule = (prop?: Property) => {
+        if (!canCreateRule) return alert('You do not have permission to create deduction rules.');
         setEditingRule(null);
         setSelectedPropertyForRule(prop || null);
         setIsRuleModalOpen(true);
     };
 
     const handleEditRule = (rule: DeductionRule) => {
+        if (!canEditRule) return alert('You do not have permission to edit deduction rules.');
         setEditingRule(rule);
         // Find target property if specific, just for context
         if (rule.applicability === 'Specific Property') {
@@ -314,6 +322,8 @@ const Deductions: React.FC = () => {
     };
 
     const handleSaveRule = (rule: DeductionRule) => {
+        if (editingRule && !canEditRule) return alert('You do not have permission to edit deduction rules.');
+        if (!editingRule && !canCreateRule) return alert('You do not have permission to create deduction rules.');
         if (editingRule) {
             updateDeductionRule(rule.id, rule);
         } else {
@@ -323,6 +333,7 @@ const Deductions: React.FC = () => {
     };
 
     const handleDeleteRule = (id: string) => {
+        if (!canDeleteRule) return alert('You do not have permission to delete deduction rules.');
         if (confirm("Are you sure you want to delete this deduction rule?")) {
             deleteDeductionRule(id);
         }
@@ -596,7 +607,7 @@ const Deductions: React.FC = () => {
                                 <Icon name="plus" className="w-4 h-4 mr-2" /> Record Bill
                             </button>
                         )}
-                        {activeTab === 'properties' && (
+                        {activeTab === 'properties' && canCreateRule && (
                              <button onClick={() => handleAddRule()} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-200 shadow-sm flex items-center">
                                 <Icon name="plus" className="w-4 h-4 mr-2" /> Global Recurrent Deduction
                             </button>
@@ -642,12 +653,12 @@ const Deductions: React.FC = () => {
                                         <div className="p-4 border-t border-gray-100 bg-gray-50/50">
                                             <div className="flex justify-between items-center mb-3">
                                                 <h4 className="text-xs font-bold text-gray-500 uppercase">Active Recurrent Deductions</h4>
-                                                <button 
+                                                {canCreateRule && <button
                                                     onClick={(e) => { e.stopPropagation(); handleAddRule(prop); }}
                                                     className="text-xs text-primary font-bold hover:underline flex items-center"
                                                 >
                                                     + Add Recurrent Deduction
-                                                </button>
+                                                </button>}
                                             </div>
                                             
                                             {prop.activeRules.length > 0 ? (
@@ -665,8 +676,8 @@ const Deductions: React.FC = () => {
                                                                     {rule.type === 'Percentage' ? `${rule.value}%` : `KES ${rule.value.toLocaleString()}`}
                                                                 </p>
                                                                 <div className="flex gap-2 justify-end mt-1">
-                                                                    <button onClick={() => handleEditRule(rule)} className="text-[10px] text-blue-600 hover:underline">Edit</button>
-                                                                    <button onClick={() => handleDeleteRule(rule.id)} className="text-[10px] text-red-600 hover:underline">Remove</button>
+                                                                    {canEditRule && <button onClick={() => handleEditRule(rule)} className="text-[10px] text-blue-600 hover:underline">Edit</button>}
+                                                                    {canDeleteRule && <button onClick={() => handleDeleteRule(rule.id)} className="text-[10px] text-red-600 hover:underline">Remove</button>}
                                                                 </div>
                                                             </div>
                                                         </div>

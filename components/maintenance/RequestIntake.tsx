@@ -5,7 +5,9 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 
 const RequestIntake: React.FC = () => {
-    const { addTask, tasks, users } = useData();
+    const { addTask, tasks, users, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Maintenance', 'create');
     // Form State
     const [requestType, setRequestType] = useState('Maintenance Request');
     const [title, setTitle] = useState('');
@@ -44,7 +46,7 @@ const RequestIntake: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        
+        if (!canCreate) { alert('You do not have permission to submit maintenance requests.'); return; }
         if (!title || !property || !description) {
             alert('Please fill in Title, Property and Description.');
             return;

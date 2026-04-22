@@ -27,6 +27,47 @@ export const NAVIGATION_ITEMS: NavItem[] = [
   { name: 'Settings', icon: 'settings', subModules: ['Profile', 'Roles', 'Permissions', 'Widgets', 'Rates & Rules', 'Constants', 'Audit Trail'] },
 ];
 
+/**
+ * Maps navigation module names to permission module names for checkPermission().
+ * This ensures consistent permission checking regardless of UI naming differences.
+ */
+export const PERMISSION_MODULE_MAPPING: Record<string, string> = {
+  'Dashboard': 'Dashboard',
+  'Registration': 'Users',
+  'Landlords': 'Landlords',
+  'Tenants': 'Tenants',
+  'Operations': 'Properties',
+  'Payments': 'Financials',
+  'Marketplace': 'Marketplace',
+  'R-Reits': 'R-Reits',
+  'HR & Payroll': 'Users',
+  'Accounting': 'Financials',
+  'Reports & Analytics': 'Reports',
+  'User App Portal': 'Users',
+  'Settings': 'Settings',
+  // Specific submodule mappings
+  'Properties': 'Properties',
+  'Maintenance': 'Maintenance',
+  'Task Management': 'Maintenance',
+  'Communications': 'Properties',
+  'Leases': 'Tenants',
+  'Inbound': 'Financials',
+  'Outbound': 'Financials',
+  'Invoices': 'Financials',
+  'Reconciliation': 'Financials',
+  'Landlord Payouts': 'Financials',
+  'Staff Management': 'Users',
+  'Payroll Processing': 'Users',
+  'Commissions': 'Financials',
+  'Leave & Attendance': 'Users',
+  'Performance': 'Users',
+  'Income': 'Financials',
+  'Expenses': 'Financials',
+  'Financial Statements': 'Financials',
+  'Tax Compliance': 'Financials',
+  'Reporting': 'Reports',
+};
+
 export const WIDGET_REGISTRY: Record<string, { id: string; name: string }[]> = {
     'Dashboard': [
         { id: 'dash_welcome', name: 'Welcome Banner' },

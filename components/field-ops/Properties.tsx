@@ -598,7 +598,10 @@ const PropertyDetailView: React.FC<{ property: Property; onClose: () => void }> 
 };
 
 const FieldProperties: React.FC = () => {
-    const { properties, landlords, addProperty, updateProperty, addUnitToProperty, staff, tenants } = useData();
+    const { properties, landlords, addProperty, updateProperty, addUnitToProperty, staff, tenants, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Properties', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Properties', 'edit');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -668,6 +671,8 @@ const FieldProperties: React.FC = () => {
     };
 
     const handleSaveNewProperty = (prop: Property) => {
+        if (prop.id && !canEdit) return alert('You do not have permission to edit properties.');
+        if (!prop.id && !canCreate) return alert('You do not have permission to create properties.');
         if (prop.id) updateProperty(prop.id, prop);
         else addProperty({ ...prop, id: `prop-${Date.now()}`, units: [] });
         setIsCreating(false);
@@ -692,12 +697,12 @@ const FieldProperties: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Properties (Field View)</h1>
                     <p className="text-lg text-gray-500 mt-1">Operational status and health of managed assets.</p>
                 </div>
-                <button 
+                {canCreate && <button
                     onClick={() => setIsCreating(true)}
                     className="px-6 py-2 bg-primary text-white font-bold rounded-lg shadow-sm hover:bg-primary-dark flex items-center"
                 >
                     <Icon name="plus" className="w-5 h-5 mr-2" /> Add Property
-                </button>
+                </button>}
             </div>
 
             {/* Field Insights Banner */}

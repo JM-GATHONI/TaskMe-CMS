@@ -130,7 +130,15 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie' | 'doughnut'; data: any; op
 };
 
 const PaymentsOverview: React.FC = () => {
-    const { tenants, bills, invoices, renovationProjectBills } = useData();
+    const { tenants, bills, invoices, renovationProjectBills, currentUser, roles } = useData();
+
+    const canView = (widgetId: string) => {
+        if (!currentUser) return false;
+        if ((currentUser as any).role === 'Super Admin') return true;
+        const roleDef = roles.find(r => r.name === (currentUser as any).role);
+        if (!roleDef) return false;
+        return (roleDef.widgetAccess || []).includes(widgetId);
+    };
 
     // --- Live Calculations ---
     const kpis = useMemo((): PaymentKpi[] => {
@@ -286,28 +294,28 @@ const PaymentsOverview: React.FC = () => {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {canView('pay_kpi') && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {kpis.map((stat: any) => <KpiCard key={stat.title} stat={stat} href={kpiLinks[stat.title] || '#/payments/overview'} />)}
-            </div>
+            </div>}
 
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                <div className={`lg:col-span-3 ${MAJOR_CARD_CLASSES} p-6`}>
+                {canView('pay_income_chart') && <div className={`lg:col-span-3 ${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4">Income vs. Expenses (Last 6 Months)</h3>
                         <Chart type="line" data={incomeExpenseChartData} />
                     </div>
-                </div>
-                <div className={`lg:col-span-2 ${MAJOR_CARD_CLASSES} p-6`}>
+                </div>}
+                {canView('pay_methods_chart') && <div className={`lg:col-span-2 ${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4">Payment Methods</h3>
                         <Chart type="doughnut" data={paymentMethodsChartData} />
                     </div>
-                </div>
+                </div>}
             </div>
 
              {/* Recent Transactions */}
-            <div className={`${MAJOR_CARD_CLASSES} p-6`}>
+            {canView('pay_recent') && <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                 <div className="relative z-10">
                     <h3 className="text-xl font-semibold text-gray-800 mb-4">Recent Inbound Transactions</h3>
                     <div className="overflow-x-auto">
@@ -337,7 +345,7 @@ const PaymentsOverview: React.FC = () => {
                         </table>
                     </div>
                 </div>
-            </div>
+            </div>}
         </div>
     );
 };

@@ -213,7 +213,11 @@ const PayCommissionModal: React.FC<{
 };
 
 const Leads: React.FC = () => {
-    const { leads, addLead, updateLead, deleteLead, syncWebsiteLeads, staff, landlords, tenants, renovationInvestors, commissionRules, rfTransactions, addRFTransaction, addBill } = useData();
+    const { leads, addLead, updateLead, deleteLead, syncWebsiteLeads, staff, landlords, tenants, renovationInvestors, commissionRules, rfTransactions, addRFTransaction, addBill, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Marketplace', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Marketplace', 'edit');
+    const canDelete = isSuperAdmin || checkPermission('Marketplace', 'delete');
     const referrerOptions = useMemo(() => [
         ...(staff || []).map(s => ({ id: s.id, name: s.name, role: s.role })),
         ...(landlords || []).filter(l => l.role === 'Affiliate' || l.role === 'Landlord').map(l => ({ id: l.id, name: l.name, role: l.role })),
@@ -322,11 +326,13 @@ const Leads: React.FC = () => {
     };
 
     const handleSaveLead = (lead: Lead) => {
+        if (!canCreate) return alert('You do not have permission to add leads.');
         addLead(lead);
         setIsModalOpen(false);
     };
 
     const handleMoveLead = (id: string, stage: string) => {
+        if (!canEdit) return alert('You do not have permission to update leads.');
         updateLead(id, { status: stage as any });
     };
 
@@ -479,7 +485,7 @@ const Leads: React.FC = () => {
                                             key={lead.id} 
                                             lead={lead} 
                                             onMove={handleMoveLead} 
-                                            onDelete={deleteLead}
+                                            onDelete={canDelete ? deleteLead : () => alert('You do not have permission to delete leads.')}
                                             referrerName={ref?.name}
                                         />
                                         );

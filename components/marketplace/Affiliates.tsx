@@ -313,12 +313,16 @@ const ReviewPayoutModal: React.FC<{
 };
 
 const Affiliates: React.FC = () => {
-    const { addLandlord, landlords, staff, leads, tenants, rfTransactions, renovationInvestors, applications, updateRFTransaction, addBill } = useData();
+    const { addLandlord, landlords, staff, leads, tenants, rfTransactions, renovationInvestors, applications, updateRFTransaction, addBill, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Marketplace', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Marketplace', 'edit');
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [selectedAffiliate, setSelectedAffiliate] = useState<LiveAffiliate | null>(null);
     const [reviewPayout, setReviewPayout] = useState<RFTransaction | null>(null);
 
     const handleConfirmPayout = (id: string, amount: number, reference: string, date: string) => {
+        if (!canEdit) return alert('You do not have permission to process payouts.');
         updateRFTransaction(id, { status: 'Completed' as any, amount, reference, date });
         addBill({
             id: `bill-comm-${Date.now()}`,
@@ -394,6 +398,7 @@ const Affiliates: React.FC = () => {
 
 
     const handleInvite = (data: any) => {
+        if (!canCreate) return alert('You do not have permission to invite affiliates.');
         // Register as a "Landlord" type user but with 'Affiliate' role to grant portal access
         // Ideally we'd have a generic 'User' adder, but addLandlord works for external users in this schema
         const newUser: User = {

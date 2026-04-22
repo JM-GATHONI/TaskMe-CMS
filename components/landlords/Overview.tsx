@@ -221,7 +221,15 @@ const AIInsightCard: React.FC<{ title: string; description: string; type: 'succe
 };
 
 const Overview: React.FC = () => {
-    const { landlords, properties, tenants, tasks } = useData();
+    const { landlords, properties, tenants, tasks, currentUser, roles } = useData();
+
+    const canView = (widgetId: string) => {
+        if (!currentUser) return false;
+        if ((currentUser as any).role === 'Super Admin') return true;
+        const roleDef = roles.find(r => r.name === (currentUser as any).role);
+        if (!roleDef) return false;
+        return (roleDef.widgetAccess || []).includes(widgetId);
+    };
     const [selectedMetric, setSelectedMetric] = useState<MetricConfig | null>(null);
 
     // --- KPI CALCULATIONS ---
@@ -460,7 +468,7 @@ const Overview: React.FC = () => {
             </div>
 
             {/* AI Intelligence Section */}
-            <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+            {canView('land_alerts') && <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-8 opacity-10">
                     <Icon name="analytics" className="w-48 h-48 text-white" />
                 </div>
@@ -490,9 +498,9 @@ const Overview: React.FC = () => {
                         />
                     </div>
                 </div>
-            </div>
+            </div>}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {canView('land_kpi') && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {metrics.map(metric => (
                     <MetricCard 
                         key={metric.id} 
@@ -500,9 +508,9 @@ const Overview: React.FC = () => {
                         onClick={() => setSelectedMetric(metric)} 
                     />
                 ))}
-            </div>
+            </div>}
 
-            <div className={`${MAJOR_CARD_CLASSES} p-6 flex items-start gap-4`}>
+            {canView('land_quick_actions') && <div className={`${MAJOR_CARD_CLASSES} p-6 flex items-start gap-4`}>
                 <div className="relative z-10 flex gap-4 w-full">
                     <Icon name="info" className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
                     <div>
@@ -514,7 +522,7 @@ const Overview: React.FC = () => {
                         </p>
                     </div>
                 </div>
-            </div>
+            </div>}
 
             {selectedMetric && (
                 <ReportModal 

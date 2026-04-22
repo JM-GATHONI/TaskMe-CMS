@@ -212,11 +212,15 @@ const PayOutboundModal: React.FC<{
 // --- MAIN COMPONENT ---
 
 const Outbound: React.FC = () => {
-    const { 
-        bills, invoices, properties, updateBill, addBill, updateInvoice, 
-        tenants, landlords, tasks, offboardingRecords, addMessage, updateOffboardingRecord 
-    } = useData(); 
-    
+    const {
+        bills, invoices, properties, updateBill, addBill, updateInvoice,
+        tenants, landlords, tasks, offboardingRecords, addMessage, updateOffboardingRecord,
+        checkPermission, currentUser
+    } = useData();
+
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canPay = isSuperAdmin || checkPermission('Financials', 'pay');
+
     const [activeCategory, setActiveCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     
@@ -474,6 +478,7 @@ const Outbound: React.FC = () => {
     // --- Handlers ---
 
     const handlePayNow = (item: OutboundItem) => {
+        if (!canPay) return alert('You do not have permission to process payments.');
         setSelectedItem(item);
         setIsPayModalOpen(true);
     };
@@ -675,7 +680,7 @@ const Outbound: React.FC = () => {
                                             {renderTableRow(log)}
                                             <td className="px-6 py-4 text-right">
                                                  {log.status !== 'Paid' ? (
-                                                    <button onClick={() => handlePayNow(log)} className="text-xs font-bold bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 shadow-sm">Pay</button>
+                                                    canPay ? <button onClick={() => handlePayNow(log)} className="text-xs font-bold bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 shadow-sm">Pay</button> : <span className="text-xs text-gray-400">—</span>
                                                 ) : (
                                                     <span className="text-xs text-gray-400">Paid</span>
                                                 )}
@@ -722,12 +727,12 @@ const Outbound: React.FC = () => {
                                         <td className="px-6 py-4 text-right">
                                             {log.status !== 'Paid' ? (
                                                 <div className="flex justify-end gap-2">
-                                                    <button 
+                                                    {canPay && <button
                                                         onClick={() => handlePayNow(log)}
                                                         className="text-xs font-bold bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 shadow-sm"
                                                     >
                                                         Pay Now
-                                                    </button>
+                                                    </button>}
                                                 </div>
                                             ) : (
                                                 <button 

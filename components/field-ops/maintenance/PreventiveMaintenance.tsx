@@ -57,10 +57,13 @@ const ScheduleTaskModal: React.FC<{ onClose: () => void; onSave: (task: Partial<
 };
 
 const PreventiveMaintenance: React.FC = () => {
-    const { preventiveTasks, addPreventiveTask, addTask } = useData();
+    const { preventiveTasks, addPreventiveTask, addTask, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Maintenance', 'create');
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const handleSave = (taskData: Partial<PreventiveTask>) => {
+        if (!canCreate) return alert('You do not have permission to schedule preventive tasks.');
         addPreventiveTask({ ...taskData, id: `prev-${Date.now()}` } as PreventiveTask);
         setIsModalOpen(false);
     };

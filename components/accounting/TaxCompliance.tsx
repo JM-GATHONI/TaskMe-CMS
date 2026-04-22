@@ -21,7 +21,9 @@ const TaxLiabilityCard: React.FC<{ title: string; amount: number; dueDate: strin
 );
 
 const TaxCompliance: React.FC = () => {
-    const { tenants, taxRecords, updateTaxRecord, properties } = useData();
+    const { tenants, taxRecords, updateTaxRecord, properties, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canPay = isSuperAdmin || checkPermission('Financials', 'pay');
 
     const today = new Date();
     const currentMonth = today.toISOString().slice(0, 7);
@@ -53,6 +55,7 @@ const TaxCompliance: React.FC = () => {
     }, [taxRecords]);
 
     const handleMarkAsPaid = (recordId: string) => {
+        if (!canPay) return alert('You do not have permission to mark tax records as paid.');
         updateTaxRecord(recordId, { status: 'Paid' });
         alert(`Record marked as paid.`);
     };
@@ -146,7 +149,7 @@ const TaxCompliance: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            {tax.status === 'Due' && (
+                                            {tax.status === 'Due' && canPay && (
                                                 <button onClick={() => handleMarkAsPaid(tax.id)} className="text-blue-600 hover:text-blue-800 text-xs font-bold underline">
                                                     Mark Paid
                                                 </button>

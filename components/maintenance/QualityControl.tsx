@@ -81,7 +81,9 @@ const QCModal: React.FC<{ task: Task; onClose: () => void; onDecision: (approved
 };
 
 const QualityControl: React.FC = () => {
-    const { tasks, updateTask } = useData();
+    const { tasks, updateTask, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canEdit = isSuperAdmin || checkPermission('Maintenance', 'edit');
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
     // Filter tasks pending review (Status = Completed but not Closed for example, or Pending)
@@ -91,6 +93,7 @@ const QualityControl: React.FC = () => {
     [tasks]);
 
     const handleDecision = (approved: boolean, notes: string) => {
+        if (!canEdit) return alert('You do not have permission to perform QC decisions.');
         if (!selectedTask) return;
         
         if (approved) {

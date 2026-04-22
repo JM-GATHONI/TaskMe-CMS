@@ -7,7 +7,7 @@ import Icon from '../Icon';
 
 const UNIT_TYPES: string[] = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
 
-const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; }> = ({ property, onEdit, onAddUnit }) => {
+const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; canEdit: boolean }> = ({ property, onEdit, onAddUnit, canEdit }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const statusClasses = {
         Active: 'bg-green-100 text-green-800',
@@ -39,7 +39,7 @@ const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => 
                 </div>
                 <div className="flex items-center space-x-4">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[property.status]}`}>{property.status}</span>
-                    <button onClick={(e) => { e.stopPropagation(); onEdit(property); }} className="text-sm font-semibold text-primary hover:text-primary-dark">Edit</button>
+                    {canEdit && <button onClick={(e) => { e.stopPropagation(); onEdit(property); }} className="text-sm font-semibold text-primary hover:text-primary-dark">Edit</button>}
                     <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} className="w-5 h-5 text-gray-400" />
                 </div>
             </div>
@@ -47,9 +47,9 @@ const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => 
                 <div className="p-4 border-t border-gray-100 bg-gray-50/50">
                     <div className="flex justify-between items-center mb-3">
                         <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider">Units ({property.units.length})</h4>
-                        <button onClick={() => onAddUnit(property)} className="text-xs font-bold text-primary hover:underline flex items-center">
+                        {canEdit && <button onClick={() => onAddUnit(property)} className="text-xs font-bold text-primary hover:underline flex items-center">
                             <Icon name="register" className="w-3 h-3 mr-1" /> Add Unit
-                        </button>
+                        </button>}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-2">
                         {property.units.map(unit => (
@@ -903,15 +903,19 @@ const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: 
 };
 
 const Properties: React.FC = () => {
-    const { properties, addProperty, updateProperty, addUnitToProperty, landlords, staff } = useData();
+    const { properties, addProperty, updateProperty, addUnitToProperty, landlords, staff, checkPermission, currentUser } = useData();
     const [view, setView] = useState<'list' | 'form'>('list');
     const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
     const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
     const [propertyForUnit, setPropertyForUnit] = useState<Property | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Properties', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Properties', 'edit');
+
     const filteredProperties = useMemo(() => {
-        return properties.filter(p => 
+        return properties.filter(p =>
             p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.branch.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.type.toLowerCase().includes(searchQuery.toLowerCase())
@@ -919,16 +923,20 @@ const Properties: React.FC = () => {
     }, [properties, searchQuery]);
 
     const handleEdit = (p: Property) => {
+        if (!canEdit) return alert('You do not have permission to edit properties.');
         setSelectedProperty(p);
         setView('form');
     };
 
     const handleAddUnit = (propertyId: string, unit: Unit) => {
+        if (!canEdit) return alert('You do not have permission to edit properties.');
         addUnitToProperty(propertyId, unit);
         setIsUnitModalOpen(false);
     };
 
     const handleSave = (p: Property) => {
+        if (p.id && !canEdit) return alert('You do not have permission to edit properties.');
+        if (!p.id && !canCreate) return alert('You do not have permission to create properties.');
         if (p.id) updateProperty(p.id, p);
         else addProperty({ ...p, id: `prop-${Date.now()}`, units: [] });
         setView('list');
@@ -945,7 +953,7 @@ const Properties: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Properties</h1>
                     <p className="text-lg text-gray-500 mt-1">Manage properties, units, and assets.</p>
                 </div>
-                {view === 'list' && (
+                {view === 'list' && canCreate && (
                     <button onClick={() => { setSelectedProperty(null); setView('form'); }} className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark shadow-sm flex items-center">
                         <Icon name="branch" className="w-5 h-5 mr-2" /> New Property
                     </button>
@@ -969,11 +977,12 @@ const Properties: React.FC = () => {
 
                     <div className="grid gap-4">
                         {filteredProperties.map(p => (
-                            <PropertyListItem 
-                                key={p.id} 
-                                property={p} 
-                                onEdit={handleEdit} 
-                                onAddUnit={(prop) => { setPropertyForUnit(prop); setIsUnitModalOpen(true); }} 
+                            <PropertyListItem
+                                key={p.id}
+                                property={p}
+                                onEdit={handleEdit}
+                                onAddUnit={(prop) => { setPropertyForUnit(prop); setIsUnitModalOpen(true); }}
+                                canEdit={canEdit}
                             />
                         ))}
                         {filteredProperties.length === 0 && <p className="text-center text-gray-500 py-10">No properties found.</p>}

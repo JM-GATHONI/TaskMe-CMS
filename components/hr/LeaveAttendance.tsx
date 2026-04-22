@@ -284,7 +284,9 @@ const LeaveManageModal: React.FC<{
 
 // ─── Main Leave & Attendance Component ──────────────────────────────────────
 const LeaveAttendance: React.FC = () => {
-    const { staff, updateStaff } = useData();
+    const { staff, updateStaff, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canEdit = isSuperAdmin || checkPermission('Users', 'edit');
     const [managingStaff, setManagingStaff] = useState<StaffProfile | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState<'All' | 'Active' | 'On Leave'>('All');
@@ -312,6 +314,7 @@ const LeaveAttendance: React.FC = () => {
     const onLeaveCount = staff.filter(s => s.status === 'On Leave').length;
 
     const handleUpdate = (updated: StaffProfile) => {
+        if (!canEdit) return alert('You do not have permission to update staff leave records.');
         updateStaff(updated.id, updated);
         setManagingStaff(updated);
     };

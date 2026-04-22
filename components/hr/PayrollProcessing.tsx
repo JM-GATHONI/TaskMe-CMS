@@ -149,7 +149,9 @@ const PayslipModal: React.FC<{ entry: any; onClose: () => void }> = ({ entry, on
 };
 
 const PayrollProcessing: React.FC = () => {
-    const { staff, tenants, properties, tasks, addBill, updateStaff, offboardingRecords } = useData();
+    const { staff, tenants, properties, tasks, addBill, updateStaff, offboardingRecords, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canProcessPayroll = isSuperAdmin || checkPermission('Users', 'edit');
     const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [payrollStatus, setPayrollStatus] = useState<'Draft' | 'Processed' | 'Paid'>('Draft');
     const [searchQuery, setSearchQuery] = useState('');
@@ -347,12 +349,14 @@ const PayrollProcessing: React.FC = () => {
     }, [payrollData]);
 
     const handleRunPayroll = () => {
+        if (!canProcessPayroll) return alert('You do not have permission to process payroll.');
         // Simulate processing
         setPayrollStatus('Processed');
         alert("Payroll processed successfully. Please review before disbursing.");
     };
 
     const handleDisburse = () => {
+        if (!canProcessPayroll) return alert('You do not have permission to disburse payroll.');
         if (confirm(`Confirm disbursement of KES ${totals.net.toLocaleString()} to ${payrollData.length} employees? This will create expense records.`)) {
             // 1. Create Bill Records for Accounting
             payrollData.forEach(p => {

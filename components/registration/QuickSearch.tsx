@@ -28,9 +28,12 @@ const QuickSearch: React.FC = () => {
     const [query, setQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
     const [results, setResults] = useState<SearchResult[]>([]);
+    const [activeDateRange, setActiveDateRange] = useState<string>('');
+    const [customFrom, setCustomFrom] = useState('');
+    const [customTo, setCustomTo] = useState('');
     
     // Updated Filters
-    const FILTERS = ['Paid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Partial Payments', 'Vacant Units'];
+    const FILTERS = ['Paid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Unpaid Deposit', 'Partial Payments', 'Vacant Units'];
 
     // Intelligent Keyword Mapping
     const KEYWORD_MAP: Record<string, string> = {
@@ -69,6 +72,11 @@ const QuickSearch: React.FC = () => {
                 const q = urlParams.get('q');
                 const f = urlParams.get('filters');
                 
+                const dr = urlParams.get('dr');
+                const drFrom = urlParams.get('dr_from');
+                const drTo = urlParams.get('dr_to');
+                if (dr) { setActiveDateRange(dr); if (drFrom) setCustomFrom(drFrom); if (drTo) setCustomTo(drTo); }
+                else { setActiveDateRange(''); setCustomFrom(''); setCustomTo(''); }
                 if (q) {
                     const lowerQ = q.toLowerCase().trim();
                     if (KEYWORD_MAP[lowerQ]) {
@@ -278,19 +286,68 @@ const QuickSearch: React.FC = () => {
                 .filter(item => item !== null);
         }
 
+        if (activeFilter === 'Unpaid Deposit') {
+            return searchedTenants
+                .filter(t => (!t.depositPaid || t.depositPaid === 0) && ['Active', 'Overdue', 'Notice'].includes(t.status))
+                .map(t => ({
+                    id: t.id,
+                    tenant: t.name,
+                    property: `${t.propertyName} - ${t.unit}`,
+                    amountDisplay: `KES ${t.rentAmount.toLocaleString()}`,
+                    val: t.rentAmount,
+                    date: t.onboardingDate || 'N/A',
+                    status: 'Unpaid'
+                }));
+        }
+
         return [];
     }, [tenants, query, activeFilter, properties, staff]);
+
+    // --- Date Range Filtering ---
+    const dateBounds = useMemo(() => {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const shift = (base: Date, days: number) => { const r = new Date(base); r.setDate(r.getDate() + days); return r; };
+        if (!activeDateRange) return null;
+        if (activeDateRange === 'Today') return { from: today, to: shift(today, 1) };
+        if (activeDateRange === 'Yesterday') return { from: shift(today, -1), to: today };
+        if (activeDateRange.startsWith('Day:')) { const x = new Date(activeDateRange.slice(4)); return { from: x, to: shift(x, 1) }; }
+        if (activeDateRange === 'This Week') { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7)); return { from: mon, to: shift(mon, 7) }; }
+        if (activeDateRange === 'Last Week') { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7) - 7); return { from: mon, to: shift(mon, 7) }; }
+        if (activeDateRange === 'This Month') return { from: new Date(today.getFullYear(), today.getMonth(), 1), to: new Date(today.getFullYear(), today.getMonth() + 1, 1) };
+        if (activeDateRange === 'This Quarter') { const q = Math.floor(today.getMonth() / 3); return { from: new Date(today.getFullYear(), q * 3, 1), to: new Date(today.getFullYear(), q * 3 + 3, 1) }; }
+        if (activeDateRange === 'This Year') return { from: new Date(today.getFullYear(), 0, 1), to: new Date(today.getFullYear() + 1, 0, 1) };
+        if (activeDateRange === 'Custom' && customFrom && customTo) return { from: new Date(customFrom), to: new Date(new Date(customTo).getTime() + 86400000) };
+        return null;
+    }, [activeDateRange, customFrom, customTo]);
+
+    const filteredTableData = useMemo(() => {
+        if (!dateBounds) return tableData;
+        return tableData.filter((row: any) => {
+            if (!row.date || row.date === 'N/A') return true;
+            const d = new Date(row.date);
+            if (isNaN(d.getTime())) return true;
+            return d >= dateBounds.from && d < dateBounds.to;
+        });
+    }, [tableData, dateBounds]);
+
+    const activeDateRangeLabel = activeDateRange
+        ? activeDateRange.startsWith('Day:')
+            ? activeDateRange.slice(4)
+            : activeDateRange === 'Custom' && customFrom && customTo
+                ? `${customFrom} → ${customTo}`
+                : activeDateRange
+        : '';
 
     // --- Calculate Totals ---
     const summaryStats = useMemo(() => {
         if (activeFilter === 'All') return null;
 
-        const count = tableData.length;
-        const totalAmount = tableData.reduce((sum, row: any) => sum + (row.val || 0), 0);
+        const count = filteredTableData.length;
+        const totalAmount = filteredTableData.reduce((sum, row: any) => sum + (row.val || 0), 0);
 
         // For Vacant Units, totalAmount represents Potential Rent
         return { count, totalAmount };
-    }, [tableData, activeFilter]);
+    }, [filteredTableData, activeFilter]);
 
 
     // --- Generic Search Logic (Fallback) ---
@@ -325,11 +382,11 @@ const QuickSearch: React.FC = () => {
     };
 
     const handleExportCSV = () => {
-        if (activeFilter === 'All' || tableData.length === 0) {
+        if (activeFilter === 'All' || filteredTableData.length === 0) {
             alert("No data to export for this view.");
             return;
         }
-        exportToCSV(tableData, `${activeFilter}_Report`);
+        exportToCSV(filteredTableData, `${activeFilter}_Report${activeDateRangeLabel ? `_${activeDateRangeLabel}` : ''}`);
     };
 
     const handlePrint = () => {
@@ -348,6 +405,9 @@ const QuickSearch: React.FC = () => {
         }
         
         setActiveFilter(prev => prev === filter ? 'All' : filter);
+        setActiveDateRange('');
+        setCustomFrom('');
+        setCustomTo('');
         setQuery(''); 
     };
 
@@ -384,6 +444,14 @@ const QuickSearch: React.FC = () => {
                     );
                 })}
             </div>
+
+            {activeDateRangeLabel && (
+                <div className="flex items-center gap-2 mt-2 no-print">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Period:</span>
+                    <span className="px-3 py-1 bg-primary text-white text-xs font-bold rounded-full">{activeDateRangeLabel}</span>
+                    <button onClick={() => { setActiveDateRange(''); setCustomFrom(''); setCustomTo(''); }} className="text-xs text-gray-400 hover:text-red-500 font-bold ml-1" title="Clear date filter">✕ Clear</button>
+                </div>
+            )}
 
             <div className="flex flex-col md:flex-row items-center gap-2 mt-4 no-print">
                 <div className="relative flex-grow w-full">
@@ -529,6 +597,15 @@ const QuickSearch: React.FC = () => {
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
                                         </tr>
                                     )}
+                                    {activeFilter === 'Unpaid Deposit' && (
+                                        <tr>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Expected Deposit</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Move-in Date</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
+                                        </tr>
+                                    )}
                                     {activeFilter === 'Partial Payments' && (
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
@@ -541,7 +618,7 @@ const QuickSearch: React.FC = () => {
                                     )}
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-100">
-                                    {tableData.map((row: any) => (
+                                    {filteredTableData.map((row: any) => (
                                         <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                                              {activeFilter === 'Vacant Units' && (
                                                 <>
@@ -602,6 +679,15 @@ const QuickSearch: React.FC = () => {
                                                     <td className="px-6 py-4 text-center"><span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs">{row.status}</span></td>
                                                 </>
                                             )}
+                                            {activeFilter === 'Unpaid Deposit' && (
+                                                <>
+                                                    <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
+                                                    <td className="px-6 py-4 text-gray-500">{row.property}</td>
+                                                    <td className="px-6 py-4 text-right font-bold text-red-600">{row.amountDisplay}</td>
+                                                    <td className="px-6 py-4 text-center text-gray-500">{row.date}</td>
+                                                    <td className="px-6 py-4 text-center"><span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-bold">{row.status}</span></td>
+                                                </>
+                                            )}
                                             {activeFilter === 'Partial Payments' && (
                                                 <>
                                                     <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
@@ -614,10 +700,10 @@ const QuickSearch: React.FC = () => {
                                             )}
                                         </tr>
                                     ))}
-                                    {tableData.length === 0 && (
+                                    {filteredTableData.length === 0 && (
                                         <tr>
                                             <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                                                No records found for {activeFilter}.
+                                                No records found for {activeFilter}{activeDateRangeLabel ? ` (${activeDateRangeLabel})` : ''}.
                                             </td>
                                         </tr>
                                     )}

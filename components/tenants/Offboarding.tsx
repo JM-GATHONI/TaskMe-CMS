@@ -385,7 +385,10 @@ export const ManageOffboardingModal: React.FC<{
 };
 
 const Offboarding: React.FC = () => {
-    const { offboardingRecords, tenants, addOffboardingRecord, updateOffboardingRecord, updateTenant, addBill, updateProperty } = useData();
+    const { offboardingRecords, tenants, addOffboardingRecord, updateOffboardingRecord, updateTenant, addBill, updateProperty, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Tenants', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Tenants', 'edit');
     const [isStartModalOpen, setIsStartModalOpen] = useState(false);
     const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
@@ -394,6 +397,7 @@ const Offboarding: React.FC = () => {
     , [offboardingRecords, selectedRecordId]);
 
     const handleStartOffboarding = (tenantId: string, noticeDate: string, moveOutDate: string) => {
+        if (!canCreate) return alert('You do not have permission to initiate offboarding.');
         const tenant = tenants.find(t => t.id === tenantId);
         if (!tenant) return;
 
@@ -436,6 +440,7 @@ const Offboarding: React.FC = () => {
     };
 
     const handleRevokeNotice = (recordId: string, tenantId: string) => {
+        if (!canEdit) return alert('You do not have permission to revoke notices.');
         if (window.confirm("Are you sure you want to revoke the notice? The tenant will remain Active and the offboarding process will be cancelled.")) {
             // Mark record as Cancelled
             updateOffboardingRecord(recordId, { status: 'Cancelled' } as any); 
@@ -492,9 +497,9 @@ const Offboarding: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Tenant Offboarding</h1>
                     <p className="text-lg text-gray-500 mt-1">Manage move-outs, inspections, and deposit refunds.</p>
                 </div>
-                <button onClick={() => setIsStartModalOpen(true)} className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark shadow-sm flex items-center">
+                {canCreate && <button onClick={() => setIsStartModalOpen(true)} className="px-6 py-2 bg-primary text-white font-semibold rounded-md hover:bg-primary-dark shadow-sm flex items-center">
                     Start Offboarding
-                </button>
+                </button>}
             </div>
 
             <div className="bg-white p-6 rounded-xl shadow-sm">

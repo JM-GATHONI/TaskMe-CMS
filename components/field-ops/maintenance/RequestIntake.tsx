@@ -124,7 +124,10 @@ const RequestDetailModal: React.FC<{
 };
 
 const RequestIntake: React.FC = () => {
-    const { addTask, updateTask, tasks, users } = useData();
+    const { addTask, updateTask, tasks, users, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Maintenance', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Maintenance', 'edit');
     
     // Form State
     const [requestType, setRequestType] = useState('Maintenance Request');
@@ -185,7 +188,7 @@ const RequestIntake: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        
+        if (!canCreate) { alert('You do not have permission to submit maintenance requests.'); return; }
         if (!title || !property || !description) {
             alert('Please fill in Title, Property and Description.');
             return;
@@ -222,6 +225,7 @@ const RequestIntake: React.FC = () => {
     };
 
     const handleUpdateTask = (updatedTask: Task) => {
+        if (!canEdit) { alert('You do not have permission to update tasks.'); return; }
         updateTask(updatedTask.id, updatedTask);
         // Toast or notification could go here
     };

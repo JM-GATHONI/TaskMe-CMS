@@ -988,7 +988,10 @@ const ImportUsersModal: React.FC<{
 };
 
 const StaffManagement: React.FC = () => {
-    const { staff, addStaff, updateStaff } = useData();
+    const { staff, addStaff, updateStaff, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Users', 'create');
+    const canEdit = isSuperAdmin || checkPermission('Users', 'edit');
     const [selectedUnit, setSelectedUnit] = useState<BusinessUnit | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -999,6 +1002,8 @@ const StaffManagement: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
 
     const handleSaveStaff = (staffData: StaffProfile) => {
+        if (editingStaff && !canEdit) return alert('You do not have permission to edit staff.');
+        if (!editingStaff && !canCreate) return alert('You do not have permission to add staff.');
         if (editingStaff) {
             updateStaff(staffData.id, staffData);
         } else {
@@ -1027,14 +1032,16 @@ const StaffManagement: React.FC = () => {
     };
 
     const handleAddClick = () => {
+        if (!canCreate) return alert('You do not have permission to add staff.');
         setEditingStaff(null);
         setIsAddModalOpen(true);
-    }
+    };
 
     const handleEditClick = (staffMember: StaffProfile) => {
+        if (!canEdit) return alert('You do not have permission to edit staff.');
         setEditingStaff(staffMember);
         setIsAddModalOpen(true);
-    }
+    };
 
     const filteredStaff = useMemo(() => {
         if (!selectedUnit) return [];

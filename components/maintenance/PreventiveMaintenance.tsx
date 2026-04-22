@@ -57,10 +57,13 @@ const ScheduleTaskModal: React.FC<{ onClose: () => void; onSave: (task: Partial<
 };
 
 const PreventiveMaintenance: React.FC = () => {
-    const { preventiveTasks, addPreventiveTask } = useData();
+    const { preventiveTasks, addPreventiveTask, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Maintenance', 'create');
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const handleSave = (taskData: Partial<PreventiveTask>) => {
+        if (!canCreate) return alert('You do not have permission to schedule preventive tasks.');
         addPreventiveTask({ ...taskData, id: `prev-${Date.now()}` } as PreventiveTask);
         setIsModalOpen(false);
     };
@@ -82,12 +85,12 @@ const PreventiveMaintenance: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Preventive Maintenance</h1>
                     <p className="text-lg text-gray-500 mt-1">Scheduled upkeep to minimize downtime and extend asset life.</p>
                 </div>
-                <button 
+                {canCreate && <button
                     onClick={() => setIsModalOpen(true)}
                     className="px-6 py-2 bg-primary text-white font-bold rounded-lg hover:bg-primary-dark shadow-md flex items-center transition-transform hover:-translate-y-1"
                 >
                     <Icon name="plus" className="w-5 h-5 mr-2" /> Schedule Task
-                </button>
+                </button>}
             </div>
             
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

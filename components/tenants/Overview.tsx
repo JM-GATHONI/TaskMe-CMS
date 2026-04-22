@@ -62,7 +62,15 @@ const InsightCard: React.FC<InsightCardProps> = ({ title, value, subtext, color,
 );
 
 const TenantsOverview: React.FC = () => {
-    const { tenants, applications, tasks, properties, getOccupancyRate } = useData();
+    const { tenants, applications, tasks, properties, getOccupancyRate, currentUser, roles } = useData();
+
+    const canView = (widgetId: string) => {
+        if (!currentUser) return false;
+        if ((currentUser as any).role === 'Super Admin') return true;
+        const roleDef = roles.find(r => r.name === (currentUser as any).role);
+        if (!roleDef) return false;
+        return (roleDef.widgetAccess || []).includes(widgetId);
+    };
     const [searchQuery, setSearchQuery] = useState('');
 
     // --- Comprehensive Calculations ---
@@ -283,7 +291,7 @@ const TenantsOverview: React.FC = () => {
             </div>
 
             {/* Searchable KPI Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {canView('ten_kpi') && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredCards.map(card => (
                     <InsightCard 
                         key={card.id}
@@ -294,11 +302,11 @@ const TenantsOverview: React.FC = () => {
                 {filteredCards.length === 0 && (
                     <p className="col-span-full text-center text-gray-500 py-8">No insights match your search.</p>
                 )}
-            </div>
+            </div>}
 
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className={`${MAJOR_CARD_CLASSES} p-6`}>
+                {canView('ten_status_dist') && <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Tenant Status Distribution</h3>
                         <div className="flex items-center justify-center">
@@ -307,19 +315,19 @@ const TenantsOverview: React.FC = () => {
                              </div>
                         </div>
                     </div>
-                </div>
-                <div className={`${MAJOR_CARD_CLASSES} p-6`}>
+                </div>}
+                {canView('ten_lease_struct') && <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Lease Structure</h3>
                         <Chart type="bar" data={leaseTypeData} options={{ plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }} height="h-64" />
                     </div>
-                </div>
+                </div>}
             </div>
 
             {/* Bottom Section: Actionable Lists */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Expiring Leases List */}
-                <div className={`${MAJOR_CARD_CLASSES} p-6`}>
+                {canView('ten_expiring') && <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-gray-800 flex items-center">
@@ -339,10 +347,10 @@ const TenantsOverview: React.FC = () => {
                             View Active Leases
                         </button>
                     </div>
-                </div>
+                </div>}
 
                  {/* Financial Health Shortcut */}
-                <div className={`${MAJOR_CARD_CLASSES} p-6`}>
+                {canView('ten_financials') && <div className={`${MAJOR_CARD_CLASSES} p-6`}>
                     <div className="relative z-10">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-gray-800 flex items-center">
@@ -363,7 +371,7 @@ const TenantsOverview: React.FC = () => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>}
 
                  {/* Quick Actions */}
                 <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-2xl shadow-md text-white flex flex-col justify-center border-t-[8px] border-t-primary border-b-[4px] border-b-secondary overflow-hidden relative">

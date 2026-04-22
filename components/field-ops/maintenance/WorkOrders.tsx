@@ -265,7 +265,9 @@ const getNextStatus = (current: TaskStatus): TaskStatus => {
 };
 
 const WorkOrders: React.FC = () => {
-    const { tasks, updateTask, quotations, updateQuotation } = useData();
+    const { tasks, updateTask, quotations, updateQuotation, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canEdit = isSuperAdmin || checkPermission('Maintenance', 'edit');
     const [filterPriority, setFilterPriority] = useState<string>('All');
     const [searchQuery, setSearchQuery] = useState('');
     
@@ -284,10 +286,12 @@ const WorkOrders: React.FC = () => {
     }, [tasks, filterPriority, searchQuery]);
 
     const handleMoveTask = (task: Task, newStatus: TaskStatus) => {
+        if (!canEdit) return alert('You do not have permission to update work orders.');
         updateTask(task.id, { status: newStatus });
     };
 
     const handleQuoteDecision = (status: 'Approved' | 'Rejected', notes: string) => {
+        if (!canEdit) return alert('You do not have permission to approve/reject quotes.');
         if (!reviewTask) return;
         const quote = quotations.find(q => q.taskId === reviewTask.id);
         if (quote) {

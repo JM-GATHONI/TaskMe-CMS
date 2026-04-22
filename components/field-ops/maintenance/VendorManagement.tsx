@@ -148,7 +148,9 @@ const VendorProfileModal: React.FC<{ vendor: Vendor; onClose: () => void }> = ({
 );
 
 const VendorManagement: React.FC = () => {
-    const { vendors, tasks, addTask, properties, addVendor } = useData();
+    const { vendors, tasks, addTask, properties, addVendor, checkPermission, currentUser } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
+    const canCreate = isSuperAdmin || checkPermission('Maintenance', 'create');
     const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
     const [action, setAction] = useState<'view' | 'assign' | null>(null);
     const [isAddVendorOpen, setIsAddVendorOpen] = useState(false);
@@ -184,6 +186,7 @@ const VendorManagement: React.FC = () => {
     };
 
     const handleAddVendor = (name: string, specialty: string) => {
+        if (!canCreate) return alert('You do not have permission to onboard vendors.');
         if (!name) return alert("Name required");
         addVendor({ id: `v-${Date.now()}`, name, specialty, rating: 5 });
         setIsAddVendorOpen(false);
@@ -199,12 +202,12 @@ const VendorManagement: React.FC = () => {
                     <h1 className="text-3xl font-bold text-gray-800">Vendor Directory</h1>
                     <p className="text-lg text-gray-500 mt-1">Manage external contractors, track performance and spend.</p>
                 </div>
-                <button 
+                {canCreate && <button
                     onClick={() => setIsAddVendorOpen(true)}
                     className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg shadow hover:bg-black flex items-center"
                 >
                     <Icon name="plus" className="w-5 h-5 mr-2" /> Onboard Vendor
-                </button>
+                </button>}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
