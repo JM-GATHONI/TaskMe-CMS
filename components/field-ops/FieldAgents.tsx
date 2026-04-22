@@ -981,15 +981,16 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {agentLandlords.map(l => (
-                                <div key={l.id} className="p-4 border rounded-lg flex items-center gap-4 hover:shadow-sm">
+                            {agentLandlords.map(({ id, name }) => (
+                                <div key={id} className="p-4 border rounded-lg flex items-center gap-4 hover:shadow-sm">
                                     <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold">
-                                        {l.name.charAt(0)}
+                                        {name.charAt(0)}
                                     </div>
                                     <div>
-                                        <h4 className="font-bold text-gray-800">{l.name}</h4>
+                                        <h4 className="font-bold text-gray-800">{name}</h4>
                                         <p className="text-xs text-gray-500">
-                                            {agentProperties.filter(p => p.landlordId === l.id).map(p => p.name).join(', ') || 'No properties assigned'}
+                                            <span className="font-bold text-gray-400 uppercase tracking-wide">Apartment: </span>
+                                            {agentProperties.filter(p => p.landlordId === id).map(p => p.name).join(', ') || 'No properties assigned'}
                                         </p>
                                     </div>
                                 </div>
