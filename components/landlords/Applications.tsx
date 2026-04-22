@@ -319,9 +319,10 @@ const Applications: React.FC = () => {
     const { 
         landlordApplications, landlords, properties,
         addLandlordApplication, updateLandlordApplication, deleteLandlordApplication,
-        addLandlord, updateLandlord, deleteLandlord,
-        checkPermission
+        addLandlord, updateLandlord, deleteLandlord, updateProperty,
+        checkPermission, currentUser
     } = useData();
+    const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
 
     const canEdit   = checkPermission('Landlords', 'edit');
     const canDelete = checkPermission('Landlords', 'delete');
@@ -416,14 +417,21 @@ const Applications: React.FC = () => {
         if (!window.confirm(`Are you sure you want to delete ${record.name}?`)) return;
 
         if (record.type === 'Active') {
-            // Check if they own properties
-            const ownsProps = properties.some(p => p.landlordId === record.id);
-            if (ownsProps) {
-                alert("Cannot delete landlord with active properties. Please reassign or delete properties first.");
-                return;
+            const linkedProps = properties.filter(p => p.landlordId === record.id);
+            if (linkedProps.length > 0) {
+                const forceDelete = isSuperAdmin
+                    ? window.confirm(`${record.name} owns ${linkedProps.length} property(s). These will be unlinked (not deleted). Proceed?`)
+                    : false;
+                if (!forceDelete) {
+                    alert("Cannot delete landlord with active properties. Please reassign or delete properties first.");
+                    return;
+                }
+                linkedProps.forEach(p => updateProperty(p.id, { landlordId: '' }));
             }
             deleteLandlord(record.id);
-            alert("Landlord deleted.");
+            const matchingApp = landlordApplications.find(a => a.email === record.email);
+            if (matchingApp) deleteLandlordApplication(matchingApp.id);
+            alert("Landlord and any linked application deleted. Properties have been unlinked.");
         } else {
             deleteLandlordApplication(record.id);
             alert("Application deleted.");
