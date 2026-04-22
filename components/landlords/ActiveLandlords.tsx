@@ -531,7 +531,11 @@ export const LandlordDetailView: React.FC<{
                         if (isAgencyFeeOnRentRule(r.name) && placementFeeDeduction > 0) {
                             const placementOnProp = newTenants
                                 .filter(t => t.propertyId === prop.id && prop.placementFee !== false)
-                                .reduce((s, t) => s + (t.rentAmount || 0), 0);
+                                .reduce((s, t) => {
+                                    const firstMonthRent = Number((t as any).firstMonthRent || 0);
+                                    const amount = firstMonthRent > 0 ? firstMonthRent : (t.rentAmount || 0);
+                                    return s + amount;
+                                }, 0);
                             propRevenue = Math.max(0, propRevenue - placementOnProp);
                         }
                         amount = propRevenue * (r.value / 100);
