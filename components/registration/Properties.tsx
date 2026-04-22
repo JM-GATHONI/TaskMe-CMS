@@ -562,7 +562,7 @@ export const PropertyForm: React.FC<{
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Landlord*</label>
                                 <select name="landlordId" value={formData.landlordId || ''} onChange={handleChange} className="w-full p-2 border rounded bg-white">
                                     <option value="">Select Landlord</option>
-                                    {landlords.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                    {[...landlords].sort((a, b) => a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -815,7 +815,7 @@ export const PropertyForm: React.FC<{
                                     </div>
                                 </div>
 
-                                <div>
+                                {formData.rentType !== 'Exclusive' && <div>
                                     <label className="block text-sm font-medium text-gray-800 mb-2">Utilities & Bills Checklist</label>
                                     <div className="bg-white border rounded-lg divide-y divide-gray-100 shadow-sm">
                                         {(['water', 'electricity', 'garbage', 'serviceCharge', 'securityFee', 'cleaningFee', 'caretakerFee'] as const).map(billKey => (
@@ -850,7 +850,7 @@ export const PropertyForm: React.FC<{
                                             </div>
                                         ))}
                                     </div>
-                                </div>
+                                </div>}
                             </div>
 
                             {formData.rentIsUniform ? (
