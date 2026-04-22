@@ -195,8 +195,8 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                     ...prev,
                     tenantName: tenant.name,
                     email: tenant.email,
-                    phone: systemSettings.phone || tenant.phone,
-                    billingAddress: systemSettings.address || `${tenant.propertyName} - ${tenant.unit}`
+                    phone: tenant.phone,
+                    billingAddress: `${tenant.propertyName} - ${tenant.unit}`
                 }));
             } else {
                 const landlord = landlords.find(l => l.id === tId);
@@ -205,8 +205,8 @@ const CreateOutboundInvoiceModal: React.FC<{ initialInvoice?: Invoice | null; on
                         ...prev,
                         tenantName: landlord.name,
                         email: landlord.email,
-                        phone: systemSettings.phone || landlord.phone,
-                        billingAddress: systemSettings.address || `Landlord - ${landlord.branch || 'Headquarters'}`
+                        phone: landlord.phone,
+                        billingAddress: `Landlord - ${landlord.branch || 'Headquarters'}`
                     }));
                 }
             }
@@ -564,8 +564,8 @@ const InvoicePreviewModal: React.FC<{ invoice: Invoice; onClose: () => void; }> 
                             ) : (
                                 <h2 className="text-lg font-bold text-gray-800">{systemSettings.companyName || 'TaskMe Realty'}</h2>
                             )}
-                            <p className="text-gray-500">123 Property Lane</p>
-                            <p className="text-gray-500">Nairobi, Kenya</p>
+                            {systemSettings.address && <p className="text-gray-500">{systemSettings.address}</p>}
+                            {systemSettings.phone && <p className="text-gray-500">{systemSettings.phone}</p>}
                             <div className="mt-4 bg-gray-100 p-3 rounded">
                                 <p className="text-xs text-gray-500 uppercase font-bold">Amount Due</p>
                                 <p className="text-xl font-bold text-primary">KES {Number(invoice.amount ?? 0).toLocaleString()}</p>
