@@ -161,7 +161,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [staff, setStaff, staffStatus] = useSupabaseBackedState<StaffProfile[]>([], 'tm_staff_v11');
     const [fines, setFines, finesStatus] = useSupabaseBackedState<FineRule[]>([], 'tm_fines_v11'); 
     const [offboardingRecords, setOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>([], 'tm_offboarding_v11');
-    const [landlordOffboardingRecords, setLandlordOffboardingRecords] = useSupabaseBackedState<LandlordOffboardingRecord[]>([], 'tm_landlord_offboarding_v11');
+    const [landlordOffboardingRecords, setLandlordOffboardingRecords, landlordOffboardingStatus] = useSupabaseBackedState<LandlordOffboardingRecord[]>([], 'tm_landlord_offboarding_v11');
     const [geospatialData, setGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
     const [commissionRules, setCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
     const [deductionRules, setDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>([], 'tm_deductions_v11');
@@ -340,7 +340,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Gate on batch OR core individual queries (individual queries run as fallback
     // when batch RPC is unavailable — they each report their own loading state)
-    const isDataLoading = batchLoading || tenantsStatus.loading || propertiesStatus.loading || staffStatus.loading || rolesStatus.loading;
+    const isDataLoading = batchLoading || tenantsStatus.loading || propertiesStatus.loading || staffStatus.loading || rolesStatus.loading || landlordOffboardingStatus.loading;
 
     // ── Supabase Realtime: In-App message delivery ───────────────────────────
     // Subscribes to changes on the app_state row that stores messages.

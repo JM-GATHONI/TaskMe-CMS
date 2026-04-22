@@ -356,7 +356,7 @@ const TerminateContractModal: React.FC<{ onClose: () => void; onConfirm: (record
 };
 
 const LandlordOffboarding: React.FC = () => {
-    const { landlordOffboardingRecords, addLandlordOffboardingRecord, updateLandlordOffboardingRecord, deleteLandlordOffboardingRecord, checkPermission, currentUser } = useData();
+    const { landlordOffboardingRecords, addLandlordOffboardingRecord, updateLandlordOffboardingRecord, deleteLandlordOffboardingRecord, checkPermission, currentUser, isDataLoading } = useData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [managingRecord, setManagingRecord] = useState<LandlordOffboardingRecord | null>(null);
 
@@ -458,7 +458,17 @@ const LandlordOffboarding: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                            {records.length === 0 && (
+                            {isDataLoading && records.length === 0 && (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center">
+                                        <div className="flex items-center justify-center gap-2 text-gray-400">
+                                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                                            Loading offboarding records...
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                            {!isDataLoading && records.length === 0 && (
                                 <tr>
                                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500">No active offboarding requests.</td>
                                 </tr>
