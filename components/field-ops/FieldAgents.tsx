@@ -1134,7 +1134,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                     onSave={handleSaveLandlord} 
                 />
             )}
-            {isComposeOpen && <ComposeModal onClose={() => setIsComposeOpen(false)} onSend={handleSendMessage} />}
+            {isComposeOpen && <ComposeModal onClose={() => setIsComposeOpen(false)} onSend={handleSendMessage} initialRecipient={{ name: liveAgent.name, phone: liveAgent.phone }} />}
         </div>
     );
 };

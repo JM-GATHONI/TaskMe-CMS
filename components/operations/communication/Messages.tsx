@@ -10,7 +10,7 @@ interface MessagesProps {
     folderFilter?: 'Inbox' | 'Sent';
 }
 
-export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, content: string, channel: string, isGroup?: boolean, groupCount?: number) => void }> = ({ onClose, onSend }) => {
+export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, content: string, channel: string, isGroup?: boolean, groupCount?: number) => void; initialRecipient?: { name: string; phone: string } }> = ({ onClose, onSend, initialRecipient }) => {
     const { tenants, landlords, staff, properties, renovationInvestors, investments, systemSettings } = useData();
     
     // Mode State
@@ -18,7 +18,7 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
     
     // --- Individual Mode States ---
     const [individualTab, setIndividualTab] = useState<'Direct' | 'Search'>('Direct');
-    const [directRecipient, setDirectRecipient] = useState(''); // For manual input
+    const [directRecipient, setDirectRecipient] = useState(initialRecipient?.phone || ''); // For manual input
     const [selectedContact, setSelectedContact] = useState<{id: string, name: string, phone: string, label?: string} | null>(null); // For database selection
     
     // Individual Search Filters
@@ -287,13 +287,23 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
                             {individualTab === 'Direct' ? (
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Recipient</label>
-                                    <input 
-                                        value={directRecipient} 
-                                        onChange={e => setDirectRecipient(e.target.value)} 
-                                        placeholder="Name or Phone Number" 
-                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
-                                        autoFocus
-                                    />
+                                    {initialRecipient ? (
+                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <p className="text-sm font-bold text-blue-800">{initialRecipient.name}</p>
+                                                <p className="text-xs text-blue-600">{initialRecipient.phone}</p>
+                                            </div>
+                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">Field Agent</span>
+                                        </div>
+                                    ) : (
+                                        <input 
+                                            value={directRecipient} 
+                                            onChange={e => setDirectRecipient(e.target.value)} 
+                                            placeholder="Name or Phone Number" 
+                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                                            autoFocus
+                                        />
+                                    )}
                                 </div>
                             ) : (
                                 <div className="space-y-3">
