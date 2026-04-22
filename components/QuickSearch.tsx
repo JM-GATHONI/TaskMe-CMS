@@ -106,13 +106,27 @@ const QuickSearch: React.FC = () => {
     }, [query, activeFilter]);
 
     // --- Date Range Helper ---
+    const parseFlexDate = (dateStr: string): Date | null => {
+        if (!dateStr) return null;
+        // ISO: 2025-01-15 — always try first
+        let d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d;
+        // DD/MM/YYYY
+        const dmy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (dmy) { d = new Date(+dmy[3], +dmy[2] - 1, +dmy[1]); if (!isNaN(d.getTime())) return d; }
+        // MM/DD/YYYY
+        const mdy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (mdy) { d = new Date(+mdy[3], +mdy[1] - 1, +mdy[2]); if (!isNaN(d.getTime())) return d; }
+        return null;
+    };
+
     const isInDateRange = (dateStr?: string): boolean => {
         if (!activeDateRange) return true;
         if (!dateStr) return false;
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
+        const parsed = parseFlexDate(dateStr);
+        if (!parsed) return false;
         const today = new Date(); today.setHours(0,0,0,0);
-        const target = new Date(d); target.setHours(0,0,0,0);
+        const target = new Date(parsed); target.setHours(0,0,0,0);
         if (activeDateRange === 'Today') return target.getTime() === today.getTime();
         if (activeDateRange === 'Yesterday') {
             const y = new Date(today); y.setDate(today.getDate() - 1);
@@ -183,7 +197,15 @@ const QuickSearch: React.FC = () => {
 
         if (activeFilter === 'Arrears') {
             return searchedTenants
-                .filter(t => t.status === 'Overdue')
+                .filter(t => {
+                    if (t.status !== 'Overdue') return false;
+                    // Compute the ISO due date so isInDateRange can filter by it
+                    const now = new Date();
+                    const dueDay = t.rentDueDate || 5;
+                    let d = new Date(now.getFullYear(), now.getMonth(), dueDay);
+                    if (now.getDate() < dueDay) d = new Date(now.getFullYear(), now.getMonth() - 1, dueDay);
+                    return isInDateRange(d.toISOString().split('T')[0]);
+                })
                 .map(t => {
                     const { days, date } = getDaysOverdue(t.rentDueDate);
                     const lastPay = t.paymentHistory[0]; 
@@ -415,7 +437,7 @@ const QuickSearch: React.FC = () => {
     };
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             <div className="flex justify-between items-center no-print">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Quick Search & Reports</h1>
@@ -429,73 +451,62 @@ const QuickSearch: React.FC = () => {
                 </button>
             </div>
 
-            <div className="flex flex-wrap gap-2 mt-2 no-print">
-                {FILTERS.map(filter => {
-                    const isActive = activeFilter === filter;
-                    return (
-                        <button 
-                            key={filter} 
-                            onClick={() => toggleFilter(filter)}
-                            className={`px-4 py-2 text-sm rounded-full focus:outline-none transition-all duration-200 shadow-sm ${
-                            isActive 
-                                ? 'bg-primary text-white font-bold transform scale-105' 
-                                : 'text-gray-600 bg-white border border-gray-200 hover:bg-gray-50'
-                            }`}
-                        >
-                            {filter}
-                        </button>
-                    );
-                })}
-                {activeDateRange && (
-                    <span className="px-3 py-1.5 text-xs font-bold bg-primary/10 text-primary border border-primary/30 rounded-full flex items-center gap-1">
-                        <span>&#128197;</span>
-                        {activeDateRange.startsWith('Day:')
-                            ? `Date: ${new Date(activeDateRange.slice(4)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                            : activeDateRange === 'Custom' && customDrFrom && customDrTo
-                                ? `${customDrFrom} → ${customDrTo}`
-                                : activeDateRange}
-                    </span>
-                )}
-            </div>
-
-            {activeFilter !== 'All' && (
-                <div className="pt-3 border-t border-gray-200 no-print">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                            Filter <span className="text-primary">{activeFilter}</span> by period:
-                        </span>
-                        {activeDatePeriod && (
-                            <button onClick={clearPeriod} className="ml-auto text-xs text-gray-400 hover:text-red-500 font-bold">✕ Clear Period</button>
-                        )}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {timePeriodButtons.map(btn => (
-                            <button
-                                key={btn.value}
-                                onClick={() => handleTimePeriodSelect(btn.value)}
-                                className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
-                                    activeDatePeriod === btn.value
-                                        ? 'bg-primary text-white border-primary'
-                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 no-print">
+                <div className="flex flex-wrap gap-2">
+                    {FILTERS.map(filter => {
+                        const isActive = activeFilter === filter;
+                        return (
+                            <button 
+                                key={filter} 
+                                onClick={() => toggleFilter(filter)}
+                                className={`px-4 py-2 text-sm rounded-full focus:outline-none transition-all duration-200 shadow-sm ${
+                                isActive 
+                                    ? 'bg-primary text-white font-bold transform scale-105' 
+                                    : 'text-gray-600 bg-white border border-gray-200 hover:bg-gray-50'
                                 }`}
                             >
-                                {btn.label}
+                                {filter}{isActive ? ' ▾' : ''}
                             </button>
-                        ))}
-                    </div>
-                    {activeDatePeriod === 'Custom' && (
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <label className="text-xs font-medium text-gray-600">From:</label>
-                            <input type="date" value={customDrFrom} onChange={e => setCustomDrFrom(e.target.value)} className="p-1.5 border rounded text-sm" />
-                            <label className="text-xs font-medium text-gray-600">To:</label>
-                            <input type="date" value={customDrTo} onChange={e => setCustomDrTo(e.target.value)} className="p-1.5 border rounded text-sm" />
-                            <button onClick={handleCustomDateApply} className="px-4 py-1.5 bg-primary text-white text-sm font-bold rounded hover:bg-primary-dark">Apply</button>
-                        </div>
-                    )}
+                        );
+                    })}
                 </div>
-            )}
 
-            <div className="flex flex-col md:flex-row items-center gap-2 mt-4 no-print">
+                {activeFilter !== 'All' && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                                Filter <span className="text-primary">{activeFilter}</span> by period:
+                            </span>
+                            <button onClick={() => { setActiveFilter('All'); clearPeriod(); setQuery(''); }} className="ml-auto text-xs text-gray-400 hover:text-red-500 font-bold">✕ Close</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {timePeriodButtons.map(btn => (
+                                <button
+                                    key={btn.value}
+                                    onClick={() => handleTimePeriodSelect(btn.value)}
+                                    className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${
+                                        activeDatePeriod === btn.value
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+                        {activeDatePeriod === 'Custom' && (
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <label className="text-xs font-medium text-gray-600">From:</label>
+                                <input type="date" value={customDrFrom} onChange={e => setCustomDrFrom(e.target.value)} className="p-1.5 border rounded text-sm" />
+                                <label className="text-xs font-medium text-gray-600">To:</label>
+                                <input type="date" value={customDrTo} onChange={e => setCustomDrTo(e.target.value)} className="p-1.5 border rounded text-sm" />
+                                <button onClick={handleCustomDateApply} className="px-4 py-1.5 bg-primary text-white text-sm font-bold rounded hover:bg-primary-dark">Apply</button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+            <div className="flex flex-col md:flex-row items-center gap-2 mt-4">
                 <div className="relative flex-grow w-full">
                     <input
                         type="text"
@@ -524,6 +535,7 @@ const QuickSearch: React.FC = () => {
                         </button>
                     </div>
                 )}
+            </div>
             </div>
 
             {/* --- SUMMARY TOTALS --- */}
