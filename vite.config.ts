@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
-          includeAssets: ['favicon.svg'],
+          includeAssets: ['favicon-32.png', 'favicon-16.png', 'pwa-192.png', 'favicon.png', 'logo.jpeg'],
           manifest: {
             name: 'Task-Me Realty',
             short_name: 'Task-Me',
@@ -24,7 +24,9 @@ export default defineConfig(({ mode }) => {
             display: 'standalone',
             start_url: '/',
             icons: [
-              { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+              { src: 'favicon-32.png', sizes: '32x32', type: 'image/png' },
+              { src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+              { src: 'favicon.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
             ],
           },
           workbox: {

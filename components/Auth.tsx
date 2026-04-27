@@ -101,8 +101,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             console.log('[Supabase] parallel: user_roles + profiles', { userId: user.id });
             const [roleResult, profileResult] = await Promise.all([
-                supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
-                supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
+                Promise.resolve(supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle()).catch(() => ({ data: null, error: null })),
+                Promise.resolve(supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle()).catch(() => ({ data: null, error: null })),
             ]);
 
             if ((roleResult as any).data?.role?.name) {
