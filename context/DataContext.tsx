@@ -26,6 +26,10 @@ function _setBatchSettled() {
   _batchSettledListeners.clear();
 }
 
+function _resetBatchSettled() {
+  _globalBatchSettled = false;
+}
+
 function useBatchSettled(): boolean {
   const [settled, setSettled] = useState(_globalBatchSettled);
   useEffect(() => {
@@ -45,6 +49,7 @@ function useSupabaseBackedState<T>(
   const [value, setValue] = useState<T>(emptyValue);
   const queryClient = useQueryClient();
   const batchSettled = useBatchSettled();
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // enabled: batchSettled — individual queries are disabled until the batch RPC
   // has had a chance to populate the cache. If the batch succeeds (the common
@@ -116,7 +121,8 @@ function useSupabaseBackedState<T>(
   const persistAndSetValue: React.Dispatch<React.SetStateAction<T>> = (updater) => {
     setValue((prev) => {
       const next = typeof updater === 'function' ? (updater as any)(prev) : (updater as any);
-      upsertMutation.mutate(next);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => { upsertMutation.mutate(next); }, 800);
       return next;
     });
   };
@@ -134,18 +140,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // dual-writes to public.tenants (via app.upsert_tenants_bulk) so that
     // backend RPCs like check_phone_unique and record_c2b_payment's tenant
     // resolver have a normalized source of truth. See migration 0029.
+    const _tenantsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedTenants = React.useRef<TenantProfile[]>([]);
     const setTenants: React.Dispatch<React.SetStateAction<TenantProfile[]>> = React.useCallback((updater) => {
       _rawSetTenants(prev => {
         const next = typeof updater === 'function' ? (updater as (p: TenantProfile[]) => TenantProfile[])(prev) : updater;
         if (Array.isArray(next)) {
-          (async () => {
-            try {
-              const { error } = await supabase.schema('app').rpc('upsert_tenants_bulk', { p_tenants: next as unknown as object });
-              if (error) console.warn('[tenants] upsert_tenants_bulk failed:', error.message);
-            } catch (e) {
-              console.warn('[tenants] upsert_tenants_bulk error:', (e as Error)?.message);
-            }
-          })();
+          const prevById = new Map<string, TenantProfile>(prev.map(t => [t.id, t]));
+          const changed = next.filter(t => {
+            const p = prevById.get(t.id);
+            return !p || JSON.stringify(p) !== JSON.stringify(t);
+          });
+          if (changed.length > 0) {
+            _pendingChangedTenants.current = [
+              ..._pendingChangedTenants.current.filter(t => !changed.some((c: TenantProfile) => c.id === t.id)),
+              ...changed,
+            ];
+            if (_tenantsUpsertTimer.current) clearTimeout(_tenantsUpsertTimer.current);
+            _tenantsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedTenants.current;
+              _pendingChangedTenants.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_tenants_bulk', { p_tenants: toWrite as unknown as object });
+                if (error) console.warn('[tenants] upsert_tenants_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[tenants] upsert_tenants_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
         }
         return next;
       });
@@ -207,6 +229,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const queryClient = useQueryClient();
 
+    // ── Session gate — prevents batch/individual queries before login ─────────
+    const [hasSession, setHasSession] = React.useState(false);
+    React.useEffect(() => {
+      getSupabaseSession().then(s => setHasSession(!!s));
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+        setHasSession(!!session);
+        if (!session) _resetBatchSettled();
+      });
+      return () => subscription.unsubscribe();
+    }, []);
+
     // ── Master batch loader ─────────────────────────────────────────────────
     // Single RPC replaces 38+ individual Supabase queries on startup.
     // Results are distributed to individual query caches via setQueryData,
@@ -218,6 +251,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         queryKey: ['all_app_state'],
         staleTime: 5 * 60 * 1000,
         retry: 2,
+        enabled: hasSession,
         queryFn: async () => {
           const session = await getSupabaseSession();
           if (!session) throw new Error('SESSION_EXPIRED');
