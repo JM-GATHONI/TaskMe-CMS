@@ -1,6 +1,7 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -9,7 +10,49 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
-      plugins: [react()],
+      plugins: [
+        react(),
+        VitePWA({
+          registerType: 'autoUpdate',
+          includeAssets: ['favicon.svg'],
+          manifest: {
+            name: 'Task-Me Realty',
+            short_name: 'Task-Me',
+            description: 'Property & Tenant Management System',
+            theme_color: '#9D1F15',
+            background_color: '#F8F9FA',
+            display: 'standalone',
+            start_url: '/',
+            icons: [
+              { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+            ],
+          },
+          workbox: {
+            // Cache all Vite-generated assets (JS chunks, CSS) with CacheFirst — they have content-hash names so they never go stale
+            globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+            runtimeCaching: [
+              {
+                // Google Fonts stylesheets
+                urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+                handler: 'CacheFirst',
+                options: { cacheName: 'google-fonts-cache', expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+              },
+              {
+                // Google Fonts files
+                urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+                handler: 'CacheFirst',
+                options: { cacheName: 'gstatic-fonts-cache', expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+              },
+              {
+                // Supabase API — NetworkFirst so data is always fresh; falls back to cache when offline
+                urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+                handler: 'NetworkFirst',
+                options: { cacheName: 'supabase-api-cache', networkTimeoutSeconds: 10, expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 } },
+              },
+            ],
+          },
+        }),
+      ],
       build: {
         rollupOptions: {
           output: {
