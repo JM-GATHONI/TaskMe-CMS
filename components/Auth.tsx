@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import Icon from './Icon';
 import { User, StaffProfile, TenantProfile } from '../types';
@@ -30,6 +30,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const [showPassword, setShowPassword] = useState(false);
     const [loginAttempts, setLoginAttempts] = useState(0);
     const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+
+    // Prewarm Supabase TCP+TLS connection the moment the login page mounts,
+    // before the user types anything — eliminates connection setup overhead from signInWithPassword.
+    useEffect(() => {
+        supabase.auth.getSession().catch(() => {});
+    }, []);
 
     // Form States
     const [loginData, setLoginData] = useState({ identifier: '', password: '' });
