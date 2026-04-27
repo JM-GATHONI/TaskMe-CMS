@@ -339,7 +339,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const byId = new Map<string, TenantProfile>(prev.map(t => [t.id, t]));
             for (const t of rows) {
               const existing = byId.get(t.id);
-              byId.set(t.id, existing ? { ...existing, ...t } : t);
+              if (existing) {
+                // Merge: public.tenants wins for server-authoritative fields
+                // (status, activationDate, phone, arrears set by payment webhooks).
+                // Allocation fields (propertyId, unitId, unit, propertyName) stay
+                // from the blob — they are managed by the app layer (handleMoveSubmit,
+                // handleSave) and public.tenants may lag if upsert_tenants_bulk
+                // hasn't fired yet, which previously caused moved tenants to revert
+                // to their old unit after every page refresh.
+                byId.set(t.id, {
+                  ...existing,
+                  ...t,
+                  propertyId:   existing.propertyId,
+                  unitId:       existing.unitId,
+                  unit:         existing.unit,
+                  propertyName: existing.propertyName,
+                });
+              } else {
+                byId.set(t.id, t);
+              }
             }
             return Array.from(byId.values());
           });
