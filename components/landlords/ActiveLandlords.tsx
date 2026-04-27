@@ -452,27 +452,32 @@ export const LandlordDetailView: React.FC<{
 
     const myTenants = useMemo(() => tenants.filter(t => myProperties.some(p => p.id === t.propertyId)), [tenants, myProperties]);
 
-    // Self-heal: keep unit.status in sync with actual tenant occupancy.
-    // If a unit says 'Vacant' but has an active tenant, mark it 'Occupied'; and vice-versa.
+    // Self-heal: if a unit says 'Vacant' but has an active tenant, correct it to 'Occupied'.
+    // ONE direction only — Vacant→Occupied. Never auto-flip Occupied→Vacant: that must
+    // only happen via explicit offboarding/deletion/reallocation. The reverse direction
+    // caused "temporary vacancy" because it fired during data hydration when myTenants
+    // was still empty (tenants blob hadn't settled yet), wrongly marking every Occupied
+    // unit as Vacant until the next render cycle corrected it.
+    // Guard: skip entirely if properties haven't loaded yet (allLandlordProperties empty).
     const OCCUPYING_STATUSES = ['Active', 'Pending', 'PendingAllocation', 'PendingPayment', 'Overdue', 'Notice'];
     useEffect(() => {
+        if (allLandlordProperties.length === 0) return;
         myProperties.forEach(prop => {
             const staleUnits = prop.units.filter(u => {
                 const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
-                return (hasTenant && u.status === 'Vacant') || (!hasTenant && u.status === 'Occupied');
+                return hasTenant && u.status === 'Vacant';
             });
             if (staleUnits.length > 0) {
                 const updatedUnits = prop.units.map(u => {
                     const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
                     if (hasTenant && u.status === 'Vacant') return { ...u, status: 'Occupied' as const };
-                    if (!hasTenant && u.status === 'Occupied') return { ...u, status: 'Vacant' as const };
                     return u;
                 });
                 updateProperty(prop.id, { units: updatedUnits });
             }
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [myTenants, myProperties]);
+    }, [myTenants, myProperties, allLandlordProperties.length]);
 
     const myTasks = useMemo(() => tasks.filter(t => myProperties.some(p => p.name === t.property)), [tasks, myProperties]);
    
