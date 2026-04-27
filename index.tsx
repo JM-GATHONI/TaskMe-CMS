@@ -3,8 +3,8 @@ import './utils/chartSetup';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './lib/queryClient';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { queryClient, localStoragePersister } from './lib/queryClient';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,8 +14,15 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: localStoragePersister,
+        maxAge: 24 * 60 * 60 * 1000,
+        buster: 'v11',
+      }}
+    >
       <App />
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   </React.StrictMode>
 );
