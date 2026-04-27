@@ -88,23 +88,24 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             const user = data.user;
 
-            // Resolve role from app.user_roles -> app.roles (falls back to existing metadata / default)
+            // Parallel fetch: user_roles + public.profiles — both only need user.id, no dependency on each other
             let resolvedRole: StaffProfile['role'] = ((user.user_metadata as any)?.role ?? 'Super Admin') as any;
-            try {
-                console.log('[Supabase] user_roles lookup', { userId: user.id });
-                const { data: roleRow, error: roleErr } = await supabase
-                    .schema('app')
-                    .from('user_roles')
-                    .select('role:roles(name)')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
-                if (!roleErr && roleRow?.role?.name) {
-                    resolvedRole = roleRow.role.name as any;
-                }
-            } catch (e) {
-                // ignore: role resolution is best-effort
-            }
+            let profFirst: string | null = null;
+            let profFull: string | null = null;
 
+            console.log('[Supabase] parallel: user_roles + profiles', { userId: user.id });
+            const [roleResult, profileResult] = await Promise.all([
+                supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
+                supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
+            ]);
+
+            if ((roleResult as any).data?.role?.name) {
+                resolvedRole = (roleResult as any).data.role.name as any;
+            }
+            profFirst = ((profileResult as any).data as any)?.first_name?.trim?.() || null;
+            profFull = ((profileResult as any).data as any)?.full_name?.trim?.() || null;
+
+            // staff_profiles — requires resolved role, so runs after the parallel pair
             let staffRow: any = null;
             if (resolvedRole !== 'Tenant' && resolvedRole !== 'Caretaker') {
                 console.log('[Supabase] staff_profiles lookup', { userId: user.id });
@@ -114,38 +115,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     .select('id,name,role,email,phone,branch,status')
                     .eq('id', user.id)
                     .limit(1);
-
-                if (staffError) {
-                    console.warn('Error loading staff profile', staffError);
-                }
-
-                staffRow = staffRows && staffRows.length > 0 ? staffRows[0] : null;
+                if (staffError) console.warn('Error loading staff profile', staffError);
+                staffRow = staffRows?.[0] ?? null;
             }
 
             const persistedStaff = staff.find(s => s.id === user.id);
-
             const pickFirstWord = (s: string) => String(s ?? '').trim().split(/\s+/).filter(Boolean)[0] || '';
 
-            // Resolve display name from public.profiles (first_name/full_name), then staff, then email
+            // Resolve display name
             let displayName: string = (user.email ?? 'User') as string;
-            let profFirst: string | null = null;
-            let profFull: string | null = null;
-            try {
-                const { data: prof } = await supabase
-                    .from('profiles')
-                    .select('first_name, full_name')
-                    .eq('id', user.id)
-                    .maybeSingle();
-                const first = (prof as any)?.first_name?.trim?.();
-                const full = (prof as any)?.full_name?.trim?.();
-                profFirst = first || null;
-                profFull = full || null;
-                if (first) displayName = first;
-                else if (full) displayName = full;
-                else displayName = (staffRow?.name ?? user.email ?? 'User') as string;
-            } catch (_) {
-                displayName = (staffRow?.name ?? user.email ?? 'User') as string;
-            }
+            if (profFirst) displayName = profFirst;
+            else if (profFull) displayName = profFull;
+            else displayName = (staffRow?.name ?? user.email ?? 'User') as string;
 
             const fullNameForRecord: string = String(
                 profFull || staffRow?.name || (user.user_metadata as any)?.full_name || user.email || 'User',
@@ -154,8 +135,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             // Permanent UX: always greet by first name.
             displayName = pickFirstWord(displayName) || (user.email ? pickFirstWord(user.email.split('@')[0]) : '') || 'User';
 
-            // Hardening: ensure public.profiles has a stable first_name/full_name for consistent welcome headers.
-            // Never store an email as first_name/full_name.
+            // profiles UPSERT — fire non-blocking; does not affect login outcome so we don't await
             try {
                 const looksLikeEmail = (s: string) => s.includes('@');
                 const candidateFull = String(staffRow?.name ?? (user.user_metadata as any)?.full_name ?? displayName ?? '').trim();
@@ -177,10 +157,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         email: user.email ?? null,
                     };
                     if (idNumRaw) row.id_number = idNumRaw;
-                    await supabase.from('profiles').upsert(row, { onConflict: 'id' });
+                    supabase.from('profiles').upsert(row, { onConflict: 'id' }).catch(() => {});
                 }
             } catch {
-                // non-blocking
+                // non-blocking — ignore
             }
 
             // Build the right "currentUser" object per role (portals rely on role-specific fields).
