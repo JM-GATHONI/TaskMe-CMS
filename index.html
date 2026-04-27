@@ -6,34 +6,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Task-Me</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              'primary': {
-                'DEFAULT': '#9D1F15', // Brand Primary
-                'dark': '#7A1810',
-                'light': '#C43E32'
-              },
-              'secondary': {
-                'DEFAULT': '#F39C2A', // Brand Secondary
-                'dark': '#D6861E'
-              },
-              'light-bg': '#F8F9FA'
-            },
-            zIndex: {
-              'header': '50',
-              'sidebar': '40',
-              'modal': '100',
-            }
-          }
-        }
-      }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Preconnect: open TCP+TLS to external origins early, before JS loads -->
+    <link rel="preconnect" href="https://xdaznrwcitsuwlvwxojp.supabase.co" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Inter font — non-blocking: loaded async, fallback font shown until ready -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
     <style>
       :root {
         --header-height: 112px; /* 64px top + 48px nav */
@@ -163,21 +145,9 @@
         background-color: #D6861E; /* Secondary Dark */
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react-chartjs-2": "https://aistudiocdn.com/react-chartjs-2@^5.3.1",
-    "chart.js": "https://aistudiocdn.com/chart.js@^4.5.1"
-  }
-}
-</script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
-  <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>
