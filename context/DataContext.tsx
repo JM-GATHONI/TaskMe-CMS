@@ -249,7 +249,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: allAppState, isLoading: batchLoading, isSuccess: batchSuccess, isError: batchError } =
       useQuery<Record<string, unknown>>({
         queryKey: ['all_app_state'],
-        staleTime: 5 * 60 * 1000,
+        staleTime: Infinity,
+        gcTime: 60 * 60 * 1000,
         retry: 2,
         enabled: hasSession,
         queryFn: async () => {
@@ -322,7 +323,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // the dual-write during a server→client hydration pass.
     const tenantsHydratedRef = React.useRef(false);
     useEffect(() => {
-      if (!batchSuccess || tenantsHydratedRef.current) return;
+      if (!batchSuccess || !hasSession || tenantsHydratedRef.current) return;
       tenantsHydratedRef.current = true;
       let alive = true;
       (async () => {
