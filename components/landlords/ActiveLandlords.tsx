@@ -94,7 +94,7 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
         >
             <div className="flex justify-between items-start">
                 <span className="font-bold text-lg">{unit.unitNumber}</span>
-                <span className="opacity-70 bg-white/20 px-1.5 py-0.5 rounded">{unit.bedrooms}BR</span>
+                <span className="opacity-70 bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{unit.unitType || `${unit.bedrooms}BR`}</span>
             </div>
            
             <div className="mt-1">

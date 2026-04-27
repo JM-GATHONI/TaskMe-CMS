@@ -19,16 +19,30 @@ const ChartContainer: React.FC<{ type: 'line' | 'bar'; data: any; options?: any;
     );
 };
 
+const UNIT_TYPES = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
+const BEDROOM_UNIT_TYPES = new Set(['One Bedroom', 'Two Bedrooms', 'Three Bedrooms']);
+
 // Add Unit Modal for Field Ops
 const AddUnitModal: React.FC<{ property: Property; onClose: () => void; onAdd: (unit: Partial<Unit>) => void }> = ({ property, onClose, onAdd }) => {
-    const [formData, setFormData] = useState({ unitNumber: '', bedrooms: '', bathrooms: '', floor: '', rent: property.defaultMonthlyRent ? String(property.defaultMonthlyRent) : '' });
+    const [unitType, setUnitType] = useState('');
+    const [formData, setFormData] = useState({ unitNumber: '', bedrooms: '0', bathrooms: '0', floor: '', rent: property.defaultMonthlyRent ? String(property.defaultMonthlyRent) : '' });
+
+    const isBedroomType = BEDROOM_UNIT_TYPES.has(unitType);
+
+    const handleTypeChange = (type: string) => {
+        setUnitType(type);
+        const bc = type === 'One Bedroom' ? '1' : type === 'Two Bedrooms' ? '2' : type === 'Three Bedrooms' ? '3' : '0';
+        setFormData(p => ({ ...p, bedrooms: bc, bathrooms: bc !== '0' ? '1' : '0' }));
+    };
 
     const handleSubmit = () => {
         if(!formData.unitNumber) return alert("Unit Number Required");
+        if(!unitType) return alert("Unit Type Required");
         onAdd({
             unitNumber: formData.unitNumber,
-            bedrooms: parseInt(formData.bedrooms) || 1,
-            bathrooms: parseInt(formData.bathrooms) || 1,
+            unitType,
+            bedrooms: parseInt(formData.bedrooms) || 0,
+            bathrooms: parseInt(formData.bathrooms) || 0,
             floor: parseInt(formData.floor) || 0,
             rent: parseInt(formData.rent) || property.defaultMonthlyRent || 0
         });
@@ -41,6 +55,13 @@ const AddUnitModal: React.FC<{ property: Property; onClose: () => void; onAdd: (
                 <h3 className="text-lg font-bold mb-4">Add Unit to {property.name}</h3>
                 <div className="space-y-3">
                     <input placeholder="Unit Number (e.g. A1)" value={formData.unitNumber} onChange={e => setFormData({...formData, unitNumber: e.target.value})} className="w-full p-2 border rounded"/>
+                    <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Unit Type</label>
+                        <select value={unitType} onChange={e => handleTypeChange(e.target.value)} className="w-full p-2 border rounded bg-white">
+                            <option value="">Select Type</option>
+                            {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                          <div className="flex flex-col">
                             <label className="text-xs text-gray-500 mb-1">Floor</label>
@@ -51,16 +72,18 @@ const AddUnitModal: React.FC<{ property: Property; onClose: () => void; onAdd: (
                             <input type="number" value={formData.rent} onChange={e => setFormData({...formData, rent: e.target.value})} placeholder="0" className="p-2 border rounded"/>
                          </div>
                     </div>
-                     <div className="grid grid-cols-2 gap-3">
-                         <div className="flex flex-col">
-                            <label className="text-xs text-gray-500 mb-1">Bedrooms</label>
-                            <input type="number" value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} placeholder="1" className="p-2 border rounded"/>
-                         </div>
-                         <div className="flex flex-col">
-                            <label className="text-xs text-gray-500 mb-1">Bathrooms</label>
-                            <input type="number" value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: e.target.value})} placeholder="1" className="p-2 border rounded"/>
-                         </div>
-                    </div>
+                    {isBedroomType && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="flex flex-col">
+                                <label className="text-xs text-gray-500 mb-1">Bedrooms</label>
+                                <input type="number" value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} className="p-2 border rounded"/>
+                            </div>
+                            <div className="flex flex-col">
+                                <label className="text-xs text-gray-500 mb-1">Bathrooms</label>
+                                <input type="number" value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: e.target.value})} className="p-2 border rounded"/>
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="mt-4 flex justify-end gap-2">
                     <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded text-sm font-bold">Cancel</button>
@@ -200,7 +223,7 @@ const UnitBox: React.FC<{
         >
             <div className="flex justify-between items-start">
                 <span className="font-bold text-lg">{unit.unitNumber}</span>
-                <span className="opacity-70 bg-white/20 px-1.5 py-0.5 rounded">{unit.bedrooms}BR</span>
+                <span className="opacity-70 bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{unit.unitType || `${unit.bedrooms}BR`}</span>
             </div>
            
             <div className="mt-1">

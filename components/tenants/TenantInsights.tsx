@@ -68,7 +68,7 @@ const TenantInsights: React.FC = () => {
             // Derive type from unit number or mock it if specific type field missing in tenant
             // Using a simplified heuristic: "1BR", "2BR" etc. based on properties context
             const unitProp = properties.find(p => p.id === t.propertyId)?.units.find(u => u.id === t.unitId);
-            const type = unitProp ? `${unitProp.bedrooms} Bedroom` : 'Unknown';
+            const type = unitProp ? (unitProp.unitType || (unitProp.bedrooms > 0 ? `${unitProp.bedrooms} Bedroom` : 'Studio')) : 'Unknown';
             typeCounts[type] = (typeCounts[type] || 0) + 1;
         });
         return typeCounts;

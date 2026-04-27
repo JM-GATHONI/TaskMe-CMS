@@ -6,6 +6,7 @@ import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 
 const UNIT_TYPES: string[] = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
+const BEDROOM_UNIT_TYPES = new Set(['One Bedroom', 'Two Bedrooms', 'Three Bedrooms']);
 
 const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; canEdit: boolean }> = ({ property, onEdit, onAddUnit, canEdit }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -57,7 +58,7 @@ const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => 
                                 <div>
                                     <span className="font-semibold text-gray-700">{unit.unitNumber}</span>
                                     <span className="text-gray-400 mx-2">|</span>
-                                    <span className="text-gray-500">{unit.bedrooms}BR / {unit.bathrooms}BA</span>
+                                    <span className="text-gray-500">{unit.unitType || `${unit.bedrooms}BR / ${unit.bathrooms}BA`}</span>
                                 </div>
                                 <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${unitStatusClasses[unit.status]}`}>{unit.status}</span>
                             </div>
@@ -877,10 +878,20 @@ const PropertyForm: React.FC<{
 };
 
 const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: (propertyId: string, unit: Unit) => void; }> = ({ property, onClose, onAddUnit }) => {
-    const [unitData, setUnitData] = useState<Partial<Unit>>({ bedrooms: 1, bathrooms: 1, status: 'Vacant' });
+    const [unitData, setUnitData] = useState<Partial<Unit>>({ bedrooms: 0, bathrooms: 1, status: 'Vacant' });
+    const [selectedType, setSelectedType] = useState('');
+
+    const isBedroomType = BEDROOM_UNIT_TYPES.has(selectedType);
+
+    const handleTypeChange = (type: string) => {
+        setSelectedType(type);
+        const bedroomCount = type === 'One Bedroom' ? 1 : type === 'Two Bedrooms' ? 2 : type === 'Three Bedrooms' ? 3 : 0;
+        setUnitData(p => ({ ...p, unitType: type, bedrooms: bedroomCount, bathrooms: bedroomCount > 0 ? 1 : 0 }));
+    };
 
     const handleAdd = () => {
         if (!unitData.unitNumber) return alert('Unit Number is required');
+        if (!selectedType) return alert('Unit Type is required');
         onAddUnit(property.id, { id: `u-${Date.now()}`, ...unitData } as Unit);
     };
 
@@ -890,8 +901,25 @@ const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: 
                 <h2 className="text-xl font-bold mb-4">Add Unit</h2>
                 <div className="space-y-3">
                     <input onChange={e => setUnitData(p => ({...p, unitNumber: e.target.value}))} placeholder="Unit Number (e.g. A1)" className="w-full p-2 border rounded"/>
-                    <input type="number" onChange={e => setUnitData(p => ({...p, bedrooms: parseInt(e.target.value)}))} placeholder="Bedrooms" className="w-full p-2 border rounded"/>
-                    <input type="number" onChange={e => setUnitData(p => ({...p, bathrooms: parseInt(e.target.value)}))} placeholder="Bathrooms" className="w-full p-2 border rounded"/>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Unit Type</label>
+                        <select value={selectedType} onChange={e => handleTypeChange(e.target.value)} className="w-full p-2 border rounded bg-white">
+                            <option value="">Select Type</option>
+                            {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                    {isBedroomType && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">Bedrooms</label>
+                                <input type="number" value={unitData.bedrooms ?? ''} onChange={e => setUnitData(p => ({...p, bedrooms: parseInt(e.target.value) || 0}))} className="w-full p-2 border rounded"/>
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">Bathrooms</label>
+                                <input type="number" value={unitData.bathrooms ?? ''} onChange={e => setUnitData(p => ({...p, bathrooms: parseInt(e.target.value) || 0}))} className="w-full p-2 border rounded"/>
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="mt-6 flex justify-end space-x-2">
                     <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded text-gray-700">Cancel</button>
