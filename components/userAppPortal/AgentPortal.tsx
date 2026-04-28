@@ -565,7 +565,7 @@ const AgentPortal: React.FC = () => {
                                 </div>
                                 <div>
                                     <h4 className="font-bold text-gray-800">{l.name}</h4>
-                                    <p className="text-xs text-gray-500">{l.phone}</p>
+                                    <p className="text-xs text-gray-400">{myProperties.filter(p => p.landlordId === l.id).length} propert{myProperties.filter(p => p.landlordId === l.id).length === 1 ? 'y' : 'ies'}</p>
                                 </div>
                             </div>
                         ))}
