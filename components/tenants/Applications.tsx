@@ -1400,9 +1400,10 @@ const ProfileHubModal: React.FC<{
     onMove?: () => void;
     onDelete?: () => void;
     onApprove?: () => void;
+    onReverseAllocation?: () => void;
     isApproved?: boolean;
     canApprove?: boolean;
-}> = ({ record, onClose, onManualPay, onStkPay, onEdit, onMove, onDelete, onApprove, isApproved = false, canApprove = false }) => {
+}> = ({ record, onClose, onManualPay, onStkPay, onEdit, onMove, onDelete, onApprove, onReverseAllocation, isApproved = false, canApprove = false }) => {
     const isApp = record.recordType === 'Application';
     const payDisabled = isApp && !isApproved;
     return (
@@ -1469,6 +1470,17 @@ const ProfileHubModal: React.FC<{
                         </button>
                     )}
                 </div>
+                {onReverseAllocation && (
+                    <div className="mt-3 pt-3 border-t border-dashed border-orange-200">
+                        <button
+                            type="button"
+                            onClick={onReverseAllocation}
+                            className="w-full py-2 bg-orange-50 text-orange-700 border border-orange-200 rounded font-bold text-xs hover:bg-orange-100 transition-colors"
+                        >
+                            Reverse Allocation
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -1590,26 +1602,65 @@ const Applications: React.FC = () => {
         );
     };
 
+    const handleReverseAllocation = (record: UnifiedRecord) => {
+        if (record.recordType !== 'Tenant' || !record.id) return;
+        if (!record.propertyId && !record.unitId) {
+            alert('This tenant has no current allocation to reverse.');
+            return;
+        }
+        if (!confirm(`Reverse allocation for ${record.name}? The unit will be marked Vacant and the tenant will be set to Pending Allocation.`)) return;
+        if (record.propertyId) {
+            const prop = properties.find(p => p.id === record.propertyId);
+            if (prop && record.unitId) {
+                const updatedUnits = prop.units.map(u => u.id === record.unitId ? { ...u, status: 'Vacant' as const } : u);
+                updateProperty(prop.id, { units: updatedUnits as Unit[] });
+            }
+        }
+        const reverseNote = `Allocation to ${record.propertyName || ''} - ${record.unit || ''} reversed by Super Admin on ${new Date().toLocaleDateString()}`;
+        updateTenant(record.id, {
+            propertyId: undefined,
+            unitId: undefined,
+            unit: '',
+            propertyName: '',
+            status: 'PendingAllocation',
+            notes: [...((record as TenantProfile).notes || []), reverseNote],
+        } as any);
+        alert(`Allocation reversed. ${record.name} is now unallocated.`);
+    };
+
     const handleMoveClick = (tenant: TenantProfile) => {
         setMoveTenant(tenant);
     };
 
     const handleMoveSubmit = (propertyId: string, unitId: string, propertyName: string, unitName: string) => {
         if (moveTenant) {
-            // 1. Vacate old unit
-            if (moveTenant.propertyId) {
-                const oldProp = properties.find(p => p.id === moveTenant.propertyId);
-                if (oldProp) {
-                     const updatedUnits = oldProp.units.map(u => u.id === moveTenant.unitId ? { ...u, status: 'Vacant' } : u);
-                     updateProperty(oldProp.id, { units: updatedUnits as Unit[] });
-                }
-            }
-            
-            // 2. Occupy new unit
+            const isSameProp = moveTenant.propertyId === propertyId;
             const newProp = properties.find(p => p.id === propertyId);
-            if (newProp) {
-                const updatedUnits = newProp.units.map(u => u.id === unitId ? { ...u, status: 'Occupied' } : u);
-                updateProperty(propertyId, { units: updatedUnits as Unit[] });
+            if (isSameProp) {
+                // Same property — vacate old + occupy new in one atomic update to avoid
+                // stale-closure conflict when two updateProperty calls are batched.
+                const prop = properties.find(p => p.id === propertyId);
+                if (prop) {
+                    const updatedUnits = prop.units.map(u => {
+                        if (u.id === moveTenant.unitId) return { ...u, status: 'Vacant' as const };
+                        if (u.id === unitId) return { ...u, status: 'Occupied' as const };
+                        return u;
+                    });
+                    updateProperty(propertyId, { units: updatedUnits as Unit[] });
+                }
+            } else {
+                // Different properties — safe to update separately.
+                if (moveTenant.propertyId) {
+                    const oldProp = properties.find(p => p.id === moveTenant.propertyId);
+                    if (oldProp) {
+                        const updatedUnits = oldProp.units.map(u => u.id === moveTenant.unitId ? { ...u, status: 'Vacant' as const } : u);
+                        updateProperty(oldProp.id, { units: updatedUnits as Unit[] });
+                    }
+                }
+                if (newProp) {
+                    const updatedUnits = newProp.units.map(u => u.id === unitId ? { ...u, status: 'Occupied' as const } : u);
+                    updateProperty(propertyId, { units: updatedUnits as Unit[] });
+                }
             }
 
             const targetUnit = newProp?.units.find(u => u.id === unitId);
@@ -1663,19 +1714,30 @@ const Applications: React.FC = () => {
 
             // Check for Property/Unit Change (Reallocation) via Edit Modal
             if (oldRecord && (oldRecord.propertyId !== data.propertyId || oldRecord.unitId !== data.unitId)) {
-                // 1. Vacate Old Unit
-                if (oldRecord.propertyId && oldRecord.unitId) {
-                    const oldProp = properties.find(p => p.id === oldRecord.propertyId);
-                    if (oldProp) {
-                        const updatedUnits = oldProp.units.map(u => u.id === oldRecord.unitId ? { ...u, status: 'Vacant' } : u);
-                        updateProperty(oldProp.id, { units: updatedUnits as Unit[] });
+                const isSamePropEdit = oldRecord.propertyId === data.propertyId;
+                if (isSamePropEdit && oldRecord.propertyId) {
+                    const prop = properties.find(p => p.id === oldRecord.propertyId);
+                    if (prop) {
+                        const updatedUnits = prop.units.map(u => {
+                            if (u.id === oldRecord.unitId) return { ...u, status: 'Vacant' as const };
+                            if (u.id === data.unitId) return { ...u, status: 'Occupied' as const };
+                            return u;
+                        });
+                        updateProperty(prop.id, { units: updatedUnits as Unit[] });
                     }
-                }
-                // 2. Occupy New Unit
-                const newProp = properties.find(p => p.id === data.propertyId);
-                if (newProp) {
-                    const updatedUnits = newProp.units.map(u => u.id === data.unitId ? { ...u, status: 'Occupied' } : u);
-                    updateProperty(newProp.id, { units: updatedUnits as Unit[] });
+                } else {
+                    if (oldRecord.propertyId && oldRecord.unitId) {
+                        const oldProp = properties.find(p => p.id === oldRecord.propertyId);
+                        if (oldProp) {
+                            const updatedUnits = oldProp.units.map(u => u.id === oldRecord.unitId ? { ...u, status: 'Vacant' as const } : u);
+                            updateProperty(oldProp.id, { units: updatedUnits as Unit[] });
+                        }
+                    }
+                    const newProp = properties.find(p => p.id === data.propertyId);
+                    if (newProp) {
+                        const updatedUnits = newProp.units.map(u => u.id === data.unitId ? { ...u, status: 'Occupied' as const } : u);
+                        updateProperty(newProp.id, { units: updatedUnits as Unit[] });
+                    }
                 }
             }
 
@@ -2260,6 +2322,11 @@ const Applications: React.FC = () => {
                     onApprove={canApprove ? () => handleApproveApplication(profileHubRecord) : undefined}
                     isApproved={profileHubRecord.recordType === 'Application' ? String((profileHubRecord as any).status ?? '') === 'Approved' : true}
                     canApprove={canApprove && profileHubRecord.recordType === 'Application' ? !!profileHubRecord.propertyId && !!profileHubRecord.unitId : false}
+                    onReverseAllocation={
+                        isSuperAdmin && profileHubRecord.recordType === 'Tenant' && !!profileHubRecord.propertyId && !!profileHubRecord.unitId
+                            ? () => { setProfileHubRecord(null); handleReverseAllocation(profileHubRecord); }
+                            : undefined
+                    }
                 />
             )}
             

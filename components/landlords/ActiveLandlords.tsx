@@ -452,25 +452,28 @@ export const LandlordDetailView: React.FC<{
 
     const myTenants = useMemo(() => tenants.filter(t => myProperties.some(p => p.id === t.propertyId)), [tenants, myProperties]);
 
-    // Self-heal: if a unit says 'Vacant' but has an active tenant, correct it to 'Occupied'.
-    // ONE direction only — Vacant→Occupied. Never auto-flip Occupied→Vacant: that must
-    // only happen via explicit offboarding/deletion/reallocation. The reverse direction
-    // caused "temporary vacancy" because it fired during data hydration when myTenants
-    // was still empty (tenants blob hadn't settled yet), wrongly marking every Occupied
-    // unit as Vacant until the next render cycle corrected it.
+    // Self-heal: correct mismatches between unit.status and actual tenant occupancy.
+    // Vacant→Occupied: fires whenever a tenant exists for a unit marked Vacant.
+    // Occupied→Vacant: fires only when tenants data has settled (myTenants.length > 0)
+    //   to prevent the hydration-race where the tenants blob is briefly empty on load,
+    //   which previously wrongly marked every Occupied unit as Vacant.
     // Guard: skip entirely if properties haven't loaded yet (allLandlordProperties empty).
     const OCCUPYING_STATUSES = ['Active', 'Pending', 'PendingAllocation', 'PendingPayment', 'Overdue', 'Notice'];
     useEffect(() => {
         if (allLandlordProperties.length === 0) return;
+        const tenantsSettled = myTenants.length > 0;
         myProperties.forEach(prop => {
             const staleUnits = prop.units.filter(u => {
                 const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
-                return hasTenant && u.status === 'Vacant';
+                if (hasTenant && u.status === 'Vacant') return true;
+                if (!hasTenant && u.status === 'Occupied' && tenantsSettled) return true;
+                return false;
             });
             if (staleUnits.length > 0) {
                 const updatedUnits = prop.units.map(u => {
                     const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
                     if (hasTenant && u.status === 'Vacant') return { ...u, status: 'Occupied' as const };
+                    if (!hasTenant && u.status === 'Occupied' && tenantsSettled) return { ...u, status: 'Vacant' as const };
                     return u;
                 });
                 updateProperty(prop.id, { units: updatedUnits });
