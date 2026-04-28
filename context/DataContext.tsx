@@ -431,20 +431,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // ── Supabase Realtime: Cross-tab / cross-session auto-sync ───────────────
     // Watches the four most-shared app_state keys. When another tab or device
     // writes a change (after the 800 ms debounce), the incoming blob is merged
-    // into local state so every open session stays consistent without a refresh.
-    // Merge strategy: replace by id — local unsaved edits take precedence because
-    // the incoming array only arrives after the DB write, which means local state
-    // is already at least as fresh. We therefore only apply entries whose id is
-    // absent locally (new records from the other session).
+    // into the React Query cache via setQueryData. The cache update triggers the
+    // useEffect inside useSupabaseBackedState which calls the raw React setState
+    // (no DB write). This avoids the feedback loop where calling persistAndSetValue
+    // would schedule another DB write, generating another Realtime event, ad infinitum.
     useEffect(() => {
-        const keysToSetters: [string, string, (fn: (prev: any[]) => any[]) => void][] = [
-            ['tm_tenants_v11',      'realtime-tenants',       setTenants as any],
-            ['tm_properties_v11',   'realtime-properties',    setProperties as any],
-            ['tm_applications_v11', 'realtime-applications',  setApplications as any],
-            ['tm_notifications_v11','realtime-notifications', setNotifications as any],
+        const keys: [string, string][] = [
+            ['tm_tenants_v11',       'realtime-tenants'],
+            ['tm_properties_v11',    'realtime-properties'],
+            ['tm_applications_v11',  'realtime-applications'],
+            ['tm_notifications_v11', 'realtime-notifications'],
         ];
 
-        const channels = keysToSetters.map(([key, channelName, setter]) =>
+        const channels = keys.map(([key, channelName]) =>
             supabase
                 .channel(channelName)
                 .on(
@@ -453,13 +452,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     (payload) => {
                         const incoming = payload.new?.value;
                         if (!Array.isArray(incoming)) return;
-                        setter((prev: any[]) => {
-                            const localIds = new Set(prev.map((r: any) => r.id));
+                        // Update the query cache only — no DB write scheduled.
+                        queryClient.setQueryData<any[]>(['app_state', key], (prev) => {
+                            const current = prev ?? [];
+                            const localIds = new Set(current.map((r: any) => r.id));
                             const newEntries = incoming.filter((r: any) => !localIds.has(r.id));
-                            if (newEntries.length === 0) return prev;
+                            if (newEntries.length === 0) return current;
                             return key === 'tm_notifications_v11'
-                                ? [...newEntries, ...prev]
-                                : [...prev, ...newEntries];
+                                ? [...newEntries, ...current]
+                                : [...current, ...newEntries];
                         });
                     }
                 )
