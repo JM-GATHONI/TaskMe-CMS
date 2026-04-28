@@ -155,7 +155,7 @@ const MpesaStkModal: React.FC<{
     tenant: TenantProfile;
     onComplete: () => void;
 }> = ({ onClose, tenant, onComplete }) => {
-    const { properties } = useData();
+    const { properties, updateTenant, addNotification } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success' | 'failed'>('input');
     const [phone, setPhone] = useState(tenant.phone || '');
     const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
@@ -224,6 +224,39 @@ const MpesaStkModal: React.FC<{
     };
 
     const handleFinish = () => {
+        const amt = Math.round(Number(amount) || 0);
+        const payDate = new Date().toISOString().split('T')[0];
+        const ref = txCode || `STK-${Date.now()}`;
+        const newPayment = {
+            date: payDate,
+            amount: `KES ${amt.toLocaleString()}`,
+            status: 'Paid' as const,
+            method: 'M-Pesa STK',
+            reference: ref,
+        };
+        const cycle = computeRentPaymentCycleUpdate(tenant, amt, payDate);
+        const updates: Partial<TenantProfile> = {
+            paymentHistory: [newPayment, ...(tenant.paymentHistory || [])],
+            nextDueDate: cycle.nextDueDateIso,
+        };
+        if (cycle.clearRentExtension && tenant.rentExtension) {
+            updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+            updates.rentExtension = { ...tenant.rentExtension, enabled: false };
+        }
+        if (cycle.proratedUpdate && tenant.proratedDeposit) {
+            updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
+            updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
+        }
+        updateTenant(tenant.id, updates);
+        addNotification({
+            id: `notif-stk-${Date.now()}`,
+            title: 'M-Pesa Payment Received',
+            message: `${tenant.name} (${tenant.unit}) paid KES ${amt.toLocaleString()} via M-Pesa STK. Ref: ${ref}`,
+            date: new Date().toLocaleString(),
+            read: false,
+            type: 'Success',
+            recipientRole: 'Super Admin',
+        });
         onComplete();
     };
 
@@ -314,7 +347,7 @@ const ManualPaymentModal: React.FC<{
     method: 'Bank' | 'Cash';
     onComplete: () => void;
 }> = ({ onClose, tenant, method, onComplete }) => {
-    const { updateTenant } = useData();
+    const { updateTenant, addNotification } = useData();
     const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
     const [reference, setReference] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -389,6 +422,15 @@ const ManualPaymentModal: React.FC<{
                 updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
             }
             updateTenant(tenant.id, updates);
+            addNotification({
+                id: `notif-manual-${Date.now()}`,
+                title: 'Payment Recorded',
+                message: `${tenant.name} (${tenant.unit}) paid KES ${amt.toLocaleString()} via ${method}. Ref: ${normalizedRef}`,
+                date: new Date().toLocaleString(),
+                read: false,
+                type: 'Success',
+                recipientRole: 'Super Admin',
+            });
             onComplete();
         } catch (e: any) {
             setErrorMsg(e?.message ?? 'Failed to record payment');

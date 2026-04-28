@@ -214,7 +214,7 @@ type VerifyResult = {
 };
 
 const Reconciliation: React.FC = () => {
-    const { tenants, updateTenant, moveTenantPayment } = useData();
+    const { tenants, updateTenant, moveTenantPayment, addNotification } = useData();
     const [activeTab, setActiveTab] = useState<'external' | 'internal'>('external');
 
     const [unmatched, setUnmatched] = useState<UnmatchedPayment[]>([]);
@@ -337,6 +337,15 @@ const Reconciliation: React.FC = () => {
                 updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
             }
             updateTenant(tenantId, updates);
+            addNotification({
+                id: `notif-c2b-${Date.now()}`,
+                title: 'C2B Payment Matched',
+                message: `${tenant.name} (${tenant.unit}) KES ${Number(tx.amount ?? 0).toLocaleString()} via M-Pesa C2B matched. Ref: ${String(tx.transaction_id ?? tx.bill_ref_number ?? '').trim() || 'N/A'}`,
+                date: new Date().toLocaleString(),
+                read: false,
+                type: 'Success',
+                recipientRole: 'Super Admin',
+            });
         }
 
         setSelectedTx(null);

@@ -689,6 +689,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateInvoice = (id: string, d: Partial<Invoice>) => setInvoices(prev => prev.map(i => i.id === id ? {...i, ...d} : i));
     const addMessage = (m: Message) => setMessages(prev => [m, ...prev]);
     const addNotification = (n: Notification) => setNotifications(prev => [n, ...prev]);
+    const markAllNotificationsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    const dismissNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
+    const clearOldNotifications = () => {
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        setNotifications(prev => prev.filter(n => {
+            const d = new Date(n.date).getTime();
+            return isNaN(d) || d >= cutoff;
+        }));
+    };
     const addVendor = (v: Vendor) => setVendors(prev => [v, ...prev]);
     const updateVendor = (id: string, d: Partial<Vendor>) => setVendors(prev => prev.map(v => v.id === id ? {...v, ...d} : v));
     const deleteVendor = (id: string) => {
@@ -994,7 +1003,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addGeospatialNode, addCommissionRule, updateCommissionRule,
             deleteCommissionRule, addDeductionRule, updateDeductionRule, deleteDeductionRule,
             addBill, updateBill, deleteBill, addTenantBill, addInvoice, updateInvoice,
-            addMessage, addNotification, addVendor, updateVendor, deleteVendor, addAuditLog, updateExternalTransaction, addOverpayment, updateOverpayment, moveTenantPayment,
+            addMessage, addNotification, markAllNotificationsRead, dismissNotification, clearOldNotifications, addVendor, updateVendor, deleteVendor, addAuditLog, updateExternalTransaction, addOverpayment, updateOverpayment, moveTenantPayment,
             addWorkflow, updateWorkflow, addAutomationRule, updateAutomationRule, addEscalationRule, updateEscalationRule,
             updateSystemSettings, addPreventiveTask, addTemplate, updateTemplate, deleteTemplate, addIncomeSource, updateIncomeSource,
             addFund, updateFund, addInvestment, updateInvestment, addWithdrawal, updateWithdrawal,

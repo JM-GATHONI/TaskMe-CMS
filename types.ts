@@ -1336,6 +1336,9 @@ export interface DataContextType {
     updateInvoice: (id: string, d: Partial<Invoice>) => void;
     addMessage: (m: Message) => void;
     addNotification: (n: Notification) => void;
+    markAllNotificationsRead: () => void;
+    dismissNotification: (id: string) => void;
+    clearOldNotifications: () => void;
     addVendor: (v: Vendor) => void;
     updateVendor: (id: string, d: Partial<Vendor>) => void;
     deleteVendor: (id: string) => void;

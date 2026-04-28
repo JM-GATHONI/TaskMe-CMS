@@ -14,7 +14,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogout }) => {
-  const { systemSettings, updateSystemSettings, notifications, currentUser } = useData();
+  const { systemSettings, updateSystemSettings, notifications, currentUser, markAllNotificationsRead, dismissNotification, clearOldNotifications } = useData();
   const { initial: profileInitial } = useProfileDisplay({ nameFallback: currentUser?.name });
   const { logo, profilePic, companyName } = systemSettings;
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -24,7 +24,13 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
     window.location.hash = path;
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const isAdmin = (role: string) => role === 'Super Admin' || role === 'Assistant Admin';
+  const visibleNotifications = notifications.filter(n =>
+    n.recipientRole === 'All' ||
+    n.recipientRole === (currentUser as any)?.role ||
+    (n.recipientRole === 'Super Admin' && isAdmin((currentUser as any)?.role ?? ''))
+  );
+  const unreadCount = visibleNotifications.filter(n => !n.read).length;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -160,7 +166,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
           {/* Notification Bell */}
           <div className="relative" ref={notifRef}>
               <button 
-                onClick={() => setIsNotifOpen(!isNotifOpen)}
+                onClick={() => { setIsNotifOpen(prev => { if (!prev) markAllNotificationsRead(); return !prev; }); }}
                 className={`bg-white/20 hover:bg-white/30 text-white p-1.5 rounded-full transition-colors relative ${isNotifOpen ? 'bg-white/40 ring-2 ring-white/50' : ''}`}
               >
                 <Icon name="bell" className="w-4 h-4" />
@@ -176,27 +182,35 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar, isSidebarOpen, onLogou
                           <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{unreadCount} new</span>
                       </div>
                       <div className="max-h-80 overflow-y-auto">
-                          {notifications.length === 0 ? (
+                          {visibleNotifications.length === 0 ? (
                               <div className="p-8 text-center text-gray-400 text-sm">No new notifications.</div>
                           ) : (
-                              notifications.map((notif, idx) => {
+                              visibleNotifications.map((notif) => {
                                   const { icon, color } = getNotifIcon(notif.type);
                                   return (
-                                      <div key={idx} className={`p-3 border-b hover:bg-gray-50 flex gap-3 ${!notif.read ? 'bg-blue-50/30' : ''}`}>
+                                      <div key={notif.id} className={`p-3 border-b hover:bg-gray-50 flex gap-3 ${!notif.read ? 'bg-blue-50/30' : ''}`}>
                                           <div className={`mt-1 flex-shrink-0 ${color}`}>
                                               <Icon name={icon} className="w-5 h-5" />
                                           </div>
-                                          <div>
+                                          <div className="flex-1 min-w-0">
                                               <p className="text-sm font-semibold text-gray-800">{notif.title}</p>
                                               <p className="text-xs text-gray-600 line-clamp-2">{notif.message}</p>
                                               <p className="text-[10px] text-gray-400 mt-1">{notif.date}</p>
                                           </div>
+                                          <button
+                                              onClick={() => dismissNotification(notif.id)}
+                                              className="flex-shrink-0 text-gray-300 hover:text-red-400 mt-1"
+                                              title="Dismiss"
+                                          >
+                                              <Icon name="close" className="w-3.5 h-3.5" />
+                                          </button>
                                       </div>
                                   );
                               })
                           )}
                       </div>
-                      <div className="p-2 border-t bg-gray-50 text-center">
+                      <div className="p-2 border-t bg-gray-50 flex items-center justify-between gap-2">
+                          <button onClick={clearOldNotifications} className="text-xs text-gray-500 hover:text-red-500 font-semibold">Clear Older</button>
                           <button onClick={() => navigate('#/operations/communications/inbound')} className="text-xs font-bold text-primary hover:underline">View All Messages</button>
                       </div>
                   </div>
