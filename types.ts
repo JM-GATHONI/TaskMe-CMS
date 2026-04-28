@@ -1005,6 +1005,7 @@ export interface MarketplaceListing {
   description: string;
   title: string;
   location: string;
+  zone?: string;
   /** Google map pin/share URL for live listings. */
   pinLocationUrl?: string;
   images: string[];

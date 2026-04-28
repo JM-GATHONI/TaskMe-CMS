@@ -30,7 +30,7 @@ const ListingModal: React.FC<{
     // Stage 3: Details
     const [formData, setFormData] = useState<Partial<MarketplaceListing>>(listing || {
         title: '', description: '', price: 0, currency: 'KES', features: [], images: [], status: 'Draft',
-        propertyId: '', propertyName: '', unitId: '', unitNumber: '', location: '',
+        propertyId: '', propertyName: '', unitId: '', unitNumber: '', location: '', zone: '',
         airbnbConfig: { cleaningFee: 0, checkInTime: '14:00', checkOutTime: '11:00', maxGuests: 2, houseRules: '', amenities: [] },
         saleConfig: { titleDeedType: 'Freehold', landSize: '', financingAvailable: false, propertyCategory: 'House', usageType: 'Residential' },
         ownerDetails: { name: '', contact: '', email: '', rating: 5, reviews: 0 }
@@ -60,6 +60,7 @@ const ListingModal: React.FC<{
                     propertyName: prop.name,
                     unitNumber: unit.unitNumber,
                     location: prop.location || prop.branch || '',
+                    zone: prop.zone || '',
                     pinLocationUrl: prop.pinLocationUrl || '',
                     ownerDetails: {
                         name: contactOwner?.name || 'Management',
@@ -132,6 +133,7 @@ const ListingModal: React.FC<{
             description: formData.description || '',
             title: formData.title || '',
             location: formData.location || '',
+            zone: formData.zone || '',
             pinLocationUrl: formData.pinLocationUrl || '',
             images: formData.images || [],
             features: formData.features?.map(s => s.trim()) || [],
@@ -192,31 +194,55 @@ const ListingModal: React.FC<{
 
                     {/* Unit Selection / Manual Entry */}
                     {entryMode === 'System' ? (
-                        <div className="grid grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Property</label>
-                                <select 
-                                    value={selectedPropId} 
-                                    onChange={e => setSelectedPropId(e.target.value)} 
-                                    disabled={!!listing}
-                                    className="w-full p-2.5 border rounded-lg bg-white"
-                                >
-                                    <option value="">Select Property</option>
-                                    {availableProperties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Property</label>
+                                    <select 
+                                        value={selectedPropId} 
+                                        onChange={e => setSelectedPropId(e.target.value)} 
+                                        disabled={!!listing}
+                                        className="w-full p-2.5 border rounded-lg bg-white"
+                                    >
+                                        <option value="">Select Property</option>
+                                        {availableProperties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Unit</label>
+                                    <select 
+                                        value={selectedUnitId} 
+                                        onChange={e => setSelectedUnitId(e.target.value)} 
+                                        disabled={!selectedPropId || !!listing}
+                                        className="w-full p-2.5 border rounded-lg bg-white"
+                                    >
+                                        <option value="">Select Unit</option>
+                                        {availableUnits.map(u => <option key={u.id} value={u.id}>{u.unitNumber} ({u.unitType || `${u.bedrooms}BR`})</option>)}
+                                    </select>
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Unit</label>
-                                <select 
-                                    value={selectedUnitId} 
-                                    onChange={e => setSelectedUnitId(e.target.value)} 
-                                    disabled={!selectedPropId || !!listing}
-                                    className="w-full p-2.5 border rounded-lg bg-white"
-                                >
-                                    <option value="">Select Unit</option>
-                                    {availableUnits.map(u => <option key={u.id} value={u.id}>{u.unitNumber} ({u.bedrooms}BR)</option>)}
-                                </select>
-                            </div>
+                            {selectedUnitId && (
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Location</label>
+                                        <input
+                                            value={formData.location || ''}
+                                            onChange={e => setFormData({...formData, location: e.target.value})}
+                                            className="w-full p-2.5 border rounded-lg"
+                                            placeholder="e.g. Kericho"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Zone</label>
+                                        <input
+                                            value={formData.zone || ''}
+                                            onChange={e => setFormData({...formData, zone: e.target.value})}
+                                            className="w-full p-2.5 border rounded-lg"
+                                            placeholder="e.g. Brooke"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 gap-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
@@ -239,13 +265,22 @@ const ListingModal: React.FC<{
                                     placeholder="e.g. House No. 5"
                                 />
                              </div>
-                             <div className="col-span-2">
+                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Location</label>
                                 <input 
                                     value={formData.location}
                                     onChange={e => setFormData({...formData, location: e.target.value})}
                                     className="w-full p-2.5 border rounded-lg"
-                                    placeholder="e.g. Karen, Nairobi"
+                                    placeholder="e.g. Kericho"
+                                />
+                             </div>
+                             <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Zone</label>
+                                <input 
+                                    value={formData.zone || ''}
+                                    onChange={e => setFormData({...formData, zone: e.target.value})}
+                                    className="w-full p-2.5 border rounded-lg"
+                                    placeholder="e.g. Brooke"
                                 />
                              </div>
                         </div>
