@@ -284,7 +284,7 @@ const Chart: React.FC<{ type: 'line' | 'bar' | 'pie'; data: any; options?: any; 
 
 
 const Dashboard: React.FC = () => {
-    const { tenants, properties, tasks, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
+    const { tenants, properties, tasks, externalTransactions, getTotalRevenue, getOccupancyRate, currentUser, roles, isDataLoading } = useData();
     const { firstName, loading: profileLoading } = useProfileFirstName({ nameFallback: currentUser?.name });
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilterBtn, setActiveFilterBtn] = useState<string | null>(null);
@@ -326,36 +326,59 @@ const Dashboard: React.FC = () => {
 
     // --- Live Data Generators ---
 
-    // 1. Recent Activities (Derived from Tasks and Payment History)
+    // 1. Recent Activities (Payments from paymentHistory + C2B externalTransactions + Tasks)
     const recentActivities = useMemo(() => {
-        const activities: RecentActivity[] = [];
+        type TimedActivity = RecentActivity & { _ts: number };
+        const all: TimedActivity[] = [];
 
-        // Payments (Latest 5)
+        // All tenant paymentHistory entries (all methods: Manual, STK, C2B-reconciled)
         tenants.forEach(t => {
-            t.paymentHistory.slice(0, 1).forEach(p => {
-                activities.push({
+            (t.paymentHistory || []).forEach(p => {
+                const ts = new Date(p.date).getTime();
+                all.push({
                     category: 'Payment',
                     description: `${t.name} paid ${p.amount} via ${p.method}`,
-                    time: p.date, 
+                    time: p.date,
                     color: 'bg-green-500',
-                    link: `#/tenants/active-tenants?tenantId=${t.id}`
+                    link: `#/tenants/active-tenants?tenantId=${t.id}`,
+                    _ts: isNaN(ts) ? 0 : ts,
                 });
             });
         });
 
-        // Tasks (Latest 5)
-        tasks.slice(0, 5).forEach(t => {
-            activities.push({
-                category: 'Maintenance',
-                description: `${t.title} (${t.status})`,
-                time: 'Today', // Simplified for demo
-                color: 'bg-blue-500',
-                link: '#/maintenance/work-orders'
+        // Raw C2B / STK transactions from externalTransactions (unreconciled or recently received)
+        // Only include entries from the last 30 days to avoid flooding with old unmatched records.
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        (externalTransactions || []).forEach(tx => {
+            const ts = new Date(tx.date).getTime();
+            if (isNaN(ts) || ts < thirtyDaysAgo) return;
+            const label = tx.matched ? `C2B matched — ${tx.name} paid KES ${tx.amount.toLocaleString()}` : `C2B received — ${tx.name} KES ${tx.amount.toLocaleString()} (unmatched)`;
+            all.push({
+                category: 'Payment',
+                description: label,
+                time: tx.date,
+                color: tx.matched ? 'bg-green-500' : 'bg-yellow-500',
+                link: '#/payments/inbound',
+                _ts: ts,
             });
         });
 
-        return activities.slice(0, 5); 
-    }, [tenants, tasks]);
+        // Tasks (recent open tasks)
+        tasks.slice(0, 5).forEach(t => {
+            all.push({
+                category: 'Maintenance',
+                description: `${t.title} (${t.status})`,
+                time: t.dueDate || 'Scheduled',
+                color: 'bg-blue-500',
+                link: '#/maintenance/work-orders',
+                _ts: t.dueDate ? new Date(t.dueDate).getTime() : 0,
+            });
+        });
+
+        // Sort by most recent first, return top 5
+        all.sort((a, b) => b._ts - a._ts);
+        return all.slice(0, 5).map(({ _ts, ...rest }) => rest);
+    }, [tenants, tasks, externalTransactions]);
 
     // 2. Upcoming Payments (Overdue & Due Soon)
     const upcomingPayments = useMemo(() => {
