@@ -34,10 +34,29 @@ const Chart: React.FC<{ type: 'bar' | 'line' | 'doughnut'; data: any; options?: 
 type ReportView = 'revenue' | 'expenses' | 'arrears' | 'net';
 
 const FinancialReports: React.FC = () => {
-    const { tenants, tasks, staff, bills } = useData();
+    const { tenants, tasks, staff, bills, properties } = useData();
     const [activeView, setActiveView] = useState<ReportView>('revenue');
     const [agentFilter, setAgentFilter] = useState('All');
     const [propertyFilter, setPropertyFilter] = useState('All');
+
+    // Real agent list: staff who manage at least one property
+    const agentList = useMemo(() => {
+        const assignedIds = new Set(properties.map(p => p.assignedAgentId).filter(Boolean));
+        return staff.filter(s => assignedIds.has(s.id));
+    }, [staff, properties]);
+
+    // Filtered tenants based on agent + property selectors
+    const filteredTenants = useMemo(() => {
+        let result = tenants;
+        if (propertyFilter !== 'All') {
+            result = result.filter(t => t.propertyId === propertyFilter);
+        }
+        if (agentFilter !== 'All') {
+            const agentPropIds = new Set(properties.filter(p => p.assignedAgentId === agentFilter).map(p => p.id));
+            result = result.filter(t => t.propertyId && agentPropIds.has(t.propertyId));
+        }
+        return result;
+    }, [tenants, properties, agentFilter, propertyFilter]);
 
     // Handle Deep Linking
     useEffect(() => {
@@ -63,7 +82,7 @@ const FinancialReports: React.FC = () => {
     // 1. Collections (Revenue)
     const collectionsByDate = useMemo(() => {
         const data: Record<string, number> = {};
-        tenants.forEach(t => {
+        filteredTenants.forEach(t => {
             t.paymentHistory.forEach(p => {
                 if (p.status === 'Paid') {
                     const date = p.date.split(',')[0]; 
@@ -75,14 +94,14 @@ const FinancialReports: React.FC = () => {
         return Object.entries(data)
             .sort((a, b) => a[0].localeCompare(b[0]))
             .reduce((acc, [key, val]) => ({ ...acc, [key]: val }), {} as Record<string, number>);
-    }, [tenants]);
+    }, [filteredTenants]);
 
     const totalRevenue = useMemo(() => Object.values(collectionsByDate).reduce((a: number, b: number) => a + b, 0), [collectionsByDate]);
 
     // 2. Arrears
     const arrearsData = useMemo(() => {
         const now = new Date();
-        return tenants.filter(t => t.status === 'Overdue').map(t => {
+        return filteredTenants.filter(t => t.status === 'Overdue').map(t => {
             const dueDay = t.rentDueDate || 5;
             let dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
             // If today is before the due day, the overdue amount is likely from last month
@@ -102,7 +121,7 @@ const FinancialReports: React.FC = () => {
                 ageGroup: daysOverdue <= 15 ? '1-15 days' : daysOverdue <= 30 ? '16-30 days' : daysOverdue <= 60 ? '31-60 days' : '60+ days'
             };
         });
-    }, [tenants]);
+    }, [filteredTenants]);
 
     // 3. Expenses
     const expenseData = useMemo(() => {
@@ -196,9 +215,15 @@ const FinancialReports: React.FC = () => {
             {activeView === 'revenue' && (
                 <div className="bg-white p-6 rounded-xl shadow-sm animate-fade-in">
                     <h2 className="text-xl font-bold text-gray-800 mb-4">Monthly Collections Breakdown</h2>
-                    <div className="flex gap-4 mb-4">
-                        <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)} className="p-2 border rounded-md bg-white text-sm"><option>All Agents</option><option>Jane Smith</option><option>Mike Ross</option></select>
-                        <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="p-2 border rounded-md bg-white text-sm"><option>All Properties</option><option>Riverside Apartments</option><option>Green Valley</option></select>
+                    <div className="flex gap-4 mb-4 flex-wrap">
+                        <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)} className="p-2 border rounded-md bg-white text-sm">
+                            <option value="All">All Agents</option>
+                            {agentList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                        <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="p-2 border rounded-md bg-white text-sm">
+                            <option value="All">All Properties</option>
+                            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
