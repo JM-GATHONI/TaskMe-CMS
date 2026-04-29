@@ -280,6 +280,55 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, [batchSuccess, batchError, allAppState, queryClient]);
 
+    // ── One-time unit-status reconciliation (post batch load) ────────────────
+    // After the batch RPC settles and both tenants + properties are populated,
+    // scan every unit in every property. Any unit whose stored status is 'Occupied'
+    // but has NO tenant record (any status) with a matching unitId is a stale artefact
+    // from a previous move/reverse-allocation that didn't write back correctly.
+    // These are corrected to 'Vacant' in a single setProperties call.
+    //
+    // Cost: zero extra DB calls if nothing is stale; one debounced properties write
+    // (the normal persistAndSetValue path) if corrections are needed — same overhead
+    // as any other property update.
+    const _unitReconciliationRan = React.useRef(false);
+    useEffect(() => {
+        if (!batchSuccess) {
+            _unitReconciliationRan.current = false; // reset for next login cycle
+            return;
+        }
+        if (_unitReconciliationRan.current) return;
+        if (tenants.length === 0 || properties.length === 0) return;
+
+        _unitReconciliationRan.current = true;
+
+        const occupiedUnitIds = new Set(
+            tenants.map(t => t.unitId).filter((id): id is string => !!id)
+        );
+
+        const corrections = new Map<string, typeof properties[0]>();
+        properties.forEach(prop => {
+            const hasStale = prop.units.some(
+                u => u.status === 'Occupied' && !occupiedUnitIds.has(u.id)
+            );
+            if (hasStale) {
+                corrections.set(prop.id, {
+                    ...prop,
+                    units: prop.units.map(u =>
+                        u.status === 'Occupied' && !occupiedUnitIds.has(u.id)
+                            ? { ...u, status: 'Vacant' as const }
+                            : u
+                    ),
+                });
+            }
+        });
+
+        if (corrections.size === 0) return; // Nothing to fix — no DB write
+
+        console.log(`[reconcile] correcting ${corrections.size} propert${corrections.size === 1 ? 'y' : 'ies'} with stale Occupied units`);
+        setProperties(prev => prev.map(p => corrections.has(p.id) ? corrections.get(p.id)! : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [batchSuccess, tenants, properties]);
+
     // ── Fetch app.staff_profiles (normalised table) ──────────────────────────
     // Runs once on mount (session-guarded). Catches staff registered via the
     // admin_create_auth_user RPC who may not yet be in tm_staff_v11.
