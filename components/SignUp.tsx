@@ -30,7 +30,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
         email: '',
         password: '',
         confirmPassword: '',
-        role: ROLES[0],
+        role: '' as typeof ROLES[number] | '',
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -56,6 +56,10 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
             }
             if (password !== confirmPassword) {
                 setError('Passwords do not match.');
+                return;
+            }
+            if (!role) {
+                setError('Please select a user type.');
                 return;
             }
 
@@ -510,8 +514,10 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                                 value={formData.role}
                                 onChange={handleChange}
                                 className={selectClass}
+                                style={formData.role === '' ? { color: '#9ca3af' } : {}}
                                 required
                             >
+                                <option value="" disabled>Select User Type</option>
                                 {ROLES.map((r) => (
                                     <option key={r} value={r}>{r}</option>
                                 ))}
