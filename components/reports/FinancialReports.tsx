@@ -39,11 +39,17 @@ const FinancialReports: React.FC = () => {
     const [agentFilter, setAgentFilter] = useState('All');
     const [propertyFilter, setPropertyFilter] = useState('All');
 
-    // Real agent list: staff who manage at least one property
+    // Real agent list: Field Agents who are assigned to at least one property
     const agentList = useMemo(() => {
         const assignedIds = new Set(properties.map(p => p.assignedAgentId).filter(Boolean));
-        return staff.filter(s => assignedIds.has(s.id));
+        return staff.filter(s => s.role === 'Field Agent' && assignedIds.has(s.id));
     }, [staff, properties]);
+
+    // Cascading property list: filter to agent's properties when an agent is selected
+    const filteredPropertyList = useMemo(() => {
+        if (agentFilter === 'All') return properties;
+        return properties.filter(p => p.assignedAgentId === agentFilter);
+    }, [properties, agentFilter]);
 
     // Filtered tenants based on agent + property selectors
     const filteredTenants = useMemo(() => {
@@ -216,13 +222,13 @@ const FinancialReports: React.FC = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm animate-fade-in">
                     <h2 className="text-xl font-bold text-gray-800 mb-4">Monthly Collections Breakdown</h2>
                     <div className="flex gap-4 mb-4 flex-wrap">
-                        <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)} className="p-2 border rounded-md bg-white text-sm">
+                        <select value={agentFilter} onChange={e => { setAgentFilter(e.target.value); setPropertyFilter('All'); }} className="p-2 border rounded-md bg-white text-sm">
                             <option value="All">All Agents</option>
                             {agentList.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                         <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="p-2 border rounded-md bg-white text-sm">
                             <option value="All">All Properties</option>
-                            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            {filteredPropertyList.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
