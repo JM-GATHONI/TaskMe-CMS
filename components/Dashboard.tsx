@@ -600,8 +600,11 @@ const Dashboard: React.FC = () => {
         };
 
         loadCollections();
+        const onFocus = () => { if (!cancelled) loadCollections(); };
+        window.addEventListener('focus', onFocus);
         return () => {
             cancelled = true;
+            window.removeEventListener('focus', onFocus);
         };
     }, [tenants]);
 

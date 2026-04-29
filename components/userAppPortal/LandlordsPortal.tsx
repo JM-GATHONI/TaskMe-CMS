@@ -430,8 +430,11 @@ const LandlordsPortal: React.FC = () => {
         };
 
         loadPayments();
+        const onFocus = () => { if (!cancelled) loadPayments(); };
+        window.addEventListener('focus', onFocus);
         return () => {
             cancelled = true;
+            window.removeEventListener('focus', onFocus);
         };
     }, [financialPeriod]);
 
@@ -464,8 +467,11 @@ const LandlordsPortal: React.FC = () => {
         };
 
         loadAllTimeRevenue();
+        const onFocusRevenue = () => { if (!cancelled) loadAllTimeRevenue(); };
+        window.addEventListener('focus', onFocusRevenue);
         return () => {
             cancelled = true;
+            window.removeEventListener('focus', onFocusRevenue);
         };
     }, []);
 
