@@ -1497,7 +1497,7 @@ const Applications: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | undefined>(undefined);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState<'All' | 'Tenant' | 'Application'>('All');
+    const [filterType, setFilterType] = useState<'All' | 'Active' | 'PendingAllocation' | 'PendingPayment'>('All');
     const [moveTenant, setMoveTenant] = useState<TenantProfile | null>(null);
     const [manualPayRecord, setManualPayRecord] = useState<UnifiedRecord | null>(null);
     const [stkPayRecord, setStkPayRecord] = useState<UnifiedRecord | null>(null);
@@ -2035,7 +2035,11 @@ const Applications: React.FC = () => {
             const matchesSearch = (item.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                                   (item.unit || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                                   (item.propertyName || item.property || '').toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesType = filterType === 'All' || item.recordType === filterType;
+            const matchesType =
+                filterType === 'All' ||
+                (filterType === 'Active' && item.recordType === 'Tenant' && item.displayStatus === 'Active') ||
+                (filterType === 'PendingAllocation' && item.recordType === 'Tenant' && item.displayStatus === 'PendingAllocation') ||
+                (filterType === 'PendingPayment' && item.recordType === 'Tenant' && (item.displayStatus === 'PendingPayment' || item.displayStatus === 'Pending'));
             return matchesSearch && matchesType;
         });
     }, [unifiedList, searchQuery, filterType]);
@@ -2082,8 +2086,9 @@ const Applications: React.FC = () => {
                             className="p-2 border rounded-lg bg-white"
                         >
                             <option value="All">All Records</option>
-                            <option value="Tenant">Active Tenants</option>
-                            <option value="Application">Applicants</option>
+                            <option value="Active">Active Tenants</option>
+                            <option value="PendingAllocation">Pending Allocation</option>
+                            <option value="PendingPayment">Pending Payment</option>
                         </select>
                     </div>
                 </div>
