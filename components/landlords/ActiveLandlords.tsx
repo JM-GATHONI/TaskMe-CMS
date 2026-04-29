@@ -69,6 +69,7 @@ const UnitBox: React.FC<{ unit: Unit; tenant?: TenantProfile; isNewTenant?: bool
         if (unit.status === 'Distressed') return 'bg-purple-50 border-purple-200 text-purple-800';
         if (unit.status === 'Under Maintenance') return 'bg-yellow-50 border-yellow-200 text-yellow-800';
         if (!tenant && unit.status === 'Vacant') return 'bg-red-50 border-red-200 text-red-800';
+        if (!tenant && unit.status === 'Occupied') return 'bg-amber-50 border-amber-300 text-amber-800'; // stale — reconciliation will fix
         
         // Tenant statuses
         if (tenant?.houseStatus?.includes('Distressed')) return 'bg-purple-50 border-purple-200 text-purple-800';
