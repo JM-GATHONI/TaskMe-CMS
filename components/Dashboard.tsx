@@ -293,6 +293,32 @@ const Dashboard: React.FC = () => {
     const [customDateTo, setCustomDateTo] = useState('');
     const [collectionsVsArrears, setCollectionsVsArrears] = useState<{ labels: string[]; collectionsM: number[]; arrearsM: number[] }>({ labels: [], collectionsM: [], arrearsM: [] });
 
+    type RecentDbPayment = {
+        id: string; created_at: string; source: 'stk' | 'c2b' | 'manual';
+        amount: number; transaction_id: string | null; bill_ref_number: string | null;
+        msisdn: string | null; first_name: string | null; last_name: string | null;
+        matched_tenant_id: string | null;
+    };
+    const [recentDbPayments, setRecentDbPayments] = useState<RecentDbPayment[]>([]);
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const { data } = await supabase
+                .from('payments')
+                .select('id,created_at,source,amount,transaction_id,bill_ref_number,msisdn,first_name,last_name,matched_tenant_id')
+                .eq('status', 'completed')
+                .order('created_at', { ascending: false })
+                .limit(15);
+            if (!cancelled && data) setRecentDbPayments(data as RecentDbPayment[]);
+        };
+        load();
+        const ch = supabase
+            .channel('dash-recent-payments')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, load)
+            .subscribe();
+        return () => { cancelled = true; supabase.removeChannel(ch); };
+    }, []);
+
     const SkeletonCard: React.FC<{ className?: string }> = ({ className = '' }) => (
         <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-pulse ${className}`}>
             <div className="h-3 w-28 bg-gray-200 rounded mb-3"></div>
@@ -346,21 +372,23 @@ const Dashboard: React.FC = () => {
             });
         });
 
-        // Raw C2B / STK transactions from externalTransactions (unreconciled or recently received)
-        // Only include entries from the last 30 days to avoid flooding with old unmatched records.
-        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        (externalTransactions || []).forEach(tx => {
-            const ts = new Date(tx.date).getTime();
-            if (isNaN(ts) || ts < thirtyDaysAgo) return;
-            const label = tx.matched ? `C2B matched — ${tx.name} paid KES ${tx.amount.toLocaleString()}` : `C2B received — ${tx.name} KES ${tx.amount.toLocaleString()} (unmatched)`;
-            all.push({
-                category: 'Payment',
-                description: label,
-                time: tx.date,
-                color: tx.matched ? 'bg-green-500' : 'bg-yellow-500',
-                link: '#/payments/inbound',
-                _ts: ts,
-            });
+        // STK / C2B / Manual from the payments Supabase table (authoritative source for M-Pesa callbacks)
+        // Deduplicate against paymentHistory entries already rendered above.
+        const historyRefs = new Set(
+            tenants.flatMap(t => t.paymentHistory.map(p => p.reference).filter(Boolean))
+        );
+        recentDbPayments.forEach(p => {
+            const ref = p.transaction_id ?? p.bill_ref_number ?? p.id;
+            if (ref && historyRefs.has(ref)) return;
+            const ts = new Date(p.created_at).getTime();
+            if (isNaN(ts)) return;
+            const matchedTenant = tenants.find(t => t.id === p.matched_tenant_id);
+            const senderName = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.msisdn || 'Unknown';
+            const sourceLabel = p.source === 'stk' ? 'STK' : p.source === 'c2b' ? 'C2B' : 'Manual';
+            const description = matchedTenant
+                ? `${matchedTenant.name} paid KES ${Number(p.amount).toLocaleString()} via M-Pesa ${sourceLabel}`
+                : `M-Pesa ${sourceLabel} — ${senderName} paid KES ${Number(p.amount).toLocaleString()}`;
+            all.push({ category: 'Payment', description, time: p.created_at, color: 'bg-green-500', link: '#/payments/inbound', _ts: ts });
         });
 
         // Tasks (recent open tasks)
@@ -378,7 +406,7 @@ const Dashboard: React.FC = () => {
         // Sort by most recent first, return top 5
         all.sort((a, b) => b._ts - a._ts);
         return all.slice(0, 5).map(({ _ts, ...rest }) => rest);
-    }, [tenants, tasks, externalTransactions]);
+    }, [tenants, tasks, recentDbPayments]);
 
     // 2. Upcoming Payments (Overdue & Due Soon)
     const upcomingPayments = useMemo(() => {
