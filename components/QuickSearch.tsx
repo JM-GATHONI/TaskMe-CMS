@@ -23,7 +23,7 @@ const getDaysOverdue = (rentDueDate: number) => {
 };
 
 const QuickSearch: React.FC = () => {
-    const { tenants, properties } = useData();
+    const { tenants, properties, externalTransactions } = useData();
 
     const [query, setQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
@@ -108,7 +108,10 @@ const QuickSearch: React.FC = () => {
     // --- Date Range Helper ---
     const parseFlexDate = (dateStr: string): Date | null => {
         if (!dateStr) return null;
-        // ISO: 2025-01-15 — always try first
+        // YYYY-MM-DD — parse as local midnight to avoid UTC offset issues (e.g. UTC+3)
+        const isoPlain = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoPlain) return new Date(+isoPlain[1], +isoPlain[2] - 1, +isoPlain[3]);
+        // ISO with time component or other formats — let the browser parse
         let d = new Date(dateStr);
         if (!isNaN(d.getTime())) return d;
         // DD/MM/YYYY
@@ -180,7 +183,7 @@ const QuickSearch: React.FC = () => {
         );
 
         if (activeFilter === 'Paid') {
-            return searchedTenants.flatMap(t => 
+            const historyEntries = searchedTenants.flatMap(t =>
                 t.paymentHistory
                     .filter(p => p.status === 'Paid' && isInDateRange(p.date))
                     .map(p => ({
@@ -193,6 +196,33 @@ const QuickSearch: React.FC = () => {
                         method: p.method
                     }))
             );
+            // Dedup set: all references already captured in paymentHistory across ALL tenants
+            const historyRefs = new Set(
+                tenants.flatMap(t => t.paymentHistory.flatMap(p => [p.reference, (p as any).transactionCode].filter(Boolean)))
+            );
+            // Merge matched M-Pesa C2B transactions not already in paymentHistory
+            const externalEntries = (externalTransactions || [])
+                .filter(tx =>
+                    tx.matched &&
+                    tx.type === 'M-Pesa' &&
+                    isInDateRange(tx.date) &&
+                    !historyRefs.has(tx.reference) &&
+                    !(tx.transactionCode && historyRefs.has(tx.transactionCode))
+                )
+                .map(tx => {
+                    const matched = tenants.find(t => t.id === tx.matchedTenantId);
+                    return {
+                        id: `ext-${tx.id}`,
+                        tenant: matched?.name ?? tx.name,
+                        property: matched ? `${matched.propertyName} - ${matched.unit}` : tx.account,
+                        amountDisplay: `KES ${Number(tx.amount).toLocaleString()}`,
+                        val: Number(tx.amount) || 0,
+                        date: tx.date,
+                        method: 'M-Pesa C2B'
+                    };
+                });
+            return [...historyEntries, ...externalEntries]
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         }
 
         if (activeFilter === 'Arrears') {
@@ -477,7 +507,7 @@ const QuickSearch: React.FC = () => {
                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
                                 Filter <span className="text-primary">{activeFilter}</span> by period:
                             </span>
-                            <button onClick={() => { setActiveFilter('All'); clearPeriod(); setQuery(''); }} className="ml-auto text-xs text-gray-400 hover:text-red-500 font-bold">✕ Close</button>
+                            <button onClick={() => clearPeriod()} className="ml-auto text-xs text-gray-400 hover:text-red-500 font-bold">✕ Clear Period</button>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                             {timePeriodButtons.map(btn => (
