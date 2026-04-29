@@ -453,34 +453,47 @@ export const LandlordDetailView: React.FC<{
     const myTenants = useMemo(() => tenants.filter(t => myProperties.some(p => p.id === t.propertyId)), [tenants, myProperties]);
 
     // Self-heal: correct mismatches between unit.status and actual tenant occupancy.
-    // Vacant→Occupied: fires whenever a tenant exists for a unit marked Vacant.
-    // Occupied→Vacant: fires only when tenants data has settled (myTenants.length > 0)
-    //   to prevent the hydration-race where the tenants blob is briefly empty on load,
-    //   which previously wrongly marked every Occupied unit as Vacant.
-    // Guard: skip entirely if properties haven't loaded yet (allLandlordProperties empty).
+    //
+    // Vacant→Occupied  (forward, safe direction):
+    //   Fires when a tenant with an OCCUPYING status has unitId pointing to a Vacant unit.
+    //   Uses OCCUPYING_STATUSES so that Vacated/Evicted/etc. tenants don't keep a unit Occupied.
+    //
+    // Occupied→Vacant  (reverse direction):
+    //   Fires ONLY when NO tenant of ANY status has unitId pointing to the unit.
+    //   This prevents false-vacancy for tenants whose status is Vacated/Evicted/Blacklisted/
+    //   Inactive but whose unitId hasn't been cleared yet — those units must stay Occupied
+    //   until the tenant record is fully unlinked.
+    //
+    // Guard: skip entirely if either properties or the global tenants array haven't loaded.
+    //   tenantsSettled uses tenants.length (full array), not myTenants.length (filtered subset),
+    //   so a partial hydration state (some tenants present, others not yet) can't pass the guard.
     const OCCUPYING_STATUSES = ['Active', 'Pending', 'PendingAllocation', 'PendingPayment', 'Overdue', 'Notice'];
     useEffect(() => {
         if (allLandlordProperties.length === 0) return;
-        const tenantsSettled = myTenants.length > 0;
+        const tenantsSettled = tenants.length > 0;
         myProperties.forEach(prop => {
             const staleUnits = prop.units.filter(u => {
-                const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
-                if (hasTenant && u.status === 'Vacant') return true;
-                if (!hasTenant && u.status === 'Occupied' && tenantsSettled) return true;
+                // Forward: any active-status tenant linked to this unit → must be Occupied
+                const hasActiveTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
+                // Reverse: no tenant of ANY status linked to this unit → must be Vacant
+                const hasAnyTenant = tenants.some(t => t.unitId === u.id);
+                if (hasActiveTenant && u.status === 'Vacant') return true;
+                if (!hasAnyTenant && u.status === 'Occupied' && tenantsSettled) return true;
                 return false;
             });
             if (staleUnits.length > 0) {
                 const updatedUnits = prop.units.map(u => {
-                    const hasTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
-                    if (hasTenant && u.status === 'Vacant') return { ...u, status: 'Occupied' as const };
-                    if (!hasTenant && u.status === 'Occupied' && tenantsSettled) return { ...u, status: 'Vacant' as const };
+                    const hasActiveTenant = myTenants.some(t => t.unitId === u.id && OCCUPYING_STATUSES.includes(t.status));
+                    const hasAnyTenant = tenants.some(t => t.unitId === u.id);
+                    if (hasActiveTenant && u.status === 'Vacant') return { ...u, status: 'Occupied' as const };
+                    if (!hasAnyTenant && u.status === 'Occupied' && tenantsSettled) return { ...u, status: 'Vacant' as const };
                     return u;
                 });
                 updateProperty(prop.id, { units: updatedUnits });
             }
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [myTenants, myProperties, allLandlordProperties.length]);
+    }, [tenants, myTenants, myProperties, allLandlordProperties.length]);
 
     const myTasks = useMemo(() => tasks.filter(t => myProperties.some(p => p.name === t.property)), [tasks, myProperties]);
    
