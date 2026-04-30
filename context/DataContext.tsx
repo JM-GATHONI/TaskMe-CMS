@@ -175,7 +175,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetTenants]);
-    const [properties, setProperties, propertiesStatus] = useSupabaseBackedState<Property[]>([], 'tm_properties_v11');
+    const [properties, _rawSetProperties, propertiesStatus] = useSupabaseBackedState<Property[]>([], 'tm_properties_v11');
+    const _propertiesUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedProperties = React.useRef<Property[]>([]);
+    const setProperties: React.Dispatch<React.SetStateAction<Property[]>> = React.useCallback((updater) => {
+      _rawSetProperties(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Property[]) => Property[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Property>(prev.map(p => [p.id, p]));
+          const changed = next.filter(p => { const q = prevById.get(p.id); return !q || q !== p; });
+          if (changed.length > 0) {
+            _pendingChangedProperties.current = [
+              ..._pendingChangedProperties.current.filter(p => !changed.some((c: Property) => c.id === p.id)),
+              ...changed,
+            ];
+            if (_propertiesUpsertTimer.current) clearTimeout(_propertiesUpsertTimer.current);
+            _propertiesUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedProperties.current;
+              _pendingChangedProperties.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_properties_bulk', { p_properties: toWrite as unknown as object });
+                if (error) console.warn('[properties] upsert_properties_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[properties] upsert_properties_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetProperties]);
     const [landlords, setLandlords, landlordsStatus] = useSupabaseBackedState<User[]>([], 'tm_landlords_v11');
     const [tasks, setTasks, tasksStatus] = useSupabaseBackedState<Task[]>([], 'tm_tasks_v11');
     const [bills, setBills, billsStatus] = useSupabaseBackedState<Bill[]>([], 'tm_bills_v11');
