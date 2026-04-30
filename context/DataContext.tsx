@@ -779,12 +779,132 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetPreventiveTasks]);
-    const [funds, setFunds, fundsStatus] = useSupabaseBackedState<Fund[]>([], 'tm_funds_v11');
-    const [investments, setInvestments, investmentsStatus] = useSupabaseBackedState<Investment[]>([], 'tm_investments_v11');
-    const [withdrawals, setWithdrawals, withdrawalsStatus] = useSupabaseBackedState<WithdrawalRequest[]>([], 'tm_withdrawals_v11');
-    const [renovationInvestors, setRenovationInvestors, renovationInvestorsStatus] = useSupabaseBackedState<RenovationInvestor[]>([], 'tm_renovation_investors_v11');
-    const [rfTransactions, setRFTransactions, rfTxStatus] = useSupabaseBackedState<RFTransaction[]>([], 'tm_rf_transactions_v11');
-    const [renovationProjectBills, setRenovationProjectBills, renovationBillsStatus] = useSupabaseBackedState<RenovationProjectBill[]>([], 'tm_renovation_project_bills_v11');
+    const [funds, _rawSetFunds, fundsStatus] = useSupabaseBackedState<Fund[]>([], 'tm_funds_v11');
+    const _fundsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedFunds = React.useRef<Fund[]>([]);
+    const setFunds: React.Dispatch<React.SetStateAction<Fund[]>> = React.useCallback((updater) => {
+      _rawSetFunds(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Fund[]) => Fund[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Fund>(prev.map(f => [f.id, f]));
+          const changed = next.filter(f => { const q = prevById.get(f.id); return !q || q !== f; });
+          if (changed.length > 0) {
+            _pendingChangedFunds.current = [..._pendingChangedFunds.current.filter(f => !changed.some((c: Fund) => c.id === f.id)), ...changed];
+            if (_fundsUpsertTimer.current) clearTimeout(_fundsUpsertTimer.current);
+            _fundsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedFunds.current; _pendingChangedFunds.current = [];
+              try { const { error } = await supabase.schema('app').rpc('upsert_funds_bulk', { p_funds: toWrite as unknown as object }); if (error) console.warn('[funds] upsert_funds_bulk failed:', error.message); } catch (e) { console.warn('[funds] upsert_funds_bulk error:', (e as Error)?.message); }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetFunds]);
+    const [investments, _rawSetInvestments, investmentsStatus] = useSupabaseBackedState<Investment[]>([], 'tm_investments_v11');
+    const _investmentsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedInvestments = React.useRef<Investment[]>([]);
+    const setInvestments: React.Dispatch<React.SetStateAction<Investment[]>> = React.useCallback((updater) => {
+      _rawSetInvestments(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Investment[]) => Investment[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Investment>(prev.map(i => [i.id, i]));
+          const changed = next.filter(i => { const q = prevById.get(i.id); return !q || q !== i; });
+          if (changed.length > 0) {
+            _pendingChangedInvestments.current = [..._pendingChangedInvestments.current.filter(i => !changed.some((c: Investment) => c.id === i.id)), ...changed];
+            if (_investmentsUpsertTimer.current) clearTimeout(_investmentsUpsertTimer.current);
+            _investmentsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedInvestments.current; _pendingChangedInvestments.current = [];
+              try { const { error } = await supabase.schema('app').rpc('upsert_investments_bulk', { p_investments: toWrite as unknown as object }); if (error) console.warn('[investments] upsert_investments_bulk failed:', error.message); } catch (e) { console.warn('[investments] upsert_investments_bulk error:', (e as Error)?.message); }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetInvestments]);
+    const [withdrawals, _rawSetWithdrawals, withdrawalsStatus] = useSupabaseBackedState<WithdrawalRequest[]>([], 'tm_withdrawals_v11');
+    const _withdrawalsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedWithdrawals = React.useRef<WithdrawalRequest[]>([]);
+    const setWithdrawals: React.Dispatch<React.SetStateAction<WithdrawalRequest[]>> = React.useCallback((updater) => {
+      _rawSetWithdrawals(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: WithdrawalRequest[]) => WithdrawalRequest[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, WithdrawalRequest>(prev.map(w => [w.id, w]));
+          const changed = next.filter(w => { const q = prevById.get(w.id); return !q || q !== w; });
+          if (changed.length > 0) {
+            _pendingChangedWithdrawals.current = [..._pendingChangedWithdrawals.current.filter(w => !changed.some((c: WithdrawalRequest) => c.id === w.id)), ...changed];
+            if (_withdrawalsUpsertTimer.current) clearTimeout(_withdrawalsUpsertTimer.current);
+            _withdrawalsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedWithdrawals.current; _pendingChangedWithdrawals.current = [];
+              try { const { error } = await supabase.schema('app').rpc('upsert_withdrawals_bulk', { p_withdrawals: toWrite as unknown as object }); if (error) console.warn('[withdrawals] upsert_withdrawals_bulk failed:', error.message); } catch (e) { console.warn('[withdrawals] upsert_withdrawals_bulk error:', (e as Error)?.message); }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetWithdrawals]);
+    const [renovationInvestors, _rawSetRenovationInvestors, renovationInvestorsStatus] = useSupabaseBackedState<RenovationInvestor[]>([], 'tm_renovation_investors_v11');
+    const _renovInvestorsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedRenovInvestors = React.useRef<RenovationInvestor[]>([]);
+    const setRenovationInvestors: React.Dispatch<React.SetStateAction<RenovationInvestor[]>> = React.useCallback((updater) => {
+      _rawSetRenovationInvestors(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: RenovationInvestor[]) => RenovationInvestor[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, RenovationInvestor>(prev.map(r => [r.id, r]));
+          const changed = next.filter(r => { const q = prevById.get(r.id); return !q || q !== r; });
+          if (changed.length > 0) {
+            _pendingChangedRenovInvestors.current = [..._pendingChangedRenovInvestors.current.filter(r => !changed.some((c: RenovationInvestor) => c.id === r.id)), ...changed];
+            if (_renovInvestorsUpsertTimer.current) clearTimeout(_renovInvestorsUpsertTimer.current);
+            _renovInvestorsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedRenovInvestors.current; _pendingChangedRenovInvestors.current = [];
+              try { const { error } = await supabase.schema('app').rpc('upsert_renovation_investors_bulk', { p_investors: toWrite as unknown as object }); if (error) console.warn('[renov_investors] upsert_renovation_investors_bulk failed:', error.message); } catch (e) { console.warn('[renov_investors] upsert_renovation_investors_bulk error:', (e as Error)?.message); }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetRenovationInvestors]);
+    const [rfTransactions, _rawSetRFTransactions, rfTxStatus] = useSupabaseBackedState<RFTransaction[]>([], 'tm_rf_transactions_v11');
+    const _rfTxUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedRFTx = React.useRef<RFTransaction[]>([]);
+    const setRFTransactions: React.Dispatch<React.SetStateAction<RFTransaction[]>> = React.useCallback((updater) => {
+      _rawSetRFTransactions(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: RFTransaction[]) => RFTransaction[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, RFTransaction>(prev.map(t => [t.id, t]));
+          const changed = next.filter(t => { const q = prevById.get(t.id); return !q || q !== t; });
+          if (changed.length > 0) {
+            _pendingChangedRFTx.current = [..._pendingChangedRFTx.current.filter(t => !changed.some((c: RFTransaction) => c.id === t.id)), ...changed];
+            if (_rfTxUpsertTimer.current) clearTimeout(_rfTxUpsertTimer.current);
+            _rfTxUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedRFTx.current; _pendingChangedRFTx.current = [];
+              try { const { error } = await supabase.schema('app').rpc('upsert_rf_transactions_bulk', { p_txs: toWrite as unknown as object }); if (error) console.warn('[rf_tx] upsert_rf_transactions_bulk failed:', error.message); } catch (e) { console.warn('[rf_tx] upsert_rf_transactions_bulk error:', (e as Error)?.message); }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetRFTransactions]);
+    const [renovationProjectBills, _rawSetRenovationProjectBills, renovationBillsStatus] = useSupabaseBackedState<RenovationProjectBill[]>([], 'tm_renovation_project_bills_v11');
+    const _renovBillsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedRenovBills = React.useRef<RenovationProjectBill[]>([]);
+    const setRenovationProjectBills: React.Dispatch<React.SetStateAction<RenovationProjectBill[]>> = React.useCallback((updater) => {
+      _rawSetRenovationProjectBills(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: RenovationProjectBill[]) => RenovationProjectBill[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, RenovationProjectBill>(prev.map(b => [b.id, b]));
+          const changed = next.filter(b => { const q = prevById.get(b.id); return !q || q !== b; });
+          if (changed.length > 0) {
+            _pendingChangedRenovBills.current = [..._pendingChangedRenovBills.current.filter(b => !changed.some((c: RenovationProjectBill) => c.id === b.id)), ...changed];
+            if (_renovBillsUpsertTimer.current) clearTimeout(_renovBillsUpsertTimer.current);
+            _renovBillsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedRenovBills.current; _pendingChangedRenovBills.current = [];
+              try { const { error } = await supabase.schema('app').rpc('upsert_renovation_project_bills_bulk', { p_bills: toWrite as unknown as object }); if (error) console.warn('[renov_bills] upsert_renovation_project_bills_bulk failed:', error.message); } catch (e) { console.warn('[renov_bills] upsert_renovation_project_bills_bulk error:', (e as Error)?.message); }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetRenovationProjectBills]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [rolesStatus, setRolesStatus] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
     const [systemSettings, setSystemSettings, systemSettingsStatus] = useSupabaseBackedState<SystemSettings>({
