@@ -626,7 +626,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetVendors]);
-    const [messages, setMessages, messagesStatus] = useSupabaseBackedState<Message[]>([], 'tm_messages_v11');
+    const [messages, _rawSetMessages, messagesStatus] = useSupabaseBackedState<Message[]>([], 'tm_messages_v11');
+    const _messagesUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedMessages = React.useRef<Message[]>([]);
+    const setMessages: React.Dispatch<React.SetStateAction<Message[]>> = React.useCallback((updater) => {
+      _rawSetMessages(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Message[]) => Message[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Message>(prev.map(m => [m.id, m]));
+          const changed = next.filter(m => { const q = prevById.get(m.id); return !q || q !== m; });
+          if (changed.length > 0) {
+            _pendingChangedMessages.current = [
+              ..._pendingChangedMessages.current.filter(m => !changed.some((c: Message) => c.id === m.id)),
+              ...changed,
+            ];
+            if (_messagesUpsertTimer.current) clearTimeout(_messagesUpsertTimer.current);
+            _messagesUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedMessages.current;
+              _pendingChangedMessages.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_messages_bulk', { p_messages: toWrite as unknown as object });
+                if (error) console.warn('[messages] upsert_messages_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[messages] upsert_messages_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetMessages]);
     const [notifications, setNotifications, notificationsStatus] = useSupabaseBackedState<Notification[]>([], 'tm_notifications_v11');
     const [templates, setTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>([], 'tm_templates_v11');
     const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
