@@ -94,15 +94,22 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             const user = data.user;
 
-            // Parallel fetch: user_roles + public.profiles — both only need user.id, no dependency on each other
+            // Triple-parallel fetch: user_roles + profiles + staff_profiles all fire together.
+            // metadata role is used as a hint to decide whether to include staff_profiles;
+            // the DB-resolved role (from user_roles) is used afterwards to decide which result to keep.
             let resolvedRole: StaffProfile['role'] = ((user.user_metadata as any)?.role ?? 'Super Admin') as any;
             let profFirst: string | null = null;
             let profFull: string | null = null;
+            const metaRole = String((user.user_metadata as any)?.role ?? '');
+            const metaNeedsStaff = metaRole !== 'Tenant' && metaRole !== 'Caretaker';
 
-            console.log('[Supabase] parallel: user_roles + profiles', { userId: user.id });
-            const [roleResult, profileResult] = await Promise.all([
-                Promise.resolve(supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle()).catch(() => ({ data: null, error: null })),
-                Promise.resolve(supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle()).catch(() => ({ data: null, error: null })),
+            console.log('[Supabase] parallel: user_roles + profiles + staff_profiles', { userId: user.id });
+            const [roleResult, profileResult, staffResult] = await Promise.all([
+                supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
+                supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
+                metaNeedsStaff
+                    ? supabase.schema('app').from('staff_profiles').select('id,name,role,email,phone,branch,status').eq('id', user.id).limit(1).catch(() => ({ data: null, error: null }))
+                    : Promise.resolve({ data: [] as any[], error: null }),
             ]);
 
             if ((roleResult as any).data?.role?.name) {
@@ -111,18 +118,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             profFirst = ((profileResult as any).data as any)?.first_name?.trim?.() || null;
             profFull = ((profileResult as any).data as any)?.full_name?.trim?.() || null;
 
-            // staff_profiles — requires resolved role, so runs after the parallel pair
+            // Use the prefetched staff_profiles result if the resolved role confirms it's needed.
             let staffRow: any = null;
             if (resolvedRole !== 'Tenant' && resolvedRole !== 'Caretaker') {
-                console.log('[Supabase] staff_profiles lookup', { userId: user.id });
-                const { data: staffRows, error: staffError } = await supabase
-                    .schema('app')
-                    .from('staff_profiles')
-                    .select('id,name,role,email,phone,branch,status')
-                    .eq('id', user.id)
-                    .limit(1);
-                if (staffError) console.warn('Error loading staff profile', staffError);
-                staffRow = staffRows?.[0] ?? null;
+                const staffRows = (staffResult as any).data;
+                staffRow = Array.isArray(staffRows) ? (staffRows[0] ?? null) : null;
             }
 
             const persistedStaff = staff.find(s => s.id === user.id);
