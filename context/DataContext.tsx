@@ -149,7 +149,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const prevById = new Map<string, TenantProfile>(prev.map(t => [t.id, t]));
           const changed = next.filter(t => {
             const p = prevById.get(t.id);
-            return !p || JSON.stringify(p) !== JSON.stringify(t);
+            // Reference inequality is sufficient: React immutable update patterns
+            // always allocate a new object for mutated tenants and preserve the
+            // original reference for untouched ones — no need for JSON.stringify.
+            return !p || p !== t;
           });
           if (changed.length > 0) {
             _pendingChangedTenants.current = [
