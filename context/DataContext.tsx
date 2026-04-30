@@ -41,6 +41,52 @@ function useBatchSettled(): boolean {
   return settled;
 }
 
+// Maps each blob key to its individual normalized-table load RPC.
+// Used by the fallback queryFn when the primary load_all_app_state() batch fails.
+// tm_listings_v11 has no RPC (derived client-side from properties) — fallback returns [].
+const BLOB_KEY_TO_RPC: Record<string, string> = {
+  tm_tenants_v11:                   'load_tenants',
+  tm_properties_v11:                'load_properties',
+  tm_landlords_v11:                 'load_landlords',
+  tm_staff_v11:                     'load_staff',
+  tm_vendors_v11:                   'load_vendors',
+  tm_external_transactions_v11:     'load_external_transactions',
+  tm_audit_logs_v11:                'load_audit_logs',
+  tm_tasks_v11:                     'load_tasks',
+  tm_bills_v11:                     'load_bills',
+  tm_invoices_v11:                  'load_invoices',
+  tm_fines_v11:                     'load_fine_rules',
+  tm_overpayments_v11:              'load_overpayments',
+  tm_quotations_v11:                'load_quotations',
+  tm_landlord_applications_v11:     'load_landlord_applications',
+  tm_applications_v11:              'load_tenant_applications',
+  tm_offboarding_v11:               'load_offboarding_records',
+  tm_landlord_offboarding_v11:      'load_landlord_offboarding_records',
+  tm_commissions_v11:               'load_commission_rules',
+  tm_deductions_v11:                'load_deduction_rules',
+  tm_income_sources_v11:            'load_income_sources',
+  tm_preventive_tasks_v11:          'load_preventive_tasks',
+  tm_funds_v11:                     'load_funds',
+  tm_investments_v11:               'load_investments',
+  tm_withdrawals_v11:               'load_withdrawal_requests',
+  tm_renovation_investors_v11:      'load_renovation_investors',
+  tm_rf_transactions_v11:           'load_rf_transactions',
+  tm_renovation_project_bills_v11:  'load_renovation_project_bills',
+  tm_messages_v11:                  'load_messages',
+  tm_notifications_v11:             'load_notifications',
+  tm_templates_v11:                 'load_communication_templates',
+  tm_workflows_v11:                 'load_workflows',
+  tm_automation_rules_v11:          'load_automation_rules',
+  tm_escalation_rules_v11:          'load_escalation_rules',
+  tm_scheduled_reports_v11:         'load_scheduled_reports',
+  tm_tax_records_v11:               'load_tax_records',
+  tm_leads_v11:                     'load_leads',
+  tm_fundi_jobs_v11:                'load_fundi_jobs',
+  tm_marketing_banners_v11:         'load_marketing_banners',
+  tm_system_settings_v11:           'load_system_settings',
+  tm_geospatial_v11:                'load_geospatial_data',
+};
+
 function useSupabaseBackedState<T>(
   emptyValue: T,
   key: string,
@@ -70,15 +116,15 @@ function useSupabaseBackedState<T>(
     queryFn: async () => {
       const session = await getSupabaseSession();
       if (!session) throw new Error('SESSION_EXPIRED');
-      console.log('[Supabase] app_state fallback load (batch miss)', { key });
-      const { data, error } = await supabase
-        .schema('app')
-        .from('app_state')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle();
+      const rpcName = BLOB_KEY_TO_RPC[key];
+      if (!rpcName) {
+        console.log('[Supabase] fallback load (no RPC for key, returning empty)', { key });
+        return emptyValue;
+      }
+      console.log('[Supabase] normalized fallback load (batch miss)', { key, rpcName });
+      const { data, error } = await supabase.schema('app').rpc(rpcName);
       if (error) throw error;
-      return (data?.value ?? emptyValue) as T;
+      return (data ?? emptyValue) as T;
     },
   });
 
