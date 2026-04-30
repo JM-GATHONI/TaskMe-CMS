@@ -535,7 +535,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetLandlordOffboarding]);
-    const [geospatialData, setGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
+    const [geospatialData, _rawSetGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
+    const _geospatialTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const setGeospatialData: React.Dispatch<React.SetStateAction<GeospatialData>> = React.useCallback((updater) => {
+      _rawSetGeospatialData(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: GeospatialData) => GeospatialData)(prev) : updater;
+        if (_geospatialTimer.current) clearTimeout(_geospatialTimer.current);
+        _geospatialTimer.current = setTimeout(async () => {
+          try {
+            const { error } = await supabase.schema('app').rpc('upsert_geospatial_data', { p_data: next as unknown as object });
+            if (error) console.warn('[geospatial] upsert_geospatial_data failed:', error.message);
+          } catch (e) {
+            console.warn('[geospatial] upsert_geospatial_data error:', (e as Error)?.message);
+          }
+        }, 800);
+        return next;
+      });
+    }, [_rawSetGeospatialData]);
     const [commissionRules, _rawSetCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
     const _commissionUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const _pendingChangedCommissions = React.useRef<CommissionRule[]>([]);
