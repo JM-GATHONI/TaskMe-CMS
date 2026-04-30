@@ -1179,7 +1179,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetLeads]);
-    const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
+    const [fundiJobs, _rawSetFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
+    const _fundiJobsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedFundiJobs = React.useRef<FundiJob[]>([]);
+    const setFundiJobs: React.Dispatch<React.SetStateAction<FundiJob[]>> = React.useCallback((updater) => {
+      _rawSetFundiJobs(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: FundiJob[]) => FundiJob[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, FundiJob>(prev.map(j => [j.id, j]));
+          const changed = next.filter(j => { const q = prevById.get(j.id); return !q || q !== j; });
+          if (changed.length > 0) {
+            _pendingChangedFundiJobs.current = [
+              ..._pendingChangedFundiJobs.current.filter(j => !changed.some((c: FundiJob) => c.id === j.id)),
+              ...changed,
+            ];
+            if (_fundiJobsUpsertTimer.current) clearTimeout(_fundiJobsUpsertTimer.current);
+            _fundiJobsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedFundiJobs.current;
+              _pendingChangedFundiJobs.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_fundi_jobs_bulk', { p_jobs: toWrite as unknown as object });
+                if (error) console.warn('[fundi_jobs] upsert_fundi_jobs_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[fundi_jobs] upsert_fundi_jobs_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetFundiJobs]);
     const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
 
     // ── DB Staff Profiles ────────────────────────────────────────────────────
