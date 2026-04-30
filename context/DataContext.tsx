@@ -241,7 +241,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [quotations, setQuotations, quotationsStatus] = useSupabaseBackedState<Quotation[]>([], 'tm_quotations_v11'); 
     const [applications, setApplications, applicationsStatus] = useSupabaseBackedState<TenantApplication[]>([], 'tm_applications_v11');
     const [landlordApplications, setLandlordApplications, landlordApplicationsStatus] = useSupabaseBackedState<LandlordApplication[]>([], 'tm_landlord_applications_v11');
-    const [staff, setStaff, staffStatus] = useSupabaseBackedState<StaffProfile[]>([], 'tm_staff_v11');
+    const [staff, _rawSetStaff, staffStatus] = useSupabaseBackedState<StaffProfile[]>([], 'tm_staff_v11');
+    const _staffUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedStaff = React.useRef<StaffProfile[]>([]);
+    const setStaff: React.Dispatch<React.SetStateAction<StaffProfile[]>> = React.useCallback((updater) => {
+      _rawSetStaff(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: StaffProfile[]) => StaffProfile[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, StaffProfile>(prev.map(s => [s.id, s]));
+          const changed = next.filter(s => { const q = prevById.get(s.id); return !q || q !== s; });
+          if (changed.length > 0) {
+            _pendingChangedStaff.current = [
+              ..._pendingChangedStaff.current.filter(s => !changed.some((c: StaffProfile) => c.id === s.id)),
+              ...changed,
+            ];
+            if (_staffUpsertTimer.current) clearTimeout(_staffUpsertTimer.current);
+            _staffUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedStaff.current;
+              _pendingChangedStaff.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_staff_bulk', { p_staff: toWrite as unknown as object });
+                if (error) console.warn('[staff] upsert_staff_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[staff] upsert_staff_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetStaff]);
     const [fines, setFines, finesStatus] = useSupabaseBackedState<FineRule[]>([], 'tm_fines_v11'); 
     const [offboardingRecords, setOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>([], 'tm_offboarding_v11');
     const [landlordOffboardingRecords, setLandlordOffboardingRecords, landlordOffboardingStatus] = useSupabaseBackedState<LandlordOffboardingRecord[]>([], 'tm_landlord_offboarding_v11');
