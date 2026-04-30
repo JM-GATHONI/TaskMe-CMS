@@ -911,7 +911,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 .eq('id', id);
             if (error) {
                 console.error('Failed to update role', error);
-                alert(error.message);
+                alert(error.message ?? 'Failed to update role. Please try again.');
                 const { data } = await supabase
                     .schema('app')
                     .from('roles')
@@ -945,7 +945,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (error) {
                 console.error('Failed to delete role', error);
                 setRoles(prevRoles);
-                alert(error.message);
+                alert(error.message ?? 'Failed to delete role. Please try again.');
             }
         })();
     };
