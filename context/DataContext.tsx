@@ -656,7 +656,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetMessages]);
-    const [notifications, setNotifications, notificationsStatus] = useSupabaseBackedState<Notification[]>([], 'tm_notifications_v11');
+    const [notifications, _rawSetNotifications, notificationsStatus] = useSupabaseBackedState<Notification[]>([], 'tm_notifications_v11');
+    const _notifUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedNotifs = React.useRef<Notification[]>([]);
+    const setNotifications: React.Dispatch<React.SetStateAction<Notification[]>> = React.useCallback((updater) => {
+      _rawSetNotifications(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Notification[]) => Notification[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Notification>(prev.map(n => [n.id, n]));
+          const changed = next.filter(n => { const q = prevById.get(n.id); return !q || q !== n; });
+          if (changed.length > 0) {
+            _pendingChangedNotifs.current = [
+              ..._pendingChangedNotifs.current.filter(n => !changed.some((c: Notification) => c.id === n.id)),
+              ...changed,
+            ];
+            if (_notifUpsertTimer.current) clearTimeout(_notifUpsertTimer.current);
+            _notifUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedNotifs.current;
+              _pendingChangedNotifs.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_notifications_bulk', { p_notifications: toWrite as unknown as object });
+                if (error) console.warn('[notifications] upsert_notifications_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[notifications] upsert_notifications_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetNotifications]);
     const [templates, setTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>([], 'tm_templates_v11');
     const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
     const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
