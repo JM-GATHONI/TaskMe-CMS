@@ -686,7 +686,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetNotifications]);
-    const [templates, setTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>([], 'tm_templates_v11');
+    const [templates, _rawSetTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>([], 'tm_templates_v11');
+    const _templatesUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedTemplates = React.useRef<CommunicationTemplate[]>([]);
+    const setTemplates: React.Dispatch<React.SetStateAction<CommunicationTemplate[]>> = React.useCallback((updater) => {
+      _rawSetTemplates(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: CommunicationTemplate[]) => CommunicationTemplate[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, CommunicationTemplate>(prev.map(t => [t.id, t]));
+          const changed = next.filter(t => { const q = prevById.get(t.id); return !q || q !== t; });
+          if (changed.length > 0) {
+            _pendingChangedTemplates.current = [
+              ..._pendingChangedTemplates.current.filter(t => !changed.some((c: CommunicationTemplate) => c.id === t.id)),
+              ...changed,
+            ];
+            if (_templatesUpsertTimer.current) clearTimeout(_templatesUpsertTimer.current);
+            _templatesUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedTemplates.current;
+              _pendingChangedTemplates.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_communication_templates_bulk', { p_templates: toWrite as unknown as object });
+                if (error) console.warn('[templates] upsert_communication_templates_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[templates] upsert_communication_templates_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetTemplates]);
     const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
     const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
     const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
