@@ -87,7 +87,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     setLockedUntil(Date.now() + 5 * 60 * 1000);
                     alert('Too many failed login attempts. Your account is locked for 5 minutes.');
                 } else {
-                    alert(error?.message ?? 'Login failed');
+                    const rawMsg = String(error?.message ?? '').trim();
+                    const isUsefulMsg = rawMsg.length > 3 && rawMsg !== '{}' && rawMsg !== 'null';
+                    alert(isUsefulMsg ? rawMsg : 'Login failed. Please check your credentials and try again.');
                 }
                 return;
             }
