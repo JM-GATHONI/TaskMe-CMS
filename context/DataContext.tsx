@@ -1149,7 +1149,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // skipPersist: listings are auto-derived from properties on every load.
     // Persisting them causes statement timeouts on large datasets.
     const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11', { skipPersist: true });
-    const [leads, setLeads, leadsStatus] = useSupabaseBackedState<Lead[]>([], 'tm_leads_v11');
+    const [leads, _rawSetLeads, leadsStatus] = useSupabaseBackedState<Lead[]>([], 'tm_leads_v11');
+    const _leadsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedLeads = React.useRef<Lead[]>([]);
+    const setLeads: React.Dispatch<React.SetStateAction<Lead[]>> = React.useCallback((updater) => {
+      _rawSetLeads(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Lead[]) => Lead[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Lead>(prev.map(l => [l.id, l]));
+          const changed = next.filter(l => { const q = prevById.get(l.id); return !q || q !== l; });
+          if (changed.length > 0) {
+            _pendingChangedLeads.current = [
+              ..._pendingChangedLeads.current.filter(l => !changed.some((c: Lead) => c.id === l.id)),
+              ...changed,
+            ];
+            if (_leadsUpsertTimer.current) clearTimeout(_leadsUpsertTimer.current);
+            _leadsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedLeads.current;
+              _pendingChangedLeads.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_leads_bulk', { p_leads: toWrite as unknown as object });
+                if (error) console.warn('[leads] upsert_leads_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[leads] upsert_leads_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetLeads]);
     const [fundiJobs, setFundiJobs, fundiJobsStatus] = useSupabaseBackedState<FundiJob[]>([], 'tm_fundi_jobs_v11');
     const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
 
