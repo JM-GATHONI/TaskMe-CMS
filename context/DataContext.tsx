@@ -277,7 +277,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [geospatialData, setGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
     const [commissionRules, setCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
     const [deductionRules, setDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>([], 'tm_deductions_v11');
-    const [vendors, setVendors, vendorsStatus] = useSupabaseBackedState<Vendor[]>([], 'tm_vendors_v11');
+    const [vendors, _rawSetVendors, vendorsStatus] = useSupabaseBackedState<Vendor[]>([], 'tm_vendors_v11');
+    const _vendorsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedVendors = React.useRef<Vendor[]>([]);
+    const setVendors: React.Dispatch<React.SetStateAction<Vendor[]>> = React.useCallback((updater) => {
+      _rawSetVendors(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Vendor[]) => Vendor[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Vendor>(prev.map(v => [v.id, v]));
+          const changed = next.filter(v => { const q = prevById.get(v.id); return !q || q !== v; });
+          if (changed.length > 0) {
+            _pendingChangedVendors.current = [
+              ..._pendingChangedVendors.current.filter(v => !changed.some((c: Vendor) => c.id === v.id)),
+              ...changed,
+            ];
+            if (_vendorsUpsertTimer.current) clearTimeout(_vendorsUpsertTimer.current);
+            _vendorsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedVendors.current;
+              _pendingChangedVendors.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_vendors_bulk', { p_vendors: toWrite as unknown as object });
+                if (error) console.warn('[vendors] upsert_vendors_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[vendors] upsert_vendors_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetVendors]);
     const [messages, setMessages, messagesStatus] = useSupabaseBackedState<Message[]>([], 'tm_messages_v11');
     const [notifications, setNotifications, notificationsStatus] = useSupabaseBackedState<Notification[]>([], 'tm_notifications_v11');
     const [templates, setTemplates, templatesStatus] = useSupabaseBackedState<CommunicationTemplate[]>([], 'tm_templates_v11');
