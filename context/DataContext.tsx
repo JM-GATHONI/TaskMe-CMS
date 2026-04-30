@@ -313,7 +313,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
     const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
     const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
-    const [auditLogs, setAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
+    const [auditLogs, _rawSetAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
+    const _auditLogsInsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingNewAuditLogs = React.useRef<AuditLogEntry[]>([]);
+    const setAuditLogs: React.Dispatch<React.SetStateAction<AuditLogEntry[]>> = React.useCallback((updater) => {
+      _rawSetAuditLogs(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: AuditLogEntry[]) => AuditLogEntry[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevIds = new Set<string>(prev.map(l => l.id));
+          const newEntries = next.filter(l => !prevIds.has(l.id));
+          if (newEntries.length > 0) {
+            _pendingNewAuditLogs.current = [..._pendingNewAuditLogs.current, ...newEntries];
+            if (_auditLogsInsertTimer.current) clearTimeout(_auditLogsInsertTimer.current);
+            _auditLogsInsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingNewAuditLogs.current;
+              _pendingNewAuditLogs.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('insert_audit_logs_bulk', { p_logs: toWrite as unknown as object });
+                if (error) console.warn('[audit_logs] insert_audit_logs_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[audit_logs] insert_audit_logs_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetAuditLogs]);
     const [externalTransactions, _rawSetExternalTransactions, externalTxStatus] = useSupabaseBackedState<ExternalTransaction[]>([], 'tm_external_transactions_v11');
     const _extTxUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const _pendingChangedExtTx = React.useRef<ExternalTransaction[]>([]);
