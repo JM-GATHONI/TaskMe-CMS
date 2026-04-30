@@ -776,7 +776,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetAutomationRules]);
-    const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
+    const [escalationRules, _rawSetEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
+    const _escalationUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedEscalation = React.useRef<EscalationRule[]>([]);
+    const setEscalationRules: React.Dispatch<React.SetStateAction<EscalationRule[]>> = React.useCallback((updater) => {
+      _rawSetEscalationRules(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: EscalationRule[]) => EscalationRule[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, EscalationRule>(prev.map(e => [e.id, e]));
+          const changed = next.filter(e => { const q = prevById.get(e.id); return !q || q !== e; });
+          if (changed.length > 0) {
+            _pendingChangedEscalation.current = [
+              ..._pendingChangedEscalation.current.filter(e => !changed.some((c: EscalationRule) => c.id === e.id)),
+              ...changed,
+            ];
+            if (_escalationUpsertTimer.current) clearTimeout(_escalationUpsertTimer.current);
+            _escalationUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedEscalation.current;
+              _pendingChangedEscalation.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_escalation_rules_bulk', { p_rules: toWrite as unknown as object });
+                if (error) console.warn('[escalation] upsert_escalation_rules_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[escalation] upsert_escalation_rules_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetEscalationRules]);
     const [auditLogs, _rawSetAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
     const _auditLogsInsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const _pendingNewAuditLogs = React.useRef<AuditLogEntry[]>([]);
