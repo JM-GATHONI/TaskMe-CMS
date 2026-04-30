@@ -716,7 +716,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetTemplates]);
-    const [workflows, setWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
+    const [workflows, _rawSetWorkflows, workflowsStatus] = useSupabaseBackedState<Workflow[]>([], 'tm_workflows_v11');
+    const _workflowsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedWorkflows = React.useRef<Workflow[]>([]);
+    const setWorkflows: React.Dispatch<React.SetStateAction<Workflow[]>> = React.useCallback((updater) => {
+      _rawSetWorkflows(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Workflow[]) => Workflow[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Workflow>(prev.map(w => [w.id, w]));
+          const changed = next.filter(w => { const q = prevById.get(w.id); return !q || q !== w; });
+          if (changed.length > 0) {
+            _pendingChangedWorkflows.current = [
+              ..._pendingChangedWorkflows.current.filter(w => !changed.some((c: Workflow) => c.id === w.id)),
+              ...changed,
+            ];
+            if (_workflowsUpsertTimer.current) clearTimeout(_workflowsUpsertTimer.current);
+            _workflowsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedWorkflows.current;
+              _pendingChangedWorkflows.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_workflows_bulk', { p_workflows: toWrite as unknown as object });
+                if (error) console.warn('[workflows] upsert_workflows_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[workflows] upsert_workflows_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetWorkflows]);
     const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
     const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
     const [auditLogs, _rawSetAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
