@@ -475,11 +475,127 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetFines]); 
-    const [offboardingRecords, setOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>([], 'tm_offboarding_v11');
-    const [landlordOffboardingRecords, setLandlordOffboardingRecords, landlordOffboardingStatus] = useSupabaseBackedState<LandlordOffboardingRecord[]>([], 'tm_landlord_offboarding_v11');
+    const [offboardingRecords, _rawSetOffboardingRecords, offboardingStatus] = useSupabaseBackedState<OffboardingRecord[]>([], 'tm_offboarding_v11');
+    const _offboardingUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedOffboarding = React.useRef<OffboardingRecord[]>([]);
+    const setOffboardingRecords: React.Dispatch<React.SetStateAction<OffboardingRecord[]>> = React.useCallback((updater) => {
+      _rawSetOffboardingRecords(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: OffboardingRecord[]) => OffboardingRecord[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, OffboardingRecord>(prev.map(o => [o.id, o]));
+          const changed = next.filter(o => { const q = prevById.get(o.id); return !q || q !== o; });
+          if (changed.length > 0) {
+            _pendingChangedOffboarding.current = [
+              ..._pendingChangedOffboarding.current.filter(o => !changed.some((c: OffboardingRecord) => c.id === o.id)),
+              ...changed,
+            ];
+            if (_offboardingUpsertTimer.current) clearTimeout(_offboardingUpsertTimer.current);
+            _offboardingUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedOffboarding.current;
+              _pendingChangedOffboarding.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_offboarding_records_bulk', { p_records: toWrite as unknown as object });
+                if (error) console.warn('[offboarding] upsert_offboarding_records_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[offboarding] upsert_offboarding_records_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetOffboardingRecords]);
+    const [landlordOffboardingRecords, _rawSetLandlordOffboarding, landlordOffboardingStatus] = useSupabaseBackedState<LandlordOffboardingRecord[]>([], 'tm_landlord_offboarding_v11');
+    const _llOffboardingUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedLlOffboarding = React.useRef<LandlordOffboardingRecord[]>([]);
+    const setLandlordOffboardingRecords: React.Dispatch<React.SetStateAction<LandlordOffboardingRecord[]>> = React.useCallback((updater) => {
+      _rawSetLandlordOffboarding(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: LandlordOffboardingRecord[]) => LandlordOffboardingRecord[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, LandlordOffboardingRecord>(prev.map(o => [o.id, o]));
+          const changed = next.filter(o => { const q = prevById.get(o.id); return !q || q !== o; });
+          if (changed.length > 0) {
+            _pendingChangedLlOffboarding.current = [
+              ..._pendingChangedLlOffboarding.current.filter(o => !changed.some((c: LandlordOffboardingRecord) => c.id === o.id)),
+              ...changed,
+            ];
+            if (_llOffboardingUpsertTimer.current) clearTimeout(_llOffboardingUpsertTimer.current);
+            _llOffboardingUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedLlOffboarding.current;
+              _pendingChangedLlOffboarding.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_landlord_offboarding_bulk', { p_records: toWrite as unknown as object });
+                if (error) console.warn('[ll_offboarding] upsert_landlord_offboarding_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[ll_offboarding] upsert_landlord_offboarding_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetLandlordOffboarding]);
     const [geospatialData, setGeospatialData, geospatialStatus] = useSupabaseBackedState<GeospatialData>(INITIAL_GEOSPATIAL_DATA, 'tm_geospatial_v11');
-    const [commissionRules, setCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
-    const [deductionRules, setDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>([], 'tm_deductions_v11');
+    const [commissionRules, _rawSetCommissionRules, commissionStatus] = useSupabaseBackedState<CommissionRule[]>([], 'tm_commissions_v11');
+    const _commissionUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedCommissions = React.useRef<CommissionRule[]>([]);
+    const setCommissionRules: React.Dispatch<React.SetStateAction<CommissionRule[]>> = React.useCallback((updater) => {
+      _rawSetCommissionRules(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: CommissionRule[]) => CommissionRule[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, CommissionRule>(prev.map(c => [c.id, c]));
+          const changed = next.filter(c => { const q = prevById.get(c.id); return !q || q !== c; });
+          if (changed.length > 0) {
+            _pendingChangedCommissions.current = [
+              ..._pendingChangedCommissions.current.filter(c => !changed.some((x: CommissionRule) => x.id === c.id)),
+              ...changed,
+            ];
+            if (_commissionUpsertTimer.current) clearTimeout(_commissionUpsertTimer.current);
+            _commissionUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedCommissions.current;
+              _pendingChangedCommissions.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_commission_rules_bulk', { p_rules: toWrite as unknown as object });
+                if (error) console.warn('[commissions] upsert_commission_rules_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[commissions] upsert_commission_rules_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetCommissionRules]);
+    const [deductionRules, _rawSetDeductionRules, deductionStatus] = useSupabaseBackedState<DeductionRule[]>([], 'tm_deductions_v11');
+    const _deductionUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedDeductions = React.useRef<DeductionRule[]>([]);
+    const setDeductionRules: React.Dispatch<React.SetStateAction<DeductionRule[]>> = React.useCallback((updater) => {
+      _rawSetDeductionRules(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: DeductionRule[]) => DeductionRule[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, DeductionRule>(prev.map(d => [d.id, d]));
+          const changed = next.filter(d => { const q = prevById.get(d.id); return !q || q !== d; });
+          if (changed.length > 0) {
+            _pendingChangedDeductions.current = [
+              ..._pendingChangedDeductions.current.filter(d => !changed.some((c: DeductionRule) => c.id === d.id)),
+              ...changed,
+            ];
+            if (_deductionUpsertTimer.current) clearTimeout(_deductionUpsertTimer.current);
+            _deductionUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedDeductions.current;
+              _pendingChangedDeductions.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_deduction_rules_bulk', { p_rules: toWrite as unknown as object });
+                if (error) console.warn('[deductions] upsert_deduction_rules_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[deductions] upsert_deduction_rules_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetDeductionRules]);
     const [vendors, _rawSetVendors, vendorsStatus] = useSupabaseBackedState<Vendor[]>([], 'tm_vendors_v11');
     const _vendorsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const _pendingChangedVendors = React.useRef<Vendor[]>([]);
@@ -603,8 +719,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetOverpayments]);
-    const [incomeSources, setIncomeSources, incomeSourcesStatus] = useSupabaseBackedState<IncomeSource[]>([], 'tm_income_sources_v11');
-    const [preventiveTasks, setPreventiveTasks, preventiveTasksStatus] = useSupabaseBackedState<PreventiveTask[]>([], 'tm_preventive_tasks_v11');
+    const [incomeSources, _rawSetIncomeSources, incomeSourcesStatus] = useSupabaseBackedState<IncomeSource[]>([], 'tm_income_sources_v11');
+    const _incomeSourcesUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedIncomeSources = React.useRef<IncomeSource[]>([]);
+    const setIncomeSources: React.Dispatch<React.SetStateAction<IncomeSource[]>> = React.useCallback((updater) => {
+      _rawSetIncomeSources(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: IncomeSource[]) => IncomeSource[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, IncomeSource>(prev.map(s => [s.id, s]));
+          const changed = next.filter(s => { const q = prevById.get(s.id); return !q || q !== s; });
+          if (changed.length > 0) {
+            _pendingChangedIncomeSources.current = [
+              ..._pendingChangedIncomeSources.current.filter(s => !changed.some((c: IncomeSource) => c.id === s.id)),
+              ...changed,
+            ];
+            if (_incomeSourcesUpsertTimer.current) clearTimeout(_incomeSourcesUpsertTimer.current);
+            _incomeSourcesUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedIncomeSources.current;
+              _pendingChangedIncomeSources.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_income_sources_bulk', { p_sources: toWrite as unknown as object });
+                if (error) console.warn('[income_sources] upsert_income_sources_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[income_sources] upsert_income_sources_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetIncomeSources]);
+    const [preventiveTasks, _rawSetPreventiveTasks, preventiveTasksStatus] = useSupabaseBackedState<PreventiveTask[]>([], 'tm_preventive_tasks_v11');
+    const _preventiveTasksUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedPreventiveTasks = React.useRef<PreventiveTask[]>([]);
+    const setPreventiveTasks: React.Dispatch<React.SetStateAction<PreventiveTask[]>> = React.useCallback((updater) => {
+      _rawSetPreventiveTasks(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: PreventiveTask[]) => PreventiveTask[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, PreventiveTask>(prev.map(t => [t.id, t]));
+          const changed = next.filter(t => { const q = prevById.get(t.id); return !q || q !== t; });
+          if (changed.length > 0) {
+            _pendingChangedPreventiveTasks.current = [
+              ..._pendingChangedPreventiveTasks.current.filter(t => !changed.some((c: PreventiveTask) => c.id === t.id)),
+              ...changed,
+            ];
+            if (_preventiveTasksUpsertTimer.current) clearTimeout(_preventiveTasksUpsertTimer.current);
+            _preventiveTasksUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedPreventiveTasks.current;
+              _pendingChangedPreventiveTasks.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_preventive_tasks_bulk', { p_tasks: toWrite as unknown as object });
+                if (error) console.warn('[preventive_tasks] upsert_preventive_tasks_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[preventive_tasks] upsert_preventive_tasks_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetPreventiveTasks]);
     const [funds, setFunds, fundsStatus] = useSupabaseBackedState<Fund[]>([], 'tm_funds_v11');
     const [investments, setInvestments, investmentsStatus] = useSupabaseBackedState<Investment[]>([], 'tm_investments_v11');
     const [withdrawals, setWithdrawals, withdrawalsStatus] = useSupabaseBackedState<WithdrawalRequest[]>([], 'tm_withdrawals_v11');
