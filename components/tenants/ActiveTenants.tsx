@@ -2050,6 +2050,93 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         alert("Payment recorded successfully.");
     };
 
+    const handleDeletePayment = (idx: number) => {
+        const pay = (tenant.paymentHistory || [])[idx];
+        if (!pay) return;
+        const payRef = String((pay as any).reference ?? '').trim();
+        if (!window.confirm(
+            `Delete this payment?\n\nDate: ${pay.date}\nAmount: ${pay.amount}\nMethod: ${pay.method}\nRef: ${payRef || '—'}\n\nBalance due, deposit tracking, and tenant status will be recalculated automatically.`
+        )) return;
+
+        const remaining = (tenant.paymentHistory || []).filter((_, i) => i !== idx);
+        const updates: Partial<TenantProfile> = { paymentHistory: remaining };
+
+        // ── nextDueDate: recompute from latest remaining Paid entry ────────────
+        const paidRemaining = remaining.filter(p => p.status === 'Paid' && !!p.date);
+        if (paidRemaining.length > 0) {
+            const latest = paidRemaining.reduce((m, p) => (p.date > m.date ? p : m), paidRemaining[0]);
+            const nd = new Date(latest.date);
+            nd.setMonth(nd.getMonth() + 1);
+            nd.setDate(Math.min(28, Math.max(1, Number(tenant.rentDueDate ?? 1))));
+            nd.setHours(0, 0, 0, 0);
+            updates.nextDueDate = nd.toISOString().split('T')[0];
+        } else {
+            updates.nextDueDate = undefined;
+        }
+
+        // ── Deposit reversal ───────────────────────────────────────────────────
+        const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
+            ? Number((tenant as any).depositExpected)
+            : Number(tenant.rentAmount || 0) * Math.max(1, Number((tenant as any).depositMonths ?? 1));
+
+        if (!tenant.depositExempt && !tenant.rentExtension?.enabled && pay.status === 'Paid') {
+            if (tenant.proratedDeposit?.enabled) {
+                const pd = tenant.proratedDeposit;
+                const newAmountPaid = Math.max(0, pd.amountPaidSoFar - (pd.monthlyInstallment || 0));
+                const newMonthsPaid = Math.max(0, pd.monthsPaid - 1);
+                updates.proratedDeposit = { ...pd, monthsPaid: newMonthsPaid, amountPaidSoFar: newAmountPaid };
+                updates.depositPaid = newAmountPaid;
+            } else {
+                // Standard deposit: check if any remaining payment still covers rent + full deposit
+                const baseRent = Number(tenant.rentAmount || 0);
+                const anyStillCoversDeposit = remaining.some(
+                    p => p.status === 'Paid' &&
+                         (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0) >= baseRent + depExpected
+                );
+                if (!anyStillCoversDeposit) {
+                    updates.depositPaid = 0;
+                }
+            }
+        }
+
+        // ── Status reversal ────────────────────────────────────────────────────
+        const hasPaidRemaining = paidRemaining.length > 0;
+        const currentDepositPaid = (updates.depositPaid !== undefined)
+            ? updates.depositPaid
+            : Number(tenant.depositPaid || 0);
+        const depositNowUnpaid = !tenant.depositExempt && !tenant.rentExtension?.enabled &&
+            (tenant.proratedDeposit?.enabled
+                ? (updates.proratedDeposit?.amountPaidSoFar ?? 0) < tenant.proratedDeposit.totalDepositAmount
+                : currentDepositPaid < depExpected - 0.5);
+
+        if (tenant.status === 'Active' && !hasPaidRemaining) {
+            updates.status = tenantFullyAllocated(tenant) ? 'PendingPayment' : 'PendingAllocation';
+            (updates as any).activationDate = undefined;
+        } else if (tenant.status === 'Active' && depositNowUnpaid && updates.depositPaid === 0) {
+            updates.status = 'PendingPayment';
+            (updates as any).activationDate = undefined;
+        }
+
+        updateTenant(tenant.id, updates);
+
+        // ── Mirror: public.payments table ──────────────────────────────────────
+        if (payRef) {
+            const isManual = (pay.method ?? '').toLowerCase().includes('manual') || payRef.startsWith('MAN-');
+            if (isManual) {
+                supabase.from('payments')
+                    .delete()
+                    .eq('transaction_id', payRef)
+                    .eq('source', 'manual')
+                    .then(() => {});
+            } else {
+                supabase.from('payments')
+                    .update({ reconciliation_status: 'pending' })
+                    .eq('transaction_id', payRef)
+                    .then(() => {});
+            }
+        }
+    };
+
     const sortedRequests = [...(tenant.requests || [])].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
@@ -2509,6 +2596,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                 <th className="px-4 py-2">Type</th>
                                 <th className="px-4 py-2">Txn Code</th>
                                 <th className="px-4 py-2 text-right">Amount</th>
+                                {isSuperAdmin && <th className="px-4 py-2 text-center">Action</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -2522,12 +2610,23 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                             {ref || <span className="text-gray-300">—</span>}
                                         </td>
                                         <td className="px-4 py-3 text-right font-bold text-gray-800">{pay.amount}</td>
+                                        {isSuperAdmin && (
+                                            <td className="px-4 py-3 text-center">
+                                                <button
+                                                    onClick={() => handleDeletePayment(idx)}
+                                                    className="text-red-400 hover:text-red-600 transition-colors"
+                                                    title="Delete payment (Super Admin only)"
+                                                >
+                                                    <Icon name="trash" className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        )}
                                     </tr>
                                 );
                             })}
                             {(tenant.paymentHistory || []).length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400">No payment history found.</td>
+                                    <td colSpan={isSuperAdmin ? 5 : 4} className="px-4 py-6 text-center text-gray-400">No payment history found.</td>
                                 </tr>
                             )}
                         </tbody>
