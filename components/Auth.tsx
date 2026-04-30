@@ -107,10 +107,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             console.log('[Supabase] parallel: user_roles + profiles + staff_profiles', { userId: user.id });
             const [roleResult, profileResult, staffResult] = await Promise.all([
-                supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
-                supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle().catch(() => ({ data: null, error: null })),
+                Promise.resolve(supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', user.id).maybeSingle()).catch(() => ({ data: null, error: null })),
+                Promise.resolve(supabase.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle()).catch(() => ({ data: null, error: null })),
                 metaNeedsStaff
-                    ? supabase.schema('app').from('staff_profiles').select('id,name,role,email,phone,branch,status').eq('id', user.id).limit(1).catch(() => ({ data: null, error: null }))
+                    ? Promise.resolve(supabase.schema('app').from('staff_profiles').select('id,name,role,email,phone,branch,status').eq('id', user.id).limit(1)).catch(() => ({ data: [] as any[], error: null }))
                     : Promise.resolve({ data: [] as any[], error: null }),
             ]);
 
