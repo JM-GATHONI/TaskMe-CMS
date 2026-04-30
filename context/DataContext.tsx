@@ -314,7 +314,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
     const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
     const [auditLogs, setAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
-    const [externalTransactions, setExternalTransactions, externalTxStatus] = useSupabaseBackedState<ExternalTransaction[]>([], 'tm_external_transactions_v11');
+    const [externalTransactions, _rawSetExternalTransactions, externalTxStatus] = useSupabaseBackedState<ExternalTransaction[]>([], 'tm_external_transactions_v11');
+    const _extTxUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedExtTx = React.useRef<ExternalTransaction[]>([]);
+    const setExternalTransactions: React.Dispatch<React.SetStateAction<ExternalTransaction[]>> = React.useCallback((updater) => {
+      _rawSetExternalTransactions(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: ExternalTransaction[]) => ExternalTransaction[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, ExternalTransaction>(prev.map(t => [t.id, t]));
+          const changed = next.filter(t => { const q = prevById.get(t.id); return !q || q !== t; });
+          if (changed.length > 0) {
+            _pendingChangedExtTx.current = [
+              ..._pendingChangedExtTx.current.filter(t => !changed.some((c: ExternalTransaction) => c.id === t.id)),
+              ...changed,
+            ];
+            if (_extTxUpsertTimer.current) clearTimeout(_extTxUpsertTimer.current);
+            _extTxUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedExtTx.current;
+              _pendingChangedExtTx.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_external_transactions_bulk', { p_txs: toWrite as unknown as object });
+                if (error) console.warn('[ext_tx] upsert_external_transactions_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[ext_tx] upsert_external_transactions_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetExternalTransactions]);
     const [overpayments, setOverpayments, overpaymentsStatus] = useSupabaseBackedState<Overpayment[]>([], 'tm_overpayments_v11');
     const [incomeSources, setIncomeSources, incomeSourcesStatus] = useSupabaseBackedState<IncomeSource[]>([], 'tm_income_sources_v11');
     const [preventiveTasks, setPreventiveTasks, preventiveTasksStatus] = useSupabaseBackedState<PreventiveTask[]>([], 'tm_preventive_tasks_v11');
