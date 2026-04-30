@@ -1081,11 +1081,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [_rawSetRenovationProjectBills]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [rolesStatus, setRolesStatus] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
-    const [systemSettings, setSystemSettings, systemSettingsStatus] = useSupabaseBackedState<SystemSettings>({
+    const [systemSettings, _rawSetSystemSettings, systemSettingsStatus] = useSupabaseBackedState<SystemSettings>({
         companyName: 'TaskMe Realty',
         logo: null,
         profilePic: null
     }, 'tm_system_settings_v11');
+    const _systemSettingsTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const setSystemSettings: React.Dispatch<React.SetStateAction<SystemSettings>> = React.useCallback((updater) => {
+      _rawSetSystemSettings(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: SystemSettings) => SystemSettings)(prev) : updater;
+        if (_systemSettingsTimer.current) clearTimeout(_systemSettingsTimer.current);
+        _systemSettingsTimer.current = setTimeout(async () => {
+          try {
+            const { error } = await supabase.schema('app').rpc('upsert_system_settings', { p_s: next as unknown as object });
+            if (error) console.warn('[system_settings] upsert_system_settings failed:', error.message);
+          } catch (e) {
+            console.warn('[system_settings] upsert_system_settings error:', (e as Error)?.message);
+          }
+        }, 800);
+        return next;
+      });
+    }, [_rawSetSystemSettings]);
     const [scheduledReports, _rawSetScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>([], 'tm_scheduled_reports_v11');
     const _scheduledReportsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const _pendingChangedScheduledReports = React.useRef<ScheduledReport[]>([]);
