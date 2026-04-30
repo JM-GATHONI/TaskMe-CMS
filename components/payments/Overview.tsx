@@ -37,7 +37,7 @@ function sumCollectionsInMonth(tenants: TenantProfile[], year: number, month: nu
     const { start, end } = monthBounds(year, month);
     let s = 0;
     tenants.forEach(t => {
-        t.paymentHistory.forEach(p => {
+        (t.paymentHistory || []).forEach(p => {
             if (p.status !== 'Paid') return;
             const d = new Date(p.date);
             if (isNaN(d.getTime()) || d < start || d > end) return;
@@ -150,7 +150,7 @@ const PaymentsOverview: React.FC = () => {
 
         let totalCollected = 0;
         tenants.forEach(t => {
-            totalCollected += t.paymentHistory.reduce((sum, p) => {
+            totalCollected += (t.paymentHistory || []).reduce((sum, p) => {
                 if (p.status !== 'Paid') return sum;
                 return sum + parsePaymentAmount(p.amount);
             }, 0);
@@ -218,7 +218,7 @@ const PaymentsOverview: React.FC = () => {
 
     const recentTransactions = useMemo(() => {
         const allPayments = tenants.flatMap(t =>
-            t.paymentHistory.map(p => ({
+            (t.paymentHistory || []).map(p => ({
                 id: `${t.id}-${p.reference}`,
                 date: p.date,
                 tenantName: t.name,
@@ -239,7 +239,7 @@ const PaymentsOverview: React.FC = () => {
         const incomeData = new Array(12).fill(0);
         const expenseData = new Array(12).fill(0);
         tenants.forEach(t => {
-            t.paymentHistory.forEach(p => {
+            (t.paymentHistory || []).forEach(p => {
                 const d = new Date(p.date);
                 if (d.getFullYear() === currentYear && p.status === 'Paid') {
                     incomeData[d.getMonth()] += parsePaymentAmount(p.amount);
@@ -266,7 +266,7 @@ const PaymentsOverview: React.FC = () => {
     const paymentMethodsChartData = useMemo(() => {
         const methods: Record<string, number> = { 'M-Pesa': 0, Bank: 0, Cash: 0 };
         tenants.forEach(t => {
-            t.paymentHistory.filter(p => p.status === 'Paid').forEach(p => {
+            (t.paymentHistory || []).filter(p => p.status === 'Paid').forEach(p => {
                 const m = (p.method || '').toLowerCase();
                 if (m.includes('mpesa') || m.includes('m-pesa')) methods['M-Pesa']++;
                 else if (m.includes('bank') || m.includes('transfer')) methods.Bank++;
