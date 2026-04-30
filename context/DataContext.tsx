@@ -746,7 +746,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetWorkflows]);
-    const [automationRules, setAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
+    const [automationRules, _rawSetAutomationRules, automationStatus] = useSupabaseBackedState<CommunicationAutomationRule[]>([], 'tm_automation_rules_v11');
+    const _automationUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedAutomation = React.useRef<CommunicationAutomationRule[]>([]);
+    const setAutomationRules: React.Dispatch<React.SetStateAction<CommunicationAutomationRule[]>> = React.useCallback((updater) => {
+      _rawSetAutomationRules(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: CommunicationAutomationRule[]) => CommunicationAutomationRule[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, CommunicationAutomationRule>(prev.map(a => [a.id, a]));
+          const changed = next.filter(a => { const q = prevById.get(a.id); return !q || q !== a; });
+          if (changed.length > 0) {
+            _pendingChangedAutomation.current = [
+              ..._pendingChangedAutomation.current.filter(a => !changed.some((c: CommunicationAutomationRule) => c.id === a.id)),
+              ...changed,
+            ];
+            if (_automationUpsertTimer.current) clearTimeout(_automationUpsertTimer.current);
+            _automationUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedAutomation.current;
+              _pendingChangedAutomation.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_automation_rules_bulk', { p_rules: toWrite as unknown as object });
+                if (error) console.warn('[automation] upsert_automation_rules_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[automation] upsert_automation_rules_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetAutomationRules]);
     const [escalationRules, setEscalationRules, escalationStatus] = useSupabaseBackedState<EscalationRule[]>([], 'tm_escalation_rules_v11');
     const [auditLogs, _rawSetAuditLogs, auditLogsStatus] = useSupabaseBackedState<AuditLogEntry[]>([], 'tm_audit_logs_v11');
     const _auditLogsInsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
