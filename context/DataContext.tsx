@@ -1116,7 +1116,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetScheduledReports]);
-    const [taxRecords, setTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>([], 'tm_tax_records_v11');
+    const [taxRecords, _rawSetTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>([], 'tm_tax_records_v11');
+    const _taxRecordsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedTaxRecords = React.useRef<TaxRecord[]>([]);
+    const setTaxRecords: React.Dispatch<React.SetStateAction<TaxRecord[]>> = React.useCallback((updater) => {
+      _rawSetTaxRecords(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: TaxRecord[]) => TaxRecord[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, TaxRecord>(prev.map(r => [r.id, r]));
+          const changed = next.filter(r => { const q = prevById.get(r.id); return !q || q !== r; });
+          if (changed.length > 0) {
+            _pendingChangedTaxRecords.current = [
+              ..._pendingChangedTaxRecords.current.filter(r => !changed.some((c: TaxRecord) => c.id === r.id)),
+              ...changed,
+            ];
+            if (_taxRecordsUpsertTimer.current) clearTimeout(_taxRecordsUpsertTimer.current);
+            _taxRecordsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedTaxRecords.current;
+              _pendingChangedTaxRecords.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_tax_records_bulk', { p_records: toWrite as unknown as object });
+                if (error) console.warn('[tax_records] upsert_tax_records_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[tax_records] upsert_tax_records_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetTaxRecords]);
     // skipPersist: listings are auto-derived from properties on every load.
     // Persisting them causes statement timeouts on large datasets.
     const [marketplaceListings, setMarketplaceListings, marketplaceStatus] = useSupabaseBackedState<MarketplaceListing[]>([], 'tm_listings_v11', { skipPersist: true });
