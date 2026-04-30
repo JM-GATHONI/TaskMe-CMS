@@ -1209,7 +1209,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetFundiJobs]);
-    const [marketingBanners, setMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
+    const [marketingBanners, _rawSetMarketingBanners] = useSupabaseBackedState<MarketingBannerTemplate[]>([], 'tm_marketing_banners_v11');
+    const _bannersUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedBanners = React.useRef<MarketingBannerTemplate[]>([]);
+    const setMarketingBanners: React.Dispatch<React.SetStateAction<MarketingBannerTemplate[]>> = React.useCallback((updater) => {
+      _rawSetMarketingBanners(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: MarketingBannerTemplate[]) => MarketingBannerTemplate[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, MarketingBannerTemplate>(prev.map(b => [b.id, b]));
+          const changed = next.filter(b => { const q = prevById.get(b.id); return !q || q !== b; });
+          if (changed.length > 0) {
+            _pendingChangedBanners.current = [
+              ..._pendingChangedBanners.current.filter(b => !changed.some((c: MarketingBannerTemplate) => c.id === b.id)),
+              ...changed,
+            ];
+            if (_bannersUpsertTimer.current) clearTimeout(_bannersUpsertTimer.current);
+            _bannersUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedBanners.current;
+              _pendingChangedBanners.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_marketing_banners_bulk', { p_banners: toWrite as unknown as object });
+                if (error) console.warn('[marketing_banners] upsert_marketing_banners_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[marketing_banners] upsert_marketing_banners_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetMarketingBanners]);
 
     // ── DB Staff Profiles ────────────────────────────────────────────────────
     // Direct fetch from app.staff_profiles — ensures staff created via the
