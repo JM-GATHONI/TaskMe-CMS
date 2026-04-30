@@ -70,7 +70,7 @@ function useSupabaseBackedState<T>(
     queryFn: async () => {
       const session = await getSupabaseSession();
       if (!session) throw new Error('SESSION_EXPIRED');
-      console.log('[Supabase] app_state individual load (batch miss)', { key });
+      console.log('[Supabase] app_state fallback load (batch miss)', { key });
       const { data, error } = await supabase
         .schema('app')
         .from('app_state')
@@ -90,23 +90,8 @@ function useSupabaseBackedState<T>(
 
   const upsertMutation = useMutation({
     mutationFn: async (next: T) => {
-      if (options?.skipPersist) return next;
-      // Guard: verify session before writing. Without this, an expired JWT
-      // causes the upsert to silently fail (RLS rejects it), leaving auth
-      // users created but their app_state profile records never written.
-      const session = await getSupabaseSession();
-      if (!session) {
-        throw new Error('SESSION_EXPIRED: Please log in again to save changes.');
-      }
-      console.log('[Supabase] app_state upsert', { key });
-      const { error } = await supabase
-        .schema('app')
-        .from('app_state')
-        .upsert({ key, value: next });
-      if (error) {
-        console.warn(`Error persisting Supabase state for key "${key}"`, error);
-        throw error;
-      }
+      // All blobs are now in normalized tables with dual-write wrappers.
+      // Blob writes are globally disabled — normalized table RPCs handle persistence.
       return next;
     },
     onSuccess: (next) => {
