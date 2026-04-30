@@ -235,9 +235,96 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetLandlords]);
-    const [tasks, setTasks, tasksStatus] = useSupabaseBackedState<Task[]>([], 'tm_tasks_v11');
-    const [bills, setBills, billsStatus] = useSupabaseBackedState<Bill[]>([], 'tm_bills_v11');
-    const [invoices, setInvoices, invoicesStatus] = useSupabaseBackedState<Invoice[]>([], 'tm_invoices_v11');
+    const [tasks, _rawSetTasks, tasksStatus] = useSupabaseBackedState<Task[]>([], 'tm_tasks_v11');
+    const _tasksUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedTasks = React.useRef<Task[]>([]);
+    const setTasks: React.Dispatch<React.SetStateAction<Task[]>> = React.useCallback((updater) => {
+      _rawSetTasks(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Task[]) => Task[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Task>(prev.map(t => [t.id, t]));
+          const changed = next.filter(t => { const q = prevById.get(t.id); return !q || q !== t; });
+          if (changed.length > 0) {
+            _pendingChangedTasks.current = [
+              ..._pendingChangedTasks.current.filter(t => !changed.some((c: Task) => c.id === t.id)),
+              ...changed,
+            ];
+            if (_tasksUpsertTimer.current) clearTimeout(_tasksUpsertTimer.current);
+            _tasksUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedTasks.current;
+              _pendingChangedTasks.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_tasks_bulk', { p_tasks: toWrite as unknown as object });
+                if (error) console.warn('[tasks] upsert_tasks_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[tasks] upsert_tasks_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetTasks]);
+    const [bills, _rawSetBills, billsStatus] = useSupabaseBackedState<Bill[]>([], 'tm_bills_v11');
+    const _billsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedBills = React.useRef<Bill[]>([]);
+    const setBills: React.Dispatch<React.SetStateAction<Bill[]>> = React.useCallback((updater) => {
+      _rawSetBills(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Bill[]) => Bill[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Bill>(prev.map(b => [b.id, b]));
+          const changed = next.filter(b => { const q = prevById.get(b.id); return !q || q !== b; });
+          if (changed.length > 0) {
+            _pendingChangedBills.current = [
+              ..._pendingChangedBills.current.filter(b => !changed.some((c: Bill) => c.id === b.id)),
+              ...changed,
+            ];
+            if (_billsUpsertTimer.current) clearTimeout(_billsUpsertTimer.current);
+            _billsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedBills.current;
+              _pendingChangedBills.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_bills_bulk', { p_bills: toWrite as unknown as object });
+                if (error) console.warn('[bills] upsert_bills_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[bills] upsert_bills_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetBills]);
+    const [invoices, _rawSetInvoices, invoicesStatus] = useSupabaseBackedState<Invoice[]>([], 'tm_invoices_v11');
+    const _invoicesUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedInvoices = React.useRef<Invoice[]>([]);
+    const setInvoices: React.Dispatch<React.SetStateAction<Invoice[]>> = React.useCallback((updater) => {
+      _rawSetInvoices(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: Invoice[]) => Invoice[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, Invoice>(prev.map(i => [i.id, i]));
+          const changed = next.filter(i => { const q = prevById.get(i.id); return !q || q !== i; });
+          if (changed.length > 0) {
+            _pendingChangedInvoices.current = [
+              ..._pendingChangedInvoices.current.filter(i => !changed.some((c: Invoice) => c.id === i.id)),
+              ...changed,
+            ];
+            if (_invoicesUpsertTimer.current) clearTimeout(_invoicesUpsertTimer.current);
+            _invoicesUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedInvoices.current;
+              _pendingChangedInvoices.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_invoices_bulk', { p_invoices: toWrite as unknown as object });
+                if (error) console.warn('[invoices] upsert_invoices_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[invoices] upsert_invoices_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetInvoices]);
     const [quotations, setQuotations, quotationsStatus] = useSupabaseBackedState<Quotation[]>([], 'tm_quotations_v11'); 
     const [applications, setApplications, applicationsStatus] = useSupabaseBackedState<TenantApplication[]>([], 'tm_applications_v11');
     const [landlordApplications, setLandlordApplications, landlordApplicationsStatus] = useSupabaseBackedState<LandlordApplication[]>([], 'tm_landlord_applications_v11');
