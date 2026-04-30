@@ -1086,7 +1086,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logo: null,
         profilePic: null
     }, 'tm_system_settings_v11');
-    const [scheduledReports, setScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>([], 'tm_scheduled_reports_v11');
+    const [scheduledReports, _rawSetScheduledReports, scheduledReportsStatus] = useSupabaseBackedState<ScheduledReport[]>([], 'tm_scheduled_reports_v11');
+    const _scheduledReportsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedScheduledReports = React.useRef<ScheduledReport[]>([]);
+    const setScheduledReports: React.Dispatch<React.SetStateAction<ScheduledReport[]>> = React.useCallback((updater) => {
+      _rawSetScheduledReports(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: ScheduledReport[]) => ScheduledReport[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, ScheduledReport>(prev.map(r => [r.id, r]));
+          const changed = next.filter(r => { const q = prevById.get(r.id); return !q || q !== r; });
+          if (changed.length > 0) {
+            _pendingChangedScheduledReports.current = [
+              ..._pendingChangedScheduledReports.current.filter(r => !changed.some((c: ScheduledReport) => c.id === r.id)),
+              ...changed,
+            ];
+            if (_scheduledReportsUpsertTimer.current) clearTimeout(_scheduledReportsUpsertTimer.current);
+            _scheduledReportsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedScheduledReports.current;
+              _pendingChangedScheduledReports.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_scheduled_reports_bulk', { p_reports: toWrite as unknown as object });
+                if (error) console.warn('[scheduled_reports] upsert_scheduled_reports_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[scheduled_reports] upsert_scheduled_reports_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetScheduledReports]);
     const [taxRecords, setTaxRecords, taxRecordsStatus] = useSupabaseBackedState<TaxRecord[]>([], 'tm_tax_records_v11');
     // skipPersist: listings are auto-derived from properties on every load.
     // Persisting them causes statement timeouts on large datasets.
