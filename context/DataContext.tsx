@@ -205,7 +205,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetProperties]);
-    const [landlords, setLandlords, landlordsStatus] = useSupabaseBackedState<User[]>([], 'tm_landlords_v11');
+    const [landlords, _rawSetLandlords, landlordsStatus] = useSupabaseBackedState<User[]>([], 'tm_landlords_v11');
+    const _landlordsUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const _pendingChangedLandlords = React.useRef<User[]>([]);
+    const setLandlords: React.Dispatch<React.SetStateAction<User[]>> = React.useCallback((updater) => {
+      _rawSetLandlords(prev => {
+        const next = typeof updater === 'function' ? (updater as (p: User[]) => User[])(prev) : updater;
+        if (Array.isArray(next)) {
+          const prevById = new Map<string, User>(prev.map(u => [u.id, u]));
+          const changed = next.filter(u => { const q = prevById.get(u.id); return !q || q !== u; });
+          if (changed.length > 0) {
+            _pendingChangedLandlords.current = [
+              ..._pendingChangedLandlords.current.filter(u => !changed.some((c: User) => c.id === u.id)),
+              ...changed,
+            ];
+            if (_landlordsUpsertTimer.current) clearTimeout(_landlordsUpsertTimer.current);
+            _landlordsUpsertTimer.current = setTimeout(async () => {
+              const toWrite = _pendingChangedLandlords.current;
+              _pendingChangedLandlords.current = [];
+              try {
+                const { error } = await supabase.schema('app').rpc('upsert_landlords_bulk', { p_landlords: toWrite as unknown as object });
+                if (error) console.warn('[landlords] upsert_landlords_bulk failed:', error.message);
+              } catch (e) {
+                console.warn('[landlords] upsert_landlords_bulk error:', (e as Error)?.message);
+              }
+            }, 800);
+          }
+        }
+        return next;
+      });
+    }, [_rawSetLandlords]);
     const [tasks, setTasks, tasksStatus] = useSupabaseBackedState<Task[]>([], 'tm_tasks_v11');
     const [bills, setBills, billsStatus] = useSupabaseBackedState<Bill[]>([], 'tm_bills_v11');
     const [invoices, setInvoices, invoicesStatus] = useSupabaseBackedState<Invoice[]>([], 'tm_invoices_v11');
