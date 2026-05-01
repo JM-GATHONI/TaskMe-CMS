@@ -190,6 +190,7 @@ const AppContent: React.FC = () => {
   const { currentUser, setCurrentUser, roles } = useData();
 
   const handleLogout = async () => {
+    localStorage.removeItem('taskme_session_cache');
     await supabase.auth.signOut();
     setCurrentUser(null);
   };

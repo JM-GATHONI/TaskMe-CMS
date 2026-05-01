@@ -161,9 +161,61 @@ function useSupabaseBackedState<T>(
   return [value, persistAndSetValue, { loading: isLoading, error: (error as any)?.message ?? null }];
 }
 
+// ── Session persistence helpers ─────────────────────────────────────────────
+// Stores the logged-in user in localStorage so a page refresh within the TTL
+// window does not kick the user back to the login screen.
+const SESSION_CACHE_KEY = 'taskme_session_cache';
+const SESSION_TTL_MS    = 10 * 60 * 1000; // 10 minutes
+
+function getInitialUser(): User | StaffProfile | TenantProfile | null {
+    try {
+        const raw = localStorage.getItem(SESSION_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { user: unknown; storedAt: number };
+        if (!parsed?.user || typeof parsed.storedAt !== 'number') return null;
+        if (Date.now() - parsed.storedAt > SESSION_TTL_MS) {
+            localStorage.removeItem(SESSION_CACHE_KEY);
+            return null;
+        }
+        return parsed.user as User | StaffProfile | TenantProfile;
+    } catch {
+        return null;
+    }
+}
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    // Current User
-    const [currentUser, setCurrentUser] = useState<User | StaffProfile | TenantProfile | null>(null);
+    // Current User — lazy-initialised from localStorage so refresh is seamless.
+    const [currentUser, setCurrentUser] = useState<User | StaffProfile | TenantProfile | null>(getInitialUser);
+
+    // Verify the Supabase session on mount; clear cache if expired or user mismatch.
+    React.useEffect(() => {
+        const raw = localStorage.getItem(SESSION_CACHE_KEY);
+        if (!raw) return;
+        try {
+            const { user } = JSON.parse(raw) as { user: { id?: string } };
+            if (!user?.id) { localStorage.removeItem(SESSION_CACHE_KEY); return; }
+            getSupabaseSession().then(session => {
+                if (!session || session.user?.id !== user.id) {
+                    localStorage.removeItem(SESSION_CACHE_KEY);
+                    setCurrentUser(null);
+                }
+            }).catch(() => {});
+        } catch {
+            localStorage.removeItem(SESSION_CACHE_KEY);
+        }
+    }, []);
+
+    // Persist currentUser to localStorage on every change (refreshes the TTL).
+    React.useEffect(() => {
+        if (currentUser) {
+            try {
+                localStorage.setItem(
+                    SESSION_CACHE_KEY,
+                    JSON.stringify({ user: currentUser, storedAt: Date.now() }),
+                );
+            } catch { /* localStorage unavailable — ignore */ }
+        }
+    }, [currentUser]);
 
     // Core Data (start empty; Supabase becomes source of truth)
     const [tenants, _rawSetTenants, tenantsStatus] = useSupabaseBackedState<TenantProfile[]>([], 'tm_tenants_v11');
@@ -1661,6 +1713,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 _globalBatchSettled = false;
                 console.log('[Supabase] SIGNED_OUT — clearing query cache');
                 queryClient.clear();
+                localStorage.removeItem(SESSION_CACHE_KEY);
                 setCurrentUser(null);
             }
         });

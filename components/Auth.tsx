@@ -24,6 +24,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         addRenovationInvestor,
         addVendor,
         addStaff,
+        setCurrentUser,
     } = useData();
     const [view, setView] = useState<AuthView>('login');
     const [isLoading, setIsLoading] = useState(false);
@@ -95,6 +96,68 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             }
 
             const user = data.user;
+
+            // ── Fast path: user found in local cache → call onLogin() NOW, refine in background ──
+            // For existing users whose data is already loaded, this eliminates the DB round-trip
+            // from the perceived login delay.  The 3 queries still run but do not block the UI.
+            {
+                const _uid  = user.id;
+                const _meta: any = user.user_metadata ?? {};
+                const _pick = (s: string) => String(s ?? '').trim().split(/\s+/).filter(Boolean)[0] || '';
+                const _cached: any =
+                    staff.find(s => s.id === _uid) ||
+                    tenants.find(t => t.id === _uid) ||
+                    landlords.find(l => l.id === _uid) ||
+                    renovationInvestors.find(i => i.id === _uid) ||
+                    (vendors as any[]).find(v => v.id === _uid) ||
+                    null;
+
+                if (_cached) {
+                    const earlyRole = ((_cached.role ?? _meta.role ?? 'Super Admin')) as StaffProfile['role'];
+                    const earlyPic  = _cached.avatar || _cached.profilePicture || _cached.avatarUrl;
+                    const earlyObj: any = { ..._cached, role: earlyRole };
+                    if (earlyPic) earlyObj.profilePicture = earlyPic;
+                    setLoginAttempts(0);
+                    setLockedUntil(null);
+                    onLogin(earlyObj);
+
+                    // Background: confirm role + display name from DB; patch if different.
+                    const _needsStaff = earlyRole !== 'Tenant' && earlyRole !== 'Caretaker';
+                    (async () => {
+                        const [rr, pr, sr] = await Promise.all([
+                            Promise.resolve(supabase.schema('app').from('user_roles').select('role:roles(name)').eq('user_id', _uid).maybeSingle()).catch(() => ({ data: null })),
+                            Promise.resolve(supabase.from('profiles').select('first_name, full_name').eq('id', _uid).maybeSingle()).catch(() => ({ data: null })),
+                            _needsStaff
+                                ? Promise.resolve(supabase.schema('app').from('staff_profiles').select('id,name,role,email,phone,branch,status').eq('id', _uid).limit(1)).catch(() => ({ data: [] as any[] }))
+                                : Promise.resolve({ data: [] as any[] }),
+                        ]);
+                        const dbRole   = ((rr  as any).data?.role?.name ?? earlyRole) as StaffProfile['role'];
+                        const dbFirst  = ((pr  as any).data as any)?.first_name?.trim?.() || null;
+                        const dbFull   = ((pr  as any).data as any)?.full_name?.trim?.()  || null;
+                        const staffRow = Array.isArray((sr as any).data) ? ((sr as any).data[0] ?? null) : null;
+                        const dbName   = dbFirst ? _pick(dbFirst) : (dbFull ? _pick(dbFull) : String(earlyObj.name ?? ''));
+                        if (dbRole !== earlyRole || dbName !== String(earlyObj.name ?? '')) {
+                            setCurrentUser((prev: any) => prev ? { ...prev, role: dbRole, name: dbName } : prev);
+                        }
+                        // profiles upsert (non-blocking)
+                        const looksLikeEmail = (s: string) => s.includes('@');
+                        const cf = String(staffRow?.name ?? _meta.full_name ?? dbName ?? '').trim();
+                        const sf = cf && !looksLikeEmail(cf) ? cf : null;
+                        const si = sf ? (sf.split(/\s+/).filter(Boolean)[0] || null) : null;
+                        if (si && (!dbFirst || looksLikeEmail(String(dbFirst ?? '')))) {
+                            try {
+                                await supabase.from('profiles').upsert({
+                                    id: _uid, role: dbRole, first_name: si, full_name: sf,
+                                    phone: (staffRow?.phone ?? _meta.phone ?? null) || null,
+                                    email: user.email ?? null,
+                                }, { onConflict: 'id' });
+                            } catch { /* non-blocking */ }
+                        }
+                    })().catch(() => {});
+
+                    return; // fast path complete — skip the DB-gated slow path below
+                }
+            }
 
             // Triple-parallel fetch: user_roles + profiles + staff_profiles all fire together.
             // metadata role is used as a hint to decide whether to include staff_profiles;
