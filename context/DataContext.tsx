@@ -258,6 +258,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
     }, [_rawSetTenants]);
+
+    // ── One-time migration: grace period 5 → 4 days ──────────────────────────
+    const _graceMigrated = React.useRef(false);
+    React.useEffect(() => {
+        if (_graceMigrated.current || tenants.length === 0) return;
+        if (localStorage.getItem('taskme_grace_migrated_v4')) { _graceMigrated.current = true; return; }
+        _graceMigrated.current = true;
+        const affected = tenants.filter(t => t.rentGraceDays === 5);
+        if (affected.length > 0) {
+            setTenants(prev => prev.map(t => t.rentGraceDays === 5 ? { ...t, rentGraceDays: 4 } : t));
+            console.log(`[migration] grace 5→4: updated ${affected.length} tenant(s)`);
+        }
+        localStorage.setItem('taskme_grace_migrated_v4', '1');
+    }, [tenants, setTenants]);
+    // ─────────────────────────────────────────────────────────────────────────
+
     const [properties, _rawSetProperties, propertiesStatus] = useSupabaseBackedState<Property[]>([], 'tm_properties_v11');
     const _propertiesUpsertTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const _pendingChangedProperties = React.useRef<Property[]>([]);

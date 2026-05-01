@@ -332,7 +332,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     }
                     // Rent extension: restore grace days and clear extension flag
                     if (cycle.clearRentExtension && t.rentExtension) {
-                        updates.rentGraceDays = t.rentExtension.originalGraceDays ?? 5;
+                        updates.rentGraceDays = t.rentExtension.originalGraceDays ?? 4;
                         updates.rentExtension = { ...t.rentExtension, enabled: false };
                     }
                     // Prorated deposit: advance installment counter
@@ -2098,7 +2098,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 updates.depositPaid = depositExpectedStandard;
             }
             if (cycle.clearRentExtension && tenant.rentExtension) {
-                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
                 updates.rentExtension = { ...tenant.rentExtension, enabled: false };
             }
             if (cycle.proratedUpdate && tenant.proratedDeposit) {
@@ -2113,7 +2113,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 const cycle = computeRentPaymentCycleUpdate(tenant, rentDue, date);
                 updates.nextDueDate = cycle.nextDueDateIso;
                 if (cycle.clearRentExtension && tenant.rentExtension) {
-                    updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                    updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
                     updates.rentExtension = { ...tenant.rentExtension, enabled: false };
                 }
                 if (cycle.proratedUpdate && tenant.proratedDeposit) {

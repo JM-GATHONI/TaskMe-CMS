@@ -328,7 +328,7 @@ const Reconciliation: React.FC = () => {
             }
             // Rent extension: restore grace days and clear flag
             if (cycle.clearRentExtension && tenant.rentExtension) {
-                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
                 updates.rentExtension = { ...tenant.rentExtension, enabled: false };
             }
             // Prorated deposit: advance installment counter

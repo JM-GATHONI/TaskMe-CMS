@@ -240,7 +240,7 @@ const MpesaStkModal: React.FC<{
             nextDueDate: cycle.nextDueDateIso,
         };
         if (cycle.clearRentExtension && tenant.rentExtension) {
-            updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+            updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
             updates.rentExtension = { ...tenant.rentExtension, enabled: false };
         }
         if (cycle.proratedUpdate && tenant.proratedDeposit) {
@@ -414,7 +414,7 @@ const ManualPaymentModal: React.FC<{
                 }
             }
             if (cycle.clearRentExtension && tenant.rentExtension) {
-                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
                 updates.rentExtension = { ...tenant.rentExtension, enabled: false };
             }
             if (cycle.proratedUpdate && tenant.proratedDeposit) {

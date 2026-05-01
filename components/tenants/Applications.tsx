@@ -133,7 +133,7 @@ export const ApplicationFormModal: React.FC<{
         // Start date
         rentStartDate: record?.rentStartDate || record?.onboardingDate || new Date().toISOString().split('T')[0],
         rentDueDate: record?.rentDueDate ?? 1,
-        rentGraceDays: record?.rentGraceDays ?? 5,
+        rentGraceDays: record?.rentGraceDays ?? 4,
         leaseStartDate: (record as any)?.leaseStartDate || new Date().toISOString().split('T')[0],
         leaseEnd: (record as any)?.leaseEnd || (() => {
             const d = new Date();
@@ -404,7 +404,7 @@ export const ApplicationFormModal: React.FC<{
             status: resolvedStatus,
             rentAmount: resolvedRent,
             rentDueDate:   safeNum(payload.rentDueDate,   1),
-            rentGraceDays: safeNum(payload.rentGraceDays, 5),
+            rentGraceDays: safeNum(payload.rentGraceDays, 4),
             depositMonths: safeNum(payload.depositMonths, 1),
         });
     };
@@ -706,7 +706,7 @@ export const ApplicationFormModal: React.FC<{
                                         min={0}
                                         max={28}
                                         value={formData.rentGraceDays ?? ''}
-                                        placeholder="5"
+                                        placeholder="4"
                                         onChange={handleAmountChange}
                                         className="w-full p-2 border rounded"
                                     />
@@ -884,7 +884,7 @@ export const ApplicationFormModal: React.FC<{
                                                             return d.toISOString().split('T')[0];
                                                         })(),
                                                         depositPaidUpfront: (prev.rentAmount || 0) * (prev.depositMonths ?? 1),
-                                                        originalGraceDays: prev.rentGraceDays ?? 5,
+                                                        originalGraceDays: prev.rentGraceDays ?? 4,
                                                     } : undefined,
                                                     proratedDeposit: enabled ? undefined : prev.proratedDeposit,
                                                 }));
@@ -1896,7 +1896,7 @@ const Applications: React.FC = () => {
             let expectedTotal: number;
             let depositPaid: number;
             let nextDueDateIso: string;
-            let graceDays = Number(app.rentGraceDays ?? 5);
+            let graceDays = Number(app.rentGraceDays ?? 4);
 
             if (isDepositExempt) {
                 expectedTotal = firstMonthRent;
