@@ -7,10 +7,10 @@ export function getRentDueDay(tenant: Pick<TenantProfile, 'rentDueDate'>): numbe
     return Math.min(28, Math.max(1, Math.round(d)));
 }
 
-/** Grace days after due day before late rent accrues. Default 5 (due 1st → fines from 6th). */
+/** Grace days after due day before late rent accrues. Default 4 (due 1st → fines from 5th). */
 export function getRentGraceDays(tenant: Pick<TenantProfile, 'rentGraceDays'>): number {
     const g = tenant.rentGraceDays;
-    if (g == null || !Number.isFinite(g)) return 5;
+    if (g == null || !Number.isFinite(g)) return 4;
     return Math.min(28, Math.max(0, Math.round(g)));
 }
 
