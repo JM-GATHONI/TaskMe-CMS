@@ -264,7 +264,9 @@ export const ApplicationFormModal: React.FC<{
 
     const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+        // Allow empty string so the user can delete the whole number without it
+        // snapping back to 0 (the "malignant zero" problem).
+        setFormData(prev => ({ ...prev, [name]: value === '' ? '' : parseFloat(value) }));
     };
 
     const handleRecurringBillChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -388,6 +390,9 @@ export const ApplicationFormModal: React.FC<{
             }
         }
 
+        // Coerce any fields the user may have left blank back to safe numeric defaults.
+        const safeNum = (v: unknown, fallback: number) => { const n = parseFloat(String(v ?? '')); return isNaN(n) ? fallback : n; };
+
         onSave({
             ...payload,
             propertyId: selectedPropertyId,
@@ -398,6 +403,9 @@ export const ApplicationFormModal: React.FC<{
             unit: resolvedUnitNumber,
             status: resolvedStatus,
             rentAmount: resolvedRent,
+            rentDueDate:   safeNum(payload.rentDueDate,   1),
+            rentGraceDays: safeNum(payload.rentGraceDays, 5),
+            depositMonths: safeNum(payload.depositMonths, 1),
         });
     };
 
@@ -672,7 +680,7 @@ export const ApplicationFormModal: React.FC<{
                                 
                                 <div>
                                     <label className="block text-xs font-medium text-gray-700 mb-1">Monthly Rent</label>
-                                    <input type="number" name="rentAmount" value={formData.rentAmount} onChange={handleAmountChange} className="w-full p-2 border rounded font-bold" />
+                                    <input type="number" name="rentAmount" value={formData.rentAmount ?? ''} placeholder="e.g. 15000" onChange={handleAmountChange} className="w-full p-2 border rounded font-bold" />
                                 </div>
                                 
 
@@ -683,7 +691,8 @@ export const ApplicationFormModal: React.FC<{
                                         name="rentDueDate"
                                         min={1}
                                         max={28}
-                                        value={formData.rentDueDate ?? 1}
+                                        value={formData.rentDueDate ?? ''}
+                                        placeholder="1"
                                         onChange={handleAmountChange}
                                         className="w-full p-2 border rounded"
                                     />
@@ -696,7 +705,8 @@ export const ApplicationFormModal: React.FC<{
                                         name="rentGraceDays"
                                         min={0}
                                         max={28}
-                                        value={formData.rentGraceDays ?? 5}
+                                        value={formData.rentGraceDays ?? ''}
+                                        placeholder="5"
                                         onChange={handleAmountChange}
                                         className="w-full p-2 border rounded"
                                     />
@@ -744,14 +754,19 @@ export const ApplicationFormModal: React.FC<{
                                                 type="number"
                                                 min={1}
                                                 max={12}
-                                                value={formData.depositMonths ?? 1}
+                                                value={formData.depositMonths ?? ''}
                                                 disabled={!!formData.proratedDeposit?.enabled}
                                                 onChange={e => {
-                                                    const months = Math.max(1, parseInt(e.target.value) || 1);
+                                                    const raw = e.target.value;
+                                                    if (raw === '') {
+                                                        setFormData(prev => ({ ...prev, depositMonths: '' as any }));
+                                                        return;
+                                                    }
+                                                    const months = Math.max(1, parseInt(raw) || 1);
                                                     setFormData(prev => ({
                                                         ...prev,
                                                         depositMonths: months,
-                                                        depositPaid: (prev.rentAmount || 0) * months,
+                                                        depositPaid: (prev.rentAmount as number || 0) * months,
                                                     }));
                                                 }}
                                                 className="w-20 p-2 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
