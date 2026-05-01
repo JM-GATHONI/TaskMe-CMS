@@ -1699,12 +1699,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         const { data: authSub } = supabase.auth.onAuthStateChange((event, _session) => {
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            if (event === 'TOKEN_REFRESHED') {
+                // Only bust the token cache — data hasn't changed, no need to re-fetch.
+                bustSessionCache();
+                console.log('[Supabase] TOKEN_REFRESHED — session cache busted');
+            } else if (event === 'SIGNED_IN') {
                 // Bust session cache so next getSupabaseSession() returns the new token.
                 bustSessionCache();
-                // Re-fetch all cached data after login or token refresh so stale
-                // empty-state from an expired session is replaced with real data.
-                console.log('[Supabase] auth event:', event, '— invalidating all queries');
+                // Re-fetch all cached data after login so stale empty-state is replaced.
+                console.log('[Supabase] SIGNED_IN — invalidating all queries');
                 queryClient.invalidateQueries();
             } else if (event === 'SIGNED_OUT') {
                 // Bust session cache and clear all queries on logout.
