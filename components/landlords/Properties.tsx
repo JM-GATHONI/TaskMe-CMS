@@ -912,11 +912,11 @@ const UnitModal: React.FC<{ property: Property; onClose: () => void; onAddUnit: 
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">Bedrooms</label>
-                                <input type="number" value={unitData.bedrooms ?? ''} onChange={e => setUnitData(p => ({...p, bedrooms: parseInt(e.target.value) || 0}))} className="w-full p-2 border rounded"/>
+                                <input type="number" value={unitData.bedrooms ?? ''} placeholder="0" onChange={e => setUnitData(p => ({...p, bedrooms: e.target.value === '' ? '' as any : parseInt(e.target.value) || 0}))} className="w-full p-2 border rounded"/>
                             </div>
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">Bathrooms</label>
-                                <input type="number" value={unitData.bathrooms ?? ''} onChange={e => setUnitData(p => ({...p, bathrooms: parseInt(e.target.value) || 0}))} className="w-full p-2 border rounded"/>
+                                <input type="number" value={unitData.bathrooms ?? ''} placeholder="0" onChange={e => setUnitData(p => ({...p, bathrooms: e.target.value === '' ? '' as any : parseInt(e.target.value) || 0}))} className="w-full p-2 border rounded"/>
                             </div>
                         </div>
                     )}

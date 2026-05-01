@@ -201,8 +201,9 @@ const AddAgentModal: React.FC<{ onClose: () => void; onSave: (agent: StaffProfil
                         <input 
                             type="number"
                             className="w-full p-3 border rounded-lg mt-1"
-                            value={formData.salaryConfig?.amount}
-                            onChange={e => setFormData({...formData, salaryConfig: { type: 'Target Based', amount: Number(e.target.value) }})}
+                            value={formData.salaryConfig?.amount ?? ''}
+                            placeholder="e.g. 50000"
+                            onChange={e => setFormData({...formData, salaryConfig: { type: 'Target Based', amount: e.target.value === '' ? '' as any : Number(e.target.value) }})}
                         />
                     </div>
                     <div className="pt-2">

@@ -380,7 +380,7 @@ const ListingModal: React.FC<{
                                         value={formData.airbnbConfig?.cleaningFee || ''}
                                         onChange={e => setFormData({
                                             ...formData, 
-                                            airbnbConfig: { ...formData.airbnbConfig!, cleaningFee: Number(e.target.value) }
+                                            airbnbConfig: { ...formData.airbnbConfig!, cleaningFee: e.target.value === '' ? '' as any : Number(e.target.value) }
                                         })}
                                         className="w-full p-2 border rounded text-sm"
                                     />
@@ -393,7 +393,7 @@ const ListingModal: React.FC<{
                                         value={formData.airbnbConfig?.maxGuests || ''}
                                         onChange={e => setFormData({
                                             ...formData, 
-                                            airbnbConfig: { ...formData.airbnbConfig!, maxGuests: Number(e.target.value) }
+                                            airbnbConfig: { ...formData.airbnbConfig!, maxGuests: e.target.value === '' ? '' as any : Number(e.target.value) }
                                         })}
                                         className="w-full p-2 border rounded text-sm"
                                     />
@@ -557,8 +557,8 @@ const ListingModal: React.FC<{
                                         <label className="block font-bold mb-1 text-xs">Review Count</label>
                                         <input 
                                             type="number"
-                                            value={formData.ownerDetails?.reviews}
-                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, reviews: parseInt(e.target.value) || 0}})}
+                                            value={formData.ownerDetails?.reviews ?? ''}
+                                            onChange={e => setFormData({...formData, ownerDetails: {...formData.ownerDetails!, reviews: e.target.value === '' ? '' as any : parseInt(e.target.value) || 0}})}
                                             className="w-full p-2 border rounded bg-white"
                                         />
                                     </div>
