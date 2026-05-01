@@ -144,6 +144,7 @@ const TenantPortal: React.FC = () => {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [isPayRentModalOpen, setIsPayRentModalOpen] = useState(false);
+    const [selectedPortalKeys, setSelectedPortalKeys] = useState<Set<string>>(new Set());
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
     const [newMessageContent, setNewMessageContent] = useState('');
     // Use logged-in user if available and is a tenant, fallback to first tenant only for dev/demo
@@ -173,6 +174,27 @@ const TenantPortal: React.FC = () => {
         const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + Number(f.amount ?? 0), 0) || 0;
         return rent + bills + fines;
     }, [activeUser]);
+    const portalLineItems = useMemo(() => {
+        if (!activeUser) return [] as { key: string; label: string; amount: number }[];
+        const items: { key: string; label: string; amount: number }[] = [];
+        if (activeUser.status === 'Overdue' && Number(activeUser.rentAmount ?? 0) > 0) {
+            items.push({ key: 'rent', label: 'Rent (Overdue)', amount: Number(activeUser.rentAmount ?? 0) });
+        }
+        for (const b of (activeUser.outstandingBills || []).filter(b => b.status === 'Pending')) {
+            items.push({ key: `bill:${b.id}`, label: b.type + (b.description ? ` — ${b.description}` : ''), amount: b.amount });
+        }
+        for (const f of (activeUser.outstandingFines || []).filter(f => f.status === 'Pending')) {
+            items.push({ key: `fine:${f.id}`, label: f.type, amount: f.amount });
+        }
+        return items;
+    }, [activeUser]);
+    const portalSelectedTotal = useMemo(() => {
+        if (selectedPortalKeys.size === 0) return balance;
+        return portalLineItems.filter(i => selectedPortalKeys.has(i.key)).reduce((s, i) => s + i.amount, 0);
+    }, [selectedPortalKeys, portalLineItems, balance]);
+    const togglePortalKey = (key: string) => setSelectedPortalKeys(prev => {
+        const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
+    });
 
     const handleSubmitRequest = () => {
         if (!title.trim() || !description.trim()) return alert('Please enter title and description.');
@@ -335,13 +357,37 @@ const TenantPortal: React.FC = () => {
                                 <p className="text-xs text-gray-400 mt-1">
                                     {hasLease ? 'Due Date: 5th of Month' : 'No active lease found'}
                                 </p>
+                                {portalLineItems.length > 0 && (
+                                    <div className="mt-4 space-y-2 border-t pt-3">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Select items to pay</p>
+                                        {portalLineItems.map(item => (
+                                            <label key={item.key} className="flex items-center justify-between gap-2 cursor-pointer group">
+                                                <span className="flex items-center gap-2 flex-1 min-w-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="w-4 h-4 accent-primary cursor-pointer shrink-0"
+                                                        checked={selectedPortalKeys.has(item.key)}
+                                                        onChange={() => togglePortalKey(item.key)}
+                                                    />
+                                                    <span className="text-sm text-gray-700 truncate group-hover:text-primary transition-colors">{item.label}</span>
+                                                </span>
+                                                <span className="text-sm font-bold text-gray-800 shrink-0">KES {Number(item.amount).toLocaleString()}</span>
+                                            </label>
+                                        ))}
+                                        {selectedPortalKeys.size > 0 && (
+                                            <p className="text-xs font-bold text-primary pt-2 border-t">
+                                                Paying: KES {portalSelectedTotal.toLocaleString()}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <button 
                                 onClick={() => setIsPayRentModalOpen(true)}
                                 disabled={!canPayNow}
                                 className={`w-full mt-4 py-2 font-bold rounded-lg shadow-md transition-colors ${canPayNow ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
                             >
-                                Pay Now
+                                {selectedPortalKeys.size > 0 ? `Pay KES ${portalSelectedTotal.toLocaleString()}` : 'Pay Now'}
                             </button>
                         </div>
 
@@ -415,7 +461,7 @@ const TenantPortal: React.FC = () => {
                                                 {myUnitTag || '— not set —'}
                                             </span>
                                         </li>
-                                        <li>4. Amount: <span className="font-bold">KES {Number(balance ?? 0).toLocaleString()}</span></li>
+                                        <li>4. Amount: <span className="font-bold">KES {Number(portalSelectedTotal > 0 ? portalSelectedTotal : balance).toLocaleString()}</span></li>
                                         <li>5. Enter M-PESA PIN and confirm.</li>
                                     </ol>
                                 </div>
@@ -579,7 +625,7 @@ const TenantPortal: React.FC = () => {
             {isPayRentModalOpen && (
                 <MpesaStkModal
                     onClose={() => setIsPayRentModalOpen(false)}
-                    amount={balance > 0 ? balance : activeUser.rentAmount}
+                    amount={portalSelectedTotal > 0 ? portalSelectedTotal : (balance > 0 ? balance : activeUser.rentAmount)}
                     tenant={activeUser}
                     userId={String(currentUser?.id ?? activeUser.id)}
                     leaseId={null}

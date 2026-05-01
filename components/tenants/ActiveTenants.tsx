@@ -1568,6 +1568,8 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const [chatInput, setChatInput] = useState('');
     const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
     const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
+    const [selectedPaymentKeys, setSelectedPaymentKeys] = useState<Set<string>>(new Set());
+    useEffect(() => { setSelectedPaymentKeys(new Set()); }, [tenant.id]);
     
     // For notices
     const [noticeModalType, setNoticeModalType] = useState<'Warning' | 'Vacation' | 'Force' | 'Review Client Notice'>('Warning');
@@ -1843,6 +1845,73 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const isCreditBalance = balanceDue < 0;
     const creditAmount = isCreditBalance ? Math.abs(balanceDue) : 0;
 
+    // ── Priority allocation for per-row status badges ─────────────────────────
+    const RECURRING_BILL_LABELS: Record<keyof RecurringBillSettings, string> = {
+        serviceCharge: 'Service Charge',
+        garbage: 'Garbage Fee',
+        security: 'Security Fee',
+        waterFixed: 'Water (Fixed)',
+        other: 'Other Charges',
+    };
+    const allocationResult = useMemo(() => {
+        let rem = Math.max(0, amountPaidThisMonth);
+        const out: Record<string, number> = {};
+        const depOwed = (!tenant.depositExempt && !isDepositFullyPaid) ? depositDueForInvoice : 0;
+        out['deposit'] = Math.min(rem, depOwed); rem = Math.max(0, rem - depOwed);
+        out['lateFee'] = Math.min(rem, automatedLateFine); rem = Math.max(0, rem - automatedLateFine);
+        for (const b of (tenant.outstandingBills || []).filter(b => b.status === 'Pending' && b.type.toLowerCase().includes('arrear'))) {
+            out[`bill:${b.id}`] = Math.min(rem, b.amount); rem = Math.max(0, rem - b.amount);
+        }
+        out['rent'] = Math.min(rem, rentDue); rem = Math.max(0, rem - rentDue);
+        for (const key of (['serviceCharge', 'garbage', 'security', 'waterFixed', 'other'] as (keyof RecurringBillSettings)[])) {
+            const amt = Number(tenant.recurringBills?.[key] ?? 0);
+            if (amt > 0) { out[`recurring:${key}`] = Math.min(rem, amt); rem = Math.max(0, rem - amt); }
+        }
+        for (const b of (tenant.outstandingBills || []).filter(b => b.status === 'Pending' && !b.type.toLowerCase().includes('arrear'))) {
+            out[`bill:${b.id}`] = Math.min(rem, b.amount); rem = Math.max(0, rem - b.amount);
+        }
+        for (const f of (tenant.outstandingFines || []).filter(f => f.type !== 'Late Rent' && f.status === 'Pending')) {
+            out[`fine:${f.id}`] = Math.min(rem, f.amount); rem = Math.max(0, rem - f.amount);
+        }
+        out['waterDeposit'] = Math.min(rem, waterDepositOwed); rem = Math.max(0, rem - waterDepositOwed);
+        out['electricityDeposit'] = Math.min(rem, electricityDepositOwed);
+        return out;
+    }, [amountPaidThisMonth, tenant, isDepositFullyPaid, depositDueForInvoice, automatedLateFine, rentDue, waterDepositOwed, electricityDepositOwed]);
+    const itemStatus = (key: string, owed: number): 'Paid' | 'Partial' | 'Unpaid' => {
+        if (owed <= 0) return 'Paid';
+        const paid = allocationResult[key] ?? 0;
+        if (paid + 0.5 >= owed) return 'Paid';
+        if (paid > 0) return 'Partial';
+        return 'Unpaid';
+    };
+    const payStatusBadge = (s: 'Paid' | 'Partial' | 'Unpaid') => {
+        if (s === 'Paid') return <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold shrink-0">Paid</span>;
+        if (s === 'Partial') return <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold shrink-0">Partial</span>;
+        return <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold shrink-0">Unpaid</span>;
+    };
+    const toggleKey = (key: string) => setSelectedPaymentKeys(prev => {
+        const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
+    });
+    const selectedTotal = useMemo(() => {
+        if (selectedPaymentKeys.size === 0) return Math.max(0, balanceDue);
+        let t = 0;
+        if (selectedPaymentKeys.has('deposit') && !tenant.depositExempt && !isDepositFullyPaid) t += depositDueForInvoice;
+        if (selectedPaymentKeys.has('rent')) t += rentDue;
+        if (selectedPaymentKeys.has('lateFee')) t += automatedLateFine;
+        for (const key of (['serviceCharge', 'garbage', 'security', 'waterFixed', 'other'] as (keyof RecurringBillSettings)[])) {
+            if (selectedPaymentKeys.has(`recurring:${key}`)) t += Number(tenant.recurringBills?.[key] ?? 0);
+        }
+        for (const b of (tenant.outstandingBills || [])) {
+            if (selectedPaymentKeys.has(`bill:${b.id}`)) t += b.amount;
+        }
+        for (const f of (tenant.outstandingFines || [])) {
+            if (selectedPaymentKeys.has(`fine:${f.id}`)) t += f.amount;
+        }
+        if (selectedPaymentKeys.has('waterDeposit')) t += waterDepositOwed;
+        if (selectedPaymentKeys.has('electricityDeposit')) t += electricityDepositOwed;
+        return t;
+    }, [selectedPaymentKeys, tenant, isDepositFullyPaid, depositDueForInvoice, rentDue, automatedLateFine, waterDepositOwed, electricityDepositOwed, balanceDue]);
+
     // First rent+deposit payment (or onboarding) – used for display-only "Last Due Date".
     const firstPaidDateStr = paidDates.length > 0
         ? paidDates.reduce((min, d) => (d < min ? d : min), paidDates[0])
@@ -1997,6 +2066,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     const handleRecordPayment = (amount: number, method: string, reference: string, date: string) => {
         const normalizedRef = String(reference || '').trim() || `MAN-${Date.now()}`;
+        const hasSelection = selectedPaymentKeys.size > 0;
         const newPayment = {
             date: date,
             amount: `KES ${Number(amount ?? 0).toLocaleString()}`,
@@ -2004,36 +2074,133 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             method: method,
             reference: normalizedRef
         };
-        const cycle = computeRentPaymentCycleUpdate(tenant, Number(amount || 0), date);
         const updates: Partial<TenantProfile> = {
             paymentHistory: [newPayment, ...tenant.paymentHistory],
-            nextDueDate: cycle.nextDueDateIso,
         };
-        if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
-            const alreadySettled = tenant.depositExempt || isDepositFullyPaid || !!tenant.rentExtension?.enabled;
-            const settledByPayment = tenant.proratedDeposit?.enabled
-                ? Number(amount) >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
-                : Number(amount) >= effectiveRent + depositExpectedStandard;
-            if (alreadySettled || settledByPayment) {
-                updates.status = 'Active';
-                (updates as any).activationDate = date;
+
+        if (!hasSelection) {
+            // ── No selection: existing full-amount waterfall (unchanged behaviour) ──
+            const cycle = computeRentPaymentCycleUpdate(tenant, Number(amount || 0), date);
+            updates.nextDueDate = cycle.nextDueDateIso;
+            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+                const alreadySettled = tenant.depositExempt || isDepositFullyPaid || !!tenant.rentExtension?.enabled;
+                const settledByPayment = tenant.proratedDeposit?.enabled
+                    ? Number(amount) >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
+                    : Number(amount) >= effectiveRent + depositExpectedStandard;
+                if (alreadySettled || settledByPayment) {
+                    updates.status = 'Active';
+                    (updates as any).activationDate = date;
+                }
+            }
+            if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+                && Number(tenant.depositPaid || 0) < depositExpectedStandard
+                && Number(amount || 0) >= effectiveRent + depositExpectedStandard) {
+                updates.depositPaid = depositExpectedStandard;
+            }
+            if (cycle.clearRentExtension && tenant.rentExtension) {
+                updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                updates.rentExtension = { ...tenant.rentExtension, enabled: false };
+            }
+            if (cycle.proratedUpdate && tenant.proratedDeposit) {
+                updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
+                updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
+            }
+        } else {
+            // ── Targeted allocation: apply payment only to the selected items ──────
+
+            // 1. Rent — advance rent cycle
+            if (selectedPaymentKeys.has('rent')) {
+                const cycle = computeRentPaymentCycleUpdate(tenant, rentDue, date);
+                updates.nextDueDate = cycle.nextDueDateIso;
+                if (cycle.clearRentExtension && tenant.rentExtension) {
+                    updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
+                    updates.rentExtension = { ...tenant.rentExtension, enabled: false };
+                }
+                if (cycle.proratedUpdate && tenant.proratedDeposit) {
+                    updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
+                    updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
+                }
+            }
+
+            // 2. Standard (lump-sum) security deposit
+            if (selectedPaymentKeys.has('deposit') && !tenant.depositExempt
+                && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+                && Number(tenant.depositPaid || 0) < depositExpectedStandard) {
+                updates.depositPaid = depositExpectedStandard;
+            }
+
+            // 3. Prorated deposit installment (only if cycle didn't already handle it)
+            if (selectedPaymentKeys.has('deposit') && tenant.proratedDeposit?.enabled && !updates.proratedDeposit) {
+                const nextPaid = (tenant.proratedDeposit.monthsPaid || 0) + 1;
+                const nextAmt  = (tenant.proratedDeposit.amountPaidSoFar || 0) + tenant.proratedDeposit.monthlyInstallment;
+                updates.proratedDeposit = { ...tenant.proratedDeposit, monthsPaid: nextPaid, amountPaidSoFar: nextAmt };
+                updates.depositPaid = nextAmt;
+            }
+
+            // 4. Water utility deposit
+            if (selectedPaymentKeys.has('waterDeposit') && tenant.waterDeposit) {
+                updates.waterDeposit = { ...tenant.waterDeposit, paid: tenant.waterDeposit.amount };
+            }
+
+            // 5. Electricity utility deposit
+            if (selectedPaymentKeys.has('electricityDeposit') && tenant.electricityDeposit) {
+                updates.electricityDeposit = { ...tenant.electricityDeposit, paid: tenant.electricityDeposit.amount };
+            }
+
+            // 6. Outstanding bills — mark selected ones Paid
+            const billIds = [...selectedPaymentKeys].filter(k => k.startsWith('bill:')).map(k => k.slice(5));
+            if (billIds.length > 0) {
+                updates.outstandingBills = (tenant.outstandingBills || []).map(b =>
+                    billIds.includes(b.id) ? { ...b, status: 'Paid' as const } : b
+                );
+            }
+
+            // 7. Outstanding fines — mark selected ones Paid
+            const fineIds = [...selectedPaymentKeys].filter(k => k.startsWith('fine:')).map(k => k.slice(5));
+            let updatedFines: FineItem[] = [...(tenant.outstandingFines || [])];
+            if (fineIds.length > 0) {
+                updatedFines = updatedFines.map(f => fineIds.includes(f.id) ? { ...f, status: 'Paid' as const } : f);
+            }
+
+            // 8. Late fee — record a Paid fine entry
+            if (selectedPaymentKeys.has('lateFee') && automatedLateFine > 0) {
+                updatedFines = [
+                    ...updatedFines,
+                    { id: `lf-${Date.now()}`, type: 'Late Rent', amount: automatedLateFine, date, status: 'Paid' as const },
+                ];
+            }
+            if (fineIds.length > 0 || selectedPaymentKeys.has('lateFee')) {
+                updates.outstandingFines = updatedFines;
+            }
+
+            // 9. Recurring bills — track paid amounts per bill for this period
+            const recurKeys = [...selectedPaymentKeys]
+                .filter(k => k.startsWith('recurring:'))
+                .map(k => k.slice(10) as keyof RecurringBillSettings);
+            if (recurKeys.length > 0) {
+                const period = date.slice(0, 7);
+                const existingAmounts: Partial<Record<keyof RecurringBillSettings, number>> =
+                    tenant.recurringBillsPaidThisMonth?.period === period
+                        ? { ...tenant.recurringBillsPaidThisMonth.amounts }
+                        : {};
+                for (const key of recurKeys) {
+                    existingAmounts[key] = Number(tenant.recurringBills?.[key] ?? 0);
+                }
+                updates.recurringBillsPaidThisMonth = { period, amounts: existingAmounts };
+            }
+
+            // 10. Activate pending tenant if both rent and deposit are now covered
+            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+                const depositCovered = tenant.depositExempt || isDepositFullyPaid
+                    || !!tenant.rentExtension?.enabled || selectedPaymentKeys.has('deposit');
+                const rentCovered = selectedPaymentKeys.has('rent');
+                if (depositCovered && rentCovered) {
+                    updates.status = 'Active';
+                    (updates as any).activationDate = date;
+                }
             }
         }
-        if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
-            && Number(tenant.depositPaid || 0) < depositExpectedStandard
-            && Number(amount || 0) >= effectiveRent + depositExpectedStandard) {
-            updates.depositPaid = depositExpectedStandard;
-        }
-        // Rent extension: restore grace days and clear extension flag
-        if (cycle.clearRentExtension && tenant.rentExtension) {
-            updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 5;
-            updates.rentExtension = { ...tenant.rentExtension, enabled: false };
-        }
-        // Prorated deposit: advance installment counter
-        if (cycle.proratedUpdate && tenant.proratedDeposit) {
-            updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
-            updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
-        }
+
         updateTenant(tenant.id, updates);
         // Mirror into the payments ledger so it appears in Inbound > Manual filter.
         supabase.from('payments').insert({
@@ -2046,6 +2213,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             created_at: `${date}T00:00:00`,
             result_desc: method,
         }).then(() => {});
+        setSelectedPaymentKeys(new Set());
         setActiveModal(null);
         alert("Payment recorded successfully.");
     };
@@ -2421,23 +2589,35 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             </div>
                         )}
                         {!tenant.depositExempt && !isDepositFullyPaid && tenant.proratedDeposit?.enabled && (
-                            <div className="flex justify-between text-indigo-700 font-medium">
-                                <span className="flex items-center gap-1 flex-wrap">
-                                    Deposit Installment
-                                    <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold">
-                                        {tenant.proratedDeposit.monthsPaid}/{tenant.proratedDeposit.durationMonths} paid
+                            <div className="flex items-center justify-between gap-2 text-indigo-700 font-medium">
+                                <label className="flex items-center gap-2 cursor-pointer flex-1 flex-wrap min-w-0">
+                                    <input type="checkbox" className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer shrink-0" checked={selectedPaymentKeys.has('deposit')} onChange={() => toggleKey('deposit')} />
+                                    <span className="flex items-center gap-1 flex-wrap">
+                                        Deposit Installment
+                                        <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold">
+                                            {tenant.proratedDeposit.monthsPaid}/{tenant.proratedDeposit.durationMonths} paid
+                                        </span>
                                     </span>
-                                </span>
-                                <span>KES {tenant.proratedDeposit.monthlyInstallment.toLocaleString()}</span>
+                                </label>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {payStatusBadge(itemStatus('deposit', tenant.proratedDeposit.monthlyInstallment))}
+                                    <span>KES {tenant.proratedDeposit.monthlyInstallment.toLocaleString()}</span>
+                                </div>
                             </div>
                         )}
                         {!tenant.depositExempt && !tenant.proratedDeposit?.enabled && depositDue > 0 && (
-                            <div className="flex justify-between text-blue-700 font-medium">
-                                <span className="flex items-center gap-1">
-                                    Security Deposit
-                                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">New Tenant</span>
-                                </span>
-                                <span>KES {Number(depositDue).toLocaleString()}</span>
+                            <div className="flex items-center justify-between gap-2 text-blue-700 font-medium">
+                                <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                    <input type="checkbox" className="w-3.5 h-3.5 accent-blue-600 cursor-pointer shrink-0" checked={selectedPaymentKeys.has('deposit')} onChange={() => toggleKey('deposit')} />
+                                    <span className="flex items-center gap-1">
+                                        Security Deposit
+                                        <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">New Tenant</span>
+                                    </span>
+                                </label>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {payStatusBadge(itemStatus('deposit', depositDue))}
+                                    <span>KES {Number(depositDue).toLocaleString()}</span>
+                                </div>
                             </div>
                         )}
                         {/* Deposit-exempt admin control:
@@ -2485,47 +2665,110 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                                 Rent deferred until <strong>{tenant.rentExtension.rentDeferredUntil}</strong> — no grace period after that date.
                             </div>
                         )}
-                        <div className="flex justify-between">
-                            <span className="text-gray-600">
-                                {isActivationMonth && effectiveRent > 0 && effectiveRent !== Number(tenant.rentAmount || 0)
-                                    ? (() => {
-                                        const joinDateStr = (tenant as any).activationDate || tenant.onboardingDate;
-                                        const joinDate = joinDateStr ? new Date(joinDateStr) : null;
-                                        const jDay = joinDate ? joinDate.getDate() : null;
-                                        const lastDay = joinDate
-                                            ? new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate()
-                                            : 30;
-                                        const daysLeft = jDay != null ? Math.max(0, lastDay - jDay) : null;
-                                        return `Prorated Rent${daysLeft != null ? ` — ${daysLeft} days` : ''} (joined ${currentMonthName} ${jDay ?? ''})`;
-                                    })()
-                                    : `Base Rent (${currentMonthName})`}
-                            </span>
-                            <span className="font-medium">KES {Number(rentDue ?? 0).toLocaleString()}</span>
+                        <div className="flex items-center justify-between gap-2">
+                            <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                <input type="checkbox" className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0" checked={selectedPaymentKeys.has('rent')} onChange={() => toggleKey('rent')} />
+                                <span className="text-gray-600 truncate">
+                                    {isActivationMonth && effectiveRent > 0 && effectiveRent !== Number(tenant.rentAmount || 0)
+                                        ? (() => {
+                                            const joinDateStr = (tenant as any).activationDate || tenant.onboardingDate;
+                                            const joinDate = joinDateStr ? new Date(joinDateStr) : null;
+                                            const jDay = joinDate ? joinDate.getDate() : null;
+                                            const lastDay = joinDate
+                                                ? new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate()
+                                                : 30;
+                                            const daysLeft = jDay != null ? Math.max(0, lastDay - jDay) : null;
+                                            return `Prorated Rent${daysLeft != null ? ` — ${daysLeft} days` : ''} (joined ${currentMonthName} ${jDay ?? ''})`;
+                                        })()
+                                        : `Base Rent (${currentMonthName})`}
+                                </span>
+                            </label>
+                            <div className="flex items-center gap-2 shrink-0">
+                                {payStatusBadge(itemStatus('rent', rentDue))}
+                                <span className="font-medium">KES {Number(rentDue ?? 0).toLocaleString()}</span>
+                            </div>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-600">Recurrent Bills</span>
-                            <span className="font-medium">KES {Number(recurrentBills ?? 0).toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-600">Pending Bills/Fines</span>
-                            <span className="font-medium">KES {(Number(pendingBills ?? 0) + Number(fines ?? 0)).toLocaleString()}</span>
-                        </div>
+                        {(Object.keys(RECURRING_BILL_LABELS) as (keyof RecurringBillSettings)[]).map(key => {
+                            const amt = Number(tenant.recurringBills?.[key] ?? 0);
+                            if (amt <= 0) return null;
+                            const rKey = `recurring:${key}`;
+                            return (
+                                <div key={rKey} className="flex items-center justify-between gap-2">
+                                    <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                        <input type="checkbox" className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0" checked={selectedPaymentKeys.has(rKey)} onChange={() => toggleKey(rKey)} />
+                                        <span className="text-gray-600">{RECURRING_BILL_LABELS[key]}</span>
+                                    </label>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {payStatusBadge(itemStatus(rKey, amt))}
+                                        <span className="font-medium">KES {amt.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {(tenant.outstandingBills || []).filter(b => b.status === 'Pending').map(b => {
+                            const bKey = `bill:${b.id}`;
+                            return (
+                                <div key={bKey} className="flex items-center justify-between gap-2">
+                                    <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                        <input type="checkbox" className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0" checked={selectedPaymentKeys.has(bKey)} onChange={() => toggleKey(bKey)} />
+                                        <span className="text-gray-600 truncate">{b.type}{b.description ? ` — ${b.description}` : ''}</span>
+                                    </label>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {payStatusBadge(itemStatus(bKey, b.amount))}
+                                        <span className="font-medium">KES {Number(b.amount).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {(tenant.outstandingFines || []).filter(f => f.type !== 'Late Rent' && f.status === 'Pending').map(f => {
+                            const fKey = `fine:${f.id}`;
+                            return (
+                                <div key={fKey} className="flex items-center justify-between gap-2">
+                                    <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                        <input type="checkbox" className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0" checked={selectedPaymentKeys.has(fKey)} onChange={() => toggleKey(fKey)} />
+                                        <span className="text-gray-600">{f.type}</span>
+                                    </label>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {payStatusBadge(itemStatus(fKey, f.amount))}
+                                        <span className="font-medium">KES {Number(f.amount).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                         {automatedLateFine > 0 && (
-                            <div className="flex justify-between text-red-600">
-                                <span>Late Fee</span>
-                                <span>KES {Number(automatedLateFine ?? 0).toLocaleString()}</span>
+                            <div className="flex items-center justify-between gap-2 text-red-600">
+                                <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                    <input type="checkbox" className="w-3.5 h-3.5 accent-red-600 cursor-pointer shrink-0" checked={selectedPaymentKeys.has('lateFee')} onChange={() => toggleKey('lateFee')} />
+                                    <span>Late Fee</span>
+                                </label>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {payStatusBadge(itemStatus('lateFee', automatedLateFine))}
+                                    <span>KES {Number(automatedLateFine ?? 0).toLocaleString()}</span>
+                                </div>
                             </div>
                         )}
                         {waterDepositOwed > 0 && (
-                            <div className="flex justify-between text-teal-700">
-                                <span className="flex items-center gap-1">Water Deposit <span className="text-[10px] bg-teal-50 border border-teal-200 text-teal-700 px-1.5 py-0.5 rounded font-bold">Unpaid</span></span>
-                                <span>KES {Number(waterDepositOwed).toLocaleString()}</span>
+                            <div className="flex items-center justify-between gap-2 text-teal-700">
+                                <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                    <input type="checkbox" className="w-3.5 h-3.5 accent-teal-600 cursor-pointer shrink-0" checked={selectedPaymentKeys.has('waterDeposit')} onChange={() => toggleKey('waterDeposit')} />
+                                    <span>Water Deposit</span>
+                                </label>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {payStatusBadge(itemStatus('waterDeposit', waterDepositOwed))}
+                                    <span>KES {Number(waterDepositOwed).toLocaleString()}</span>
+                                </div>
                             </div>
                         )}
                         {electricityDepositOwed > 0 && (
-                            <div className="flex justify-between text-teal-700">
-                                <span className="flex items-center gap-1">Electricity Deposit <span className="text-[10px] bg-teal-50 border border-teal-200 text-teal-700 px-1.5 py-0.5 rounded font-bold">Unpaid</span></span>
-                                <span>KES {Number(electricityDepositOwed).toLocaleString()}</span>
+                            <div className="flex items-center justify-between gap-2 text-teal-700">
+                                <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                    <input type="checkbox" className="w-3.5 h-3.5 accent-teal-600 cursor-pointer shrink-0" checked={selectedPaymentKeys.has('electricityDeposit')} onChange={() => toggleKey('electricityDeposit')} />
+                                    <span>Electricity Deposit</span>
+                                </label>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {payStatusBadge(itemStatus('electricityDeposit', electricityDepositOwed))}
+                                    <span>KES {Number(electricityDepositOwed).toLocaleString()}</span>
+                                </div>
                             </div>
                         )}
                         <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-800">
@@ -2560,19 +2803,26 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 </div>
                 
                 {canPay && (
-                <div className="grid grid-cols-2 gap-3 mt-6">
-                    <button
-                        onClick={() => setActiveModal('recordPayment')}
-                        className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
-                    >
-                        Record Manual Pay
-                    </button>
-                    <button
-                        onClick={() => setActiveModal('pay')}
-                        className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md transition-colors"
-                    >
-                        M-Pesa Push
-                    </button>
+                <div className="mt-6">
+                    {selectedPaymentKeys.size > 0 && (
+                        <p className="text-xs text-center text-primary font-bold mb-3">
+                            {selectedPaymentKeys.size} item{selectedPaymentKeys.size > 1 ? 's' : ''} selected — KES {selectedTotal.toLocaleString()}
+                        </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            onClick={() => setActiveModal('recordPayment')}
+                            className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors shadow-sm"
+                        >
+                            {selectedPaymentKeys.size > 0 ? 'Record Selected' : 'Record Manual Pay'}
+                        </button>
+                        <button
+                            onClick={() => setActiveModal('pay')}
+                            className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 shadow-md transition-colors"
+                        >
+                            M-Pesa Push
+                        </button>
+                    </div>
                 </div>
                 )}
             </div>
@@ -2744,7 +2994,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             {activeModal === 'recordPayment' && (
                 <RecordPaymentModal
                     tenant={tenant}
-                    balance={Math.max(0, balanceDue)}
+                    balance={selectedTotal}
                     onClose={() => setActiveModal(null)} 
                     onRecord={handleRecordPayment} 
                 />

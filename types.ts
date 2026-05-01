@@ -148,6 +148,16 @@ export interface TenantProfile {
   houseStatus?: string[];
   collectionHistory?: CollectionLog[];
   recurringBills?: RecurringBillSettings;
+  /**
+   * Tracks how much has been paid against each recurring bill key for the
+   * current billing month (ISO YYYY-MM). Reset to {} at the start of each
+   * new period. Keys mirror RecurringBillSettings (e.g. 'garbage', 'waterFixed').
+   * Used to derive per-row Paid / Partial / Unpaid badges in the Balance Overview.
+   */
+  recurringBillsPaidThisMonth?: {
+    period: string; // ISO YYYY-MM
+    amounts: Partial<Record<keyof RecurringBillSettings, number>>;
+  };
   avatar?: string;
   profilePicture?: string; // Alias for avatar sometimes used
   kraPin?: string;
