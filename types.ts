@@ -736,6 +736,8 @@ export interface SystemSettings {
   agencyAirtelPartnerId?: string;
   /** Arbitrary integration/API fields for Settings → Constants (persisted with system settings). */
   softwareConstants?: Record<string, string>;
+  /** Master on/off switch for Bulk SMS (manual and automated). Defaults to false if unset. */
+  bulkSmsEnabled?: boolean;
 }
 
 export interface PreventiveTask {

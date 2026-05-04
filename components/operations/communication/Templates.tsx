@@ -58,7 +58,7 @@ const Templates: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <button onClick={() => window.location.hash = '#/general-operations/communications'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
+            <button onClick={() => window.location.hash = '#/operations/communications'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
                 <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Communications
             </button>
             <div className="flex justify-between items-center">

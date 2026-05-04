@@ -5,7 +5,12 @@ import { CommissionRule, User } from '../../types';
 import Icon from '../Icon';
 
 const RatesAndRules: React.FC = () => {
-    const { commissionRules, updateCommissionRule, addCommissionRule, users, updateUser } = useData();
+    const { commissionRules, updateCommissionRule, addCommissionRule, users, updateUser, systemSettings, updateSystemSettings } = useData();
+    const bulkSmsEnabled = systemSettings?.bulkSmsEnabled ?? false;
+
+    const handleToggleBulkSms = () => {
+        updateSystemSettings({ bulkSmsEnabled: !bulkSmsEnabled });
+    };
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
@@ -199,6 +204,49 @@ const RatesAndRules: React.FC = () => {
                         )}
                     </div>
                 </div>
+            </div>
+            {/* Bulk SMS Integration */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-green-50 text-green-600 rounded-lg">
+                        <Icon name="communication" className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800">Bulk SMS Integration</h2>
+                        <p className="text-sm text-gray-500">Provider: OnfonMedia &mdash; Sender ID: TASK-ME</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div>
+                        <p className="font-bold text-gray-800">Enable Bulk SMS</p>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                            {bulkSmsEnabled
+                                ? 'Bulk SMS is active. Automated reminders and manual messages will be sent.'
+                                : 'Bulk SMS is off. No messages will be dispatched (manual or automated).'}
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleToggleBulkSms}
+                        className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none shadow-inner ${
+                            bulkSmsEnabled ? 'bg-green-500' : 'bg-gray-300'
+                        }`}
+                        title={bulkSmsEnabled ? 'Click to disable Bulk SMS' : 'Click to enable Bulk SMS'}
+                    >
+                        <span
+                            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                                bulkSmsEnabled ? 'translate-x-8' : 'translate-x-1'
+                            }`}
+                        />
+                    </button>
+                </div>
+
+                {!bulkSmsEnabled && (
+                    <div className="mt-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                        <Icon name="info" className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" />
+                        <p>Bulk SMS is currently disabled. Any attempt to send a message will display a notice to contact the super-admin to enable it.</p>
+                    </div>
+                )}
             </div>
         </div>
     );

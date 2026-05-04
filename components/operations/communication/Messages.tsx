@@ -463,7 +463,7 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
 };
 
 const Messages: React.FC<MessagesProps> = ({ channelFilter, folderFilter }) => {
-    const { messages, addMessage, tenants } = useData();
+    const { messages, addMessage, tenants, systemSettings } = useData();
     const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -505,7 +505,7 @@ const Messages: React.FC<MessagesProps> = ({ channelFilter, folderFilter }) => {
         // Use API to send
         let apiResult;
         
-        if (channel === 'SMS') apiResult = await communicationApi.sendSMS(to, content, 'TASKME');
+        if (channel === 'SMS') apiResult = await communicationApi.sendSMS(to, content, 'TASKME', systemSettings?.bulkSmsEnabled);
         else if (channel === 'Email') apiResult = await communicationApi.sendEmail(to, 'New Message', content, 'noreply@taskme.re');
         else if (channel === 'WhatsApp') apiResult = await communicationApi.sendWhatsApp(to, content);
         else apiResult = await communicationApi.sendInApp(to, content);
@@ -554,7 +554,7 @@ const Messages: React.FC<MessagesProps> = ({ channelFilter, folderFilter }) => {
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
-                 <button onClick={() => window.location.hash = '#/general-operations/communications'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
+                 <button onClick={() => window.location.hash = '#/operations/communications'} className="group flex items-center text-sm font-semibold text-gray-500 hover:text-primary transition-colors">
                     <span className="transform transition-transform group-hover:-translate-x-1 mr-2">←</span> Back to Communication
                 </button>
                 <button 

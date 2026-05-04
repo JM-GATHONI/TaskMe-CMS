@@ -305,7 +305,7 @@ const AgentCard: React.FC<{ agent: StaffProfile; stats: any; onClick: () => void
 const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = ({ agent, onClose }) => {
     const { 
         properties, tasks, tenants, landlords, addProperty, updateProperty, 
-        landlords: allLandlords, staff, addApplication, addLandlord, updateTask, updateTenant, addMessage, addTenant, addLandlordApplication
+        landlords: allLandlords, staff, addApplication, addLandlord, updateTask, updateTenant, addMessage, addTenant, addLandlordApplication, systemSettings
     } = useData();
     
     // Fixed: Added 'Payments' to the union type to match the UI tab rendering
@@ -332,7 +332,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
     // Message handler
     const handleSendMessage = async (to: string, content: string, channel: string, isGroup = false, count = 1) => {
         let apiResult;
-        if (channel === 'SMS') apiResult = await communicationApi.sendSMS(to, content, 'TASKME');
+        if (channel === 'SMS') apiResult = await communicationApi.sendSMS(to, content, 'TASKME', systemSettings?.bulkSmsEnabled);
         else if (channel === 'Email') apiResult = await communicationApi.sendEmail(to, 'New Message', content, 'noreply@taskme.re');
         else if (channel === 'WhatsApp') apiResult = await communicationApi.sendWhatsApp(to, content);
         else apiResult = await communicationApi.sendInApp(to, content);

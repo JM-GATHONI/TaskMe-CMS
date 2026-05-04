@@ -21,9 +21,13 @@ export const communicationApi = {
     // --- PUSH APIS (Sending) ---
 
     /**
-     * Send SMS via Gateway (e.g. Africa's Talking, Twilio)
+     * Send SMS via Gateway (e.g. Africa's Talking, Twilio, OnfonMedia)
+     * Respects the bulkSmsEnabled flag stored in systemSettings.
      */
-    sendSMS: async (to: string, content: string, senderId: string): Promise<SendResult> => {
+    sendSMS: async (to: string, content: string, senderId: string, bulkSmsEnabled?: boolean): Promise<SendResult> => {
+        if (bulkSmsEnabled === false) {
+            return { success: false, error: 'Bulk SMS not integrated. Kindly ask the super-admin to integrate.' };
+        }
         console.log(`[API Push] Sending SMS... To: ${to}, SenderID: ${senderId}`);
         // Minimal placeholder for future SMS Edge Function (no real provider yet).
         try {
