@@ -132,10 +132,12 @@ function useSupabaseBackedState<T>(
   });
 
   useEffect(() => {
-    if (fetchedValue !== undefined) {
+    // skipPersist keys are auto-derived in-memory (e.g. marketplaceListings).
+    // Never let the query cache override them — the derivation effect owns state.
+    if (fetchedValue !== undefined && !options?.skipPersist) {
       setValue(fetchedValue);
     }
-  }, [fetchedValue]);
+  }, [fetchedValue]);  // options?.skipPersist is stable (constant at call site)
 
   const upsertMutation = useMutation({
     mutationFn: async (next: T) => {
@@ -1426,6 +1428,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             queryClient.setQueryData(['app_state', k], v);
           }
         });
+        // Clear any stale batch data for skipPersist keys so the cache never
+        // carries an old value that could race with the in-memory derivation.
+        queryClient.removeQueries({ queryKey: ['app_state', 'tm_listings_v11'], exact: true });
       }
       // Signal after distributing — so individual queries see fresh cache and skip queryFn
       if (batchSuccess || batchError) {
