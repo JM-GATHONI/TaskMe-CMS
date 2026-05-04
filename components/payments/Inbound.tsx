@@ -6,6 +6,7 @@ import Icon from '../Icon';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
+import { communicationApi } from '../../utils/communicationApi';
 
 // DB row shape from public.payments (selected columns).
 interface PaymentRow {
@@ -155,7 +156,7 @@ const MpesaStkModal: React.FC<{
     tenant: TenantProfile;
     onComplete: () => void;
 }> = ({ onClose, tenant, onComplete }) => {
-    const { properties, updateTenant, addNotification } = useData();
+    const { properties, updateTenant, addNotification, addMessage, systemSettings } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success' | 'failed'>('input');
     const [phone, setPhone] = useState(tenant.phone || '');
     const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
@@ -257,6 +258,13 @@ const MpesaStkModal: React.FC<{
             type: 'Success',
             recipientRole: 'Super Admin',
         });
+        if (tenant.phone) {
+            const pendingFines = (tenant.outstandingFines || []).filter((f: any) => f.status === 'Pending').reduce((s: number, f: any) => s + Number(f.amount ?? 0), 0);
+            const balanceText = pendingFines > 0 ? ` Outstanding fines: KES ${pendingFines.toLocaleString()}.` : ' Your account is up to date.';
+            const smsContent = `Dear ${tenant.name}, we have received your M-Pesa payment of KES ${amt.toLocaleString()} for ${tenant.unit}. Ref: ${ref}.${balanceText} Thank you. - TaskMe Realty`;
+            communicationApi.sendSMS(tenant.phone, smsContent, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+            addMessage({ id: `msg-stk-${Date.now()}`, recipient: { name: tenant.name, contact: tenant.phone }, content: smsContent, channel: 'SMS', status: 'Sent', timestamp: new Date().toLocaleString(), priority: 'Normal', isIncoming: false });
+        }
         onComplete();
     };
 
@@ -347,7 +355,7 @@ const ManualPaymentModal: React.FC<{
     method: 'Bank' | 'Cash';
     onComplete: () => void;
 }> = ({ onClose, tenant, method, onComplete }) => {
-    const { updateTenant, addNotification } = useData();
+    const { updateTenant, addNotification, addMessage, systemSettings } = useData();
     const [amount, setAmount] = useState(String(tenant.rentAmount || 0));
     const [reference, setReference] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -431,6 +439,13 @@ const ManualPaymentModal: React.FC<{
                 type: 'Success',
                 recipientRole: 'Super Admin',
             });
+            if (tenant.phone) {
+                const pendingFines = (tenant.outstandingFines || []).filter((f: any) => f.status === 'Pending').reduce((s: number, f: any) => s + Number(f.amount ?? 0), 0);
+                const balanceText = pendingFines > 0 ? ` Outstanding fines: KES ${pendingFines.toLocaleString()}.` : ' Your account is up to date.';
+                const smsContent = `Dear ${tenant.name}, payment of KES ${amt.toLocaleString()} via ${method} for ${tenant.unit} has been recorded. Ref: ${normalizedRef}.${balanceText} Thank you. - TaskMe Realty`;
+                communicationApi.sendSMS(tenant.phone, smsContent, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+                addMessage({ id: `msg-manual-${Date.now()}`, recipient: { name: tenant.name, contact: tenant.phone }, content: smsContent, channel: 'SMS', status: 'Sent', timestamp: new Date().toLocaleString(), priority: 'Normal', isIncoming: false });
+            }
             onComplete();
         } catch (e: any) {
             setErrorMsg(e?.message ?? 'Failed to record payment');
@@ -666,17 +681,16 @@ const Inbound: React.FC = () => {
                         />
                         <div className="absolute left-3 top-2.5 text-gray-400"><Icon name="search" className="w-5 h-5" /></div>
                     </div>
-                    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 text-xs font-bold">
-                        {(['all', 'stk', 'c2b', 'manual'] as SourceFilter[]).map(s => (
-                            <button
-                                key={s}
-                                onClick={() => setSourceFilter(s)}
-                                className={`px-3 py-1.5 rounded uppercase transition-colors ${sourceFilter === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                {s === 'all' ? 'All' : s.toUpperCase()}
-                            </button>
-                        ))}
-                    </div>
+                    <select
+                        value={sourceFilter}
+                        onChange={e => setSourceFilter(e.target.value as SourceFilter)}
+                        className="border border-gray-200 rounded-lg bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    >
+                        <option value="all">All Methods</option>
+                        <option value="stk">STK</option>
+                        <option value="c2b">C2B</option>
+                        <option value="manual">Manual</option>
+                    </select>
                 </div>
 
                 <div className="overflow-x-auto">

@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { Bill, Invoice, Message } from '../../types';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
+import { communicationApi } from '../../utils/communicationApi';
 
 // --- TYPES ---
 interface OutboundItem {
@@ -215,7 +216,7 @@ const Outbound: React.FC = () => {
     const {
         bills, invoices, properties, updateBill, addBill, updateInvoice,
         tenants, landlords, tasks, offboardingRecords, addMessage, updateOffboardingRecord,
-        checkPermission, currentUser
+        checkPermission, currentUser, systemSettings
     } = useData();
 
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
@@ -520,10 +521,12 @@ const Outbound: React.FC = () => {
 
         // 2. Send Notification
         if (notificationRecipient.contact) {
-             addMessage({
+            const fullMsg = `${notificationMsg} Ref: ${ref}. Thank you. - TaskMe Realty`;
+            communicationApi.sendSMS(notificationRecipient.contact, fullMsg, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+            addMessage({
                 id: `msg-${Date.now()}`,
                 recipient: notificationRecipient,
-                content: notificationMsg,
+                content: fullMsg,
                 channel: 'SMS',
                 status: 'Sent',
                 timestamp: new Date().toLocaleString(),
