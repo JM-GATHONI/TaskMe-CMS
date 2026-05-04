@@ -2,17 +2,25 @@
  * send-sms — Provider-agnostic SMS Edge Function
  *
  * Supported providers (set SMS_PROVIDER env var):
- *   "africastalking"  → Africa's Talking (recommended for Kenya)
+ *   "onfonmedia"      → OnfonMedia (primary — https://api.onfonmedia.co.ke)
+ *   "africastalking"  → Africa's Talking
  *   "twilio"          → Twilio
  *   (unset/other)     → Logs the message and returns a queued response
  *
  * Required env vars per provider:
  *
+ * OnfonMedia (recommended):
+ *   SMS_PROVIDER=onfonmedia
+ *   ONFON_ACCESS_KEY=<your-access-key>
+ *   ONFON_API_KEY=<your-api-key>
+ *   ONFON_CLIENT_ID=<your-client-id>
+ *   ONFON_SENDER_ID=TASK-ME             (optional, defaults to TASK-ME)
+ *
  * Africa's Talking:
  *   SMS_PROVIDER=africastalking
  *   AT_API_KEY=<your-api-key>
  *   AT_USERNAME=<your-username>          (default: "sandbox" for testing)
- *   AT_SENDER_ID=<optional-sender-id>   (e.g. TASKME)
+ *   AT_SENDER_ID=<optional-sender-id>
  *
  * Twilio:
  *   SMS_PROVIDER=twilio
@@ -58,6 +66,51 @@ serve(async (req: Request) => {
   const provider = (env.SMS_PROVIDER || '').toLowerCase();
 
   try {
+    // ── OnfonMedia ────────────────────────────────────────────────────────────
+    if (provider === 'onfonmedia') {
+      const accessKey = env.ONFON_ACCESS_KEY;
+      const apiKey    = env.ONFON_API_KEY;
+      const clientId  = env.ONFON_CLIENT_ID;
+      const senderIdEnv = env.ONFON_SENDER_ID || 'TASK-ME';
+      const effectiveSenderId = senderId || senderIdEnv;
+
+      if (!accessKey || !apiKey || !clientId) {
+        return new Response(JSON.stringify({ error: 'OnfonMedia env vars not configured (ONFON_ACCESS_KEY, ONFON_API_KEY, ONFON_CLIENT_ID)' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
+      const onfonPayload = {
+        SenderId: effectiveSenderId,
+        MessageParameters: [{ Number: to, Text: content }],
+        ApiKey: apiKey,
+        ClientId: clientId,
+      };
+
+      const onfonRes = await fetch('https://api.onfonmedia.co.ke/v1/sms/SendBulkSMS', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'AccessKey': accessKey,
+        },
+        body: JSON.stringify(onfonPayload),
+      });
+
+      const onfonJson = await onfonRes.json().catch(() => ({}));
+
+      if (!onfonRes.ok) {
+        const errMsg = (onfonJson as any)?.ErrorMessage || (onfonJson as any)?.message || `OnfonMedia HTTP ${onfonRes.status}`;
+        console.error('[send-sms OnfonMedia] Error:', errMsg);
+        return new Response(JSON.stringify({ error: errMsg }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+
+      const msgId = (onfonJson as any)?.MessageId || (onfonJson as any)?.Data?.[0]?.MessageId || `onfon-${Date.now()}`;
+      return new Response(JSON.stringify({
+        success: true,
+        messageId: String(msgId),
+        providerRef: `ONFON-${msgId}`,
+        provider: 'onfonmedia',
+      }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
     // ── Africa's Talking ──────────────────────────────────────────────────────
     if (provider === 'africastalking') {
       const apiKey = env.AT_API_KEY;
@@ -142,7 +195,7 @@ serve(async (req: Request) => {
       messageId: `sms-queued-${Date.now()}`,
       providerRef: 'queued',
       provider: 'none',
-      note: 'Set SMS_PROVIDER env var (africastalking or twilio) to enable real delivery.',
+      note: 'Set SMS_PROVIDER env var (onfonmedia, africastalking or twilio) to enable real delivery.',
     }), { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
