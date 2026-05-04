@@ -163,7 +163,11 @@ function useSupabaseBackedState<T>(
     });
   };
 
-  return [value, persistAndSetValue, { loading: isLoading, error: (error as any)?.message ?? null }];
+  // skipPersist keys are pure in-memory derived state (e.g. marketplaceListings).
+  // Returning raw setValue avoids the debounce/mutation/setQueryData chain, which
+  // would cause the batch distribution useEffect to re-run and fight with the
+  // derivation effect that owns this state.
+  return [value, options?.skipPersist ? setValue : persistAndSetValue, { loading: isLoading, error: (error as any)?.message ?? null }];
 }
 
 // ── Session persistence helpers ─────────────────────────────────────────────
@@ -1428,9 +1432,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             queryClient.setQueryData(['app_state', k], v);
           }
         });
-        // Clear any stale batch data for skipPersist keys so the cache never
-        // carries an old value that could race with the in-memory derivation.
-        queryClient.removeQueries({ queryKey: ['app_state', 'tm_listings_v11'], exact: true });
       }
       // Signal after distributing — so individual queries see fresh cache and skip queryFn
       if (batchSuccess || batchError) {
