@@ -23,8 +23,9 @@ const getTierRates = (months: number) => {
 };
 
 // --- MODAL: REQUEST CALL BACK (For Landlords/General) ---
-const CallbackModal: React.FC<{ onClose: () => void; type?: string }> = ({ onClose, type = 'General' }) => {
+const CallbackModal: React.FC<{ onClose: () => void; type?: string; referrerId?: string }> = ({ onClose, type = 'General', referrerId }) => {
     const { registerLandlord } = useRegistration();
+    const { addLead } = useData();
     const [formData, setFormData] = useState({ name: '', phone: '', topic: type === 'Landlord' ? 'Property Management' : 'General Inquiry' });
     const [submitted, setSubmitted] = useState(false);
 
@@ -39,9 +40,17 @@ const CallbackModal: React.FC<{ onClose: () => void; type?: string }> = ({ onClo
                 notes: `Topic: ${formData.topic}`
             });
         }
-        // For General Inquiry, we might just log it or use a generic 'addLead' if available, 
-        // but for now we'll assume the hook handles the persistence or we just simulate for non-landlords
-        
+        addLead({
+            id: `lead-${Date.now()}`,
+            tenantName: formData.name,
+            contact: formData.phone,
+            interest: formData.topic || type,
+            status: 'New',
+            source: 'Referral',
+            referrerId: referrerId,
+            date: new Date().toISOString().split('T')[0],
+            notes: `Submitted via referral landing. Topic: ${formData.topic}. Type: ${type}.`,
+        });
         setSubmitted(true);
     };
 
@@ -116,9 +125,10 @@ const CallbackModal: React.FC<{ onClose: () => void; type?: string }> = ({ onClo
 const InvestmentModal: React.FC<{ 
     fund: any; 
     onClose: () => void;
-}> = ({ fund, onClose }) => {
+    referrerId?: string;
+}> = ({ fund, onClose, referrerId }) => {
     const { registerInvestor } = useRegistration();
-    const { staff, landlords, tenants, renovationInvestors, vendors } = useData();
+    const { addLead, staff, landlords, tenants, renovationInvestors, vendors } = useData();
     const [step, setStep] = useState<'auth' | 'config' | 'payment' | 'processing' | 'success'>('auth');
     const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
     const [userForm, setUserForm] = useState({ name: '', email: '', phone: '', password: '' });
@@ -163,6 +173,18 @@ const InvestmentModal: React.FC<{
         return followStkPaymentCompletion(supabase, userId, checkoutRequestId, (row) => {
             if (String(row.status ?? '') === 'completed') {
                 setTxCode(String(row.transaction_id ?? checkoutRequestId));
+                addLead({
+                    id: `lead-${Date.now()}`,
+                    tenantName: userForm.name || 'Investor',
+                    contact: userForm.phone || mpesaPhone,
+                    email: userForm.email,
+                    interest: `Invest in ${fund.name}`,
+                    status: 'Closed',
+                    source: 'Referral',
+                    referrerId: referrerId,
+                    date: new Date().toISOString().split('T')[0],
+                    notes: `Invested KES ${amount} in ${fund.name} for ${duration} months.`,
+                });
                 setStep('success');
                 setBusy(false);
             }
@@ -396,8 +418,8 @@ export type BookableVacancy = {
     property: Property;
 };
 
-const UnitBookingModal: React.FC<{ unit: BookableVacancy; onClose: () => void }> = ({ unit, onClose }) => {
-    const { addApplication, staff, landlords, tenants, renovationInvestors, vendors } = useData();
+const UnitBookingModal: React.FC<{ unit: BookableVacancy; onClose: () => void; referrerId?: string }> = ({ unit, onClose, referrerId }) => {
+    const { addApplication, addLead, staff, landlords, tenants, renovationInvestors, vendors } = useData();
     const [step, setStep] = useState<'auth' | 'payment' | 'processing' | 'success'>('auth');
     const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
     const [email, setEmail] = useState('');
@@ -563,6 +585,18 @@ const UnitBookingModal: React.FC<{ unit: BookableVacancy; onClose: () => void }>
 
     const handleSuccessDone = () => {
         const displayName = name.trim() || email.split('@')[0] || 'Applicant';
+        addLead({
+            id: `lead-${Date.now()}`,
+            tenantName: displayName,
+            contact: mpesaPhone || phone,
+            email,
+            interest: unit.title,
+            status: 'Closed',
+            source: 'Referral',
+            referrerId: referrerId,
+            date: new Date().toISOString().split('T')[0],
+            notes: `Booked ${unit.title} via referral landing. M-Pesa ref: ${txRef}.`,
+        });
         addApplication({
             id: `app-${Date.now()}`,
             name: displayName,
@@ -577,6 +611,7 @@ const UnitBookingModal: React.FC<{ unit: BookableVacancy; onClose: () => void }>
             rentAmount: unit.rent,
             authUserId: userId || undefined,
             source: 'Referral landing — Book Now',
+            referrerId: referrerId,
         });
         window.location.hash = '#/user-app-portal/tenant-portal';
         onClose();
@@ -777,7 +812,7 @@ const AboutUsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 };
 
 const ReferralLanding: React.FC = () => {
-    const { properties, funds } = useData();
+    const { properties, funds, tenants, staff, landlords, renovationInvestors } = useData();
     const [viewMode, setViewMode] = useState<UserPersona>('Tenant'); // Default view
     const [searchTerm, setSearchQuery] = useState('');
     const [selectedFund, setSelectedFund] = useState<any>(null);
@@ -787,6 +822,13 @@ const ReferralLanding: React.FC = () => {
     const [currentPage, setCurrentPage] = useState<PageType>('Home'); // Home acts as the main landing, Properties/Funds act as filtered views if needed, About is separate.
     const [referrerCode, setReferrerCode] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    const resolvedReferrerId = useMemo(() => {
+        if (!referrerCode) return undefined;
+        const allPeople: any[] = [...tenants, ...staff, ...landlords, ...renovationInvestors];
+        const match = allPeople.find(u => u?.id && String(u.id).replace(/-/g, '').slice(0, 12).toUpperCase() === referrerCode.toUpperCase());
+        return match?.id ?? referrerCode;
+    }, [referrerCode, tenants, staff, landlords, renovationInvestors]);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
         if (type === 'unit') {
@@ -1257,17 +1299,19 @@ const ReferralLanding: React.FC = () => {
                 <InvestmentModal 
                     fund={selectedFund} 
                     onClose={() => setSelectedFund(null)} 
+                    referrerId={resolvedReferrerId}
                 />
             )}
             
             {selectedUnit && (
-                <UnitBookingModal unit={selectedUnit} onClose={() => setSelectedUnit(null)} />
+                <UnitBookingModal unit={selectedUnit} onClose={() => setSelectedUnit(null)} referrerId={resolvedReferrerId} />
             )}
 
             {isCallbackOpen && (
                 <CallbackModal 
                     type={callbackType} 
                     onClose={() => setIsCallbackOpen(false)} 
+                    referrerId={resolvedReferrerId}
                 />
             )}
 

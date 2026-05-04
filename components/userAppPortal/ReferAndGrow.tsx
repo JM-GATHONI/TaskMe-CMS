@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
+import { websiteLinks } from '../../utils/websiteLinks';
 
 const ReferAndGrow: React.FC = () => {
     const { properties, funds, currentUser, tenants, renovationInvestors, leads, applications, rfTransactions, commissionRules } = useData();
     const [activeTab, setActiveTab] = useState<'Campaigns' | 'Calculator' | 'History'>('Campaigns');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     // --- CURRENT USER DATA ---
     const user = useMemo(() => {
@@ -136,10 +138,30 @@ const ReferAndGrow: React.FC = () => {
     }, [calcState, vacantUnits, commissionRules, user]);
 
     const handleShareUnit = (unit: any) => {
-        const commission = getCommission(unit.rent);
-        const shareUrl = (() => { try { const { websiteLinks } = require('../../utils/websiteLinks'); return websiteLinks.unit(unit.id, user.referralCode, unit.websiteListingUrl); } catch { return `https://task-me.ke/book/${unit.id}?ref=${user.referralCode}`; } })();
+        const shareUrl = websiteLinks.unit(unit.id, user.referralCode, unit.websiteListingUrl);
         const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${Number(unit.rent ?? 0).toLocaleString()}. \n\nInterested? Book it here using my referral code *${user.referralCode}* to get priority processing! \n\nLink: ${shareUrl}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    };
+
+    const handleCopyUnit = (unit: any) => {
+        const url = websiteLinks.unit(unit.id, user.referralCode, unit.websiteListingUrl);
+        navigator.clipboard.writeText(url);
+        setCopiedId(unit.id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const handleCopyLandlord = () => {
+        const url = websiteLinks.landlord(user.referralCode);
+        navigator.clipboard.writeText(url);
+        setCopiedId('landlord');
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const handleCopyInvestor = (fundId: string) => {
+        const url = websiteLinks.invest(user.referralCode);
+        navigator.clipboard.writeText(url);
+        setCopiedId(fundId);
+        setTimeout(() => setCopiedId(null), 2000);
     };
 
     const handleInviteInvestor = (fundName: string) => {
@@ -277,6 +299,12 @@ const ReferAndGrow: React.FC = () => {
                                             >
                                                 <Icon name="communication" className="w-5 h-5 mr-2" /> Share via WhatsApp
                                             </button>
+                                            <button
+                                                onClick={() => handleCopyUnit(unit)}
+                                                className="w-full py-2.5 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200 flex items-center justify-center transition-all active:scale-95"
+                                            >
+                                                <Icon name="copy" className="w-4 h-4 mr-2" /> {copiedId === unit.id ? 'Copied!' : 'Copy Link'}
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -328,12 +356,20 @@ const ReferAndGrow: React.FC = () => {
                                     ))}
                                 </div>
 
-                                <button 
-                                    onClick={handleInviteLandlord} 
-                                    className="px-8 py-4 bg-[#7B1FA2] text-white font-bold rounded-xl hover:bg-[#6A1B9A] shadow-lg shadow-purple-200 transition-all active:scale-95 flex items-center gap-2"
-                                >
-                                    <Icon name="communication" className="w-5 h-5" /> Send Proposal
-                                </button>
+                                <div className="flex flex-wrap gap-3">
+                                    <button 
+                                        onClick={handleInviteLandlord} 
+                                        className="px-8 py-4 bg-[#7B1FA2] text-white font-bold rounded-xl hover:bg-[#6A1B9A] shadow-lg shadow-purple-200 transition-all active:scale-95 flex items-center gap-2"
+                                    >
+                                        <Icon name="communication" className="w-5 h-5" /> Send Proposal
+                                    </button>
+                                    <button
+                                        onClick={handleCopyLandlord}
+                                        className="px-8 py-4 bg-purple-50 text-purple-700 font-bold rounded-xl border border-purple-200 hover:bg-purple-100 transition-all active:scale-95 flex items-center gap-2"
+                                    >
+                                        <Icon name="copy" className="w-5 h-5" /> {copiedId === 'landlord' ? 'Copied!' : 'Copy Link'}
+                                    </button>
+                                </div>
                             </div>
                             
                             <div className="w-full lg:w-96 bg-white p-8 rounded-3xl shadow-xl border border-purple-50 text-center relative overflow-hidden">
@@ -371,12 +407,20 @@ const ReferAndGrow: React.FC = () => {
                                         
                                         <p className="text-gray-600 mb-8 leading-relaxed text-sm min-h-[60px]">{fund.description}</p>
                                         
-                                        <button 
-                                            onClick={() => handleInviteInvestor(fund.name)} 
-                                            className="w-full py-3.5 border-2 border-[#F97316] text-[#F97316] font-bold rounded-xl hover:bg-[#FFF7ED] transition-colors flex items-center justify-center gap-2 group-hover:bg-[#F97316] group-hover:text-white"
-                                        >
-                                            <Icon name="communication" className="w-5 h-5" /> Invite Investor
-                                        </button>
+                                        <div className="space-y-2">
+                                            <button 
+                                                onClick={() => handleInviteInvestor(fund.name)} 
+                                                className="w-full py-3.5 border-2 border-[#F97316] text-[#F97316] font-bold rounded-xl hover:bg-[#FFF7ED] transition-colors flex items-center justify-center gap-2 group-hover:bg-[#F97316] group-hover:text-white"
+                                            >
+                                                <Icon name="communication" className="w-5 h-5" /> Invite Investor
+                                            </button>
+                                            <button
+                                                onClick={() => handleCopyInvestor(fund.id)}
+                                                className="w-full py-2.5 bg-orange-50 text-orange-700 text-sm font-bold rounded-xl border border-orange-200 hover:bg-orange-100 flex items-center justify-center transition-all active:scale-95"
+                                            >
+                                                <Icon name="copy" className="w-4 h-4 mr-2" /> {copiedId === fund.id ? 'Copied!' : 'Copy Link'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
