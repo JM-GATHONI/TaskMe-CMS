@@ -112,7 +112,10 @@ function useSupabaseBackedState<T>(
     staleTime: Infinity,
     gcTime: 30 * 60 * 1000,
     retry: 1,
-    enabled: batchSettled,
+    // skipPersist keys are auto-derived in-memory (e.g. marketplaceListings).
+    // Running the query returns emptyValue and races with the derivation effect,
+    // wiping the auto-generated state. Disable the query for these keys.
+    enabled: batchSettled && !options?.skipPersist,
     queryFn: async () => {
       const session = await getSupabaseSession();
       if (!session) throw new Error('SESSION_EXPIRED');
