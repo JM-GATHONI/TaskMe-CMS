@@ -148,7 +148,16 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
     const todayMs = new Date(new Date().toDateString()).getTime();
     const daysNotice = moveOutDate ? Math.round((new Date(moveOutDate).getTime() - todayMs) / 86400000) : null;
     const isShortNotice = daysNotice !== null && daysNotice < 30;
-    const canSubmit = daysNotice !== null && daysNotice > 0 && (!isShortNotice || acceptForfeiture);
+
+    // Check whether the current month's rent has been paid.
+    const currentMonthRentPaid = (() => {
+        if (tenant.status !== 'Overdue') return true; // not flagged overdue = current
+        const now = new Date();
+        const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return (tenant.paymentHistory || []).some(p => p.date?.startsWith(thisMonth) && p.status === 'Paid');
+    })();
+
+    const canSubmit = daysNotice !== null && daysNotice > 0 && currentMonthRentPaid && (!isShortNotice || acceptForfeiture);
 
     const handleSubmit = () => {
         if (!canSubmit || !moveOutDate) return;
@@ -158,6 +167,7 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
             tenantId: tenant.id,
             tenantName: tenant.name,
             unit: tenant.unit,
+            propertyId: tenant.propertyId,
             noticeDate,
             moveOutDate,
             status: 'Notice Given',
@@ -165,6 +175,7 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
             utilityClearance: false,
             depositRefunded: false,
             keysReturned: false,
+            securityDepositForfeited: isShortNotice && acceptForfeiture,
         };
         addOffboardingRecord(record);
         updateTenant(tenant.id, { status: 'Notice', leaseEnd: moveOutDate });
@@ -202,6 +213,12 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                                 <p className="text-xs mt-1 text-gray-500">Security Deposit Held: <span className="font-bold">KES {Number(tenant.depositPaid).toLocaleString()}</span></p>
                             )}
                         </div>
+                        {!currentMonthRentPaid && (
+                            <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
+                                <p className="text-sm font-bold text-red-800">⛔ Outstanding Rent</p>
+                                <p className="text-sm text-red-700 mt-1">Your current month's rent is unpaid. Please clear your outstanding balance before submitting a vacation notice.</p>
+                            </div>
+                        )}
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">Intended Move-Out Date</label>
                             <input

@@ -524,6 +524,8 @@ export interface OffboardingRecord {
   depositRefunded: boolean;
   keysReturned: boolean;
   finalBillAmount?: number;
+  propertyId?: string;
+  securityDepositForfeited?: boolean;
 }
 
 export interface GeospatialData {
