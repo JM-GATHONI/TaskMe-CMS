@@ -261,29 +261,27 @@ const QuickSearch: React.FC = () => {
         
         if (activeFilter === 'Partial Payments') {
             return searchedTenants
-                .filter(t => t.status === 'Overdue')
-                .map(t => {
-                    const lastPay = t.paymentHistory[0];
-                    const paidVal = lastPay ? parseFloat(lastPay.amount.replace(/[^0-9.]/g, '')) : 0;
-                    const isPartial = paidVal > 0 && paidVal < t.rentAmount;
-                    
-                    if (!isPartial) return null;
-
-                    const balance = t.rentAmount - paidVal;
-
-                    return {
-                        id: t.id,
-                        tenant: t.name,
-                        property: `${t.propertyName} - ${t.unit}`,
-                        amountDisplay: `KES ${balance.toLocaleString()}`, // Balance remaining
-                        val: balance,
-                        paid: `KES ${paidVal.toLocaleString()}`,
-                        expected: `KES ${t.rentAmount.toLocaleString()}`,
-                        date: lastPay?.date || 'N/A',
-                        status: 'Partial'
-                    };
-                })
-                .filter(item => item !== null);
+                .filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status) && Number(t.rentAmount ?? 0) > 0)
+                .flatMap(t =>
+                    (t.paymentHistory || [])
+                        .map(p => {
+                            const paidVal = parseFloat(String(p.amount || '0').replace(/[^0-9.]/g, '')) || 0;
+                            if (paidVal <= 0 || paidVal >= t.rentAmount) return null;
+                            const balance = t.rentAmount - paidVal;
+                            return {
+                                id: `${t.id}-${p.reference || p.date}`,
+                                tenant: t.name,
+                                property: `${t.propertyName} - ${t.unit}`,
+                                amountDisplay: `KES ${balance.toLocaleString()}`,
+                                val: balance,
+                                paid: `KES ${paidVal.toLocaleString()}`,
+                                expected: `KES ${t.rentAmount.toLocaleString()}`,
+                                date: p.date || 'N/A',
+                                status: 'Partial',
+                            };
+                        })
+                        .filter(item => item !== null)
+                );
         }
 
         if (activeFilter === 'Unpaid Deposit') {
