@@ -435,6 +435,27 @@ const TenantPortal: React.FC = () => {
         printSection('payment-history-table', `Statement_${activeUser.name}`);
     };
 
+    // Resolve this tenant's Paybill account reference (unit tag). Tenants read
+    // this off their dashboard and type it at the M-Pesa Paybill account prompt
+    // when paying manually (C2B). The confirmation callback matches it back.
+    // Fallback: if propertyId/unitId are not set, match by unit number string.
+    // NOTE: must stay above the early return to obey React's Rules of Hooks.
+    const myUnit = useMemo(() => {
+        if (!activeUser) return undefined;
+        if (activeUser.propertyId && activeUser.unitId) {
+            const p = (properties || []).find(pr => pr.id === activeUser.propertyId);
+            const u = p?.units?.find(u => u.id === activeUser.unitId);
+            if (u) return u;
+        }
+        const unitStr = (activeUser.unit || '').trim().toLowerCase();
+        if (!unitStr) return undefined;
+        for (const p of (properties || [])) {
+            const u = p.units?.find(u => (u.unitNumber || '').trim().toLowerCase() === unitStr);
+            if (u) return u;
+        }
+        return undefined;
+    }, [activeUser, properties]);
+
     if (!activeUser) return <div className="p-8 text-center">Loading Tenant Profile...</div>;
 
     const displayName = profileLoading
@@ -443,24 +464,6 @@ const TenantPortal: React.FC = () => {
 
     const hasLease = !!activeUser.propertyName && Number(activeUser.rentAmount ?? 0) > 0;
 
-    // Resolve this tenant's Paybill account reference (unit tag). Tenants read
-    // this off their dashboard and type it at the M-Pesa Paybill account prompt
-    // when paying manually (C2B). The confirmation callback matches it back.
-    // Fallback: if propertyId/unitId are not set, match by unit number string.
-    const myUnit = useMemo(() => {
-        if (activeUser.propertyId && activeUser.unitId) {
-            const p = properties.find(pr => pr.id === activeUser.propertyId);
-            const u = p?.units?.find(u => u.id === activeUser.unitId);
-            if (u) return u;
-        }
-        const unitStr = (activeUser.unit || '').trim().toLowerCase();
-        if (!unitStr) return undefined;
-        for (const p of properties) {
-            const u = p.units?.find(u => (u.unitNumber || '').trim().toLowerCase() === unitStr);
-            if (u) return u;
-        }
-        return undefined;
-    }, [activeUser, properties]);
     const myUnitTag = myUnit?.unitTag || activeUser?.unit || '';
     const agencyPaybill = systemSettings?.agencyPaybill || '';
     const canPayNow = Number(balance ?? 0) > 0;
@@ -608,8 +611,11 @@ const TenantPortal: React.FC = () => {
                                 <button onClick={() => setActiveTab('messages')} className="w-full text-left p-2 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center">
                                     <Icon name="mail" className="w-4 h-4 mr-2 text-blue-500"/> Contact Admin
                                 </button>
-                                <button onClick={() => setIsVacationModalOpen(true)} className="w-full text-left p-2 rounded hover:bg-orange-50 text-sm font-medium text-orange-700 flex items-center">
-                                    <Icon name="offboarding" className="w-4 h-4 mr-2 text-orange-500"/> Vacation Notice
+                                <button
+                                    onClick={() => setIsVacationModalOpen(true)}
+                                    className="w-full mt-1 py-2.5 px-3 bg-orange-50 border-2 border-orange-300 text-orange-700 font-bold rounded-lg hover:bg-orange-100 transition-colors text-sm flex items-center justify-center gap-2"
+                                >
+                                    <Icon name="offboarding" className="w-4 h-4"/> Issue Vacation Notice
                                 </button>
                             </div>
                         </div>
