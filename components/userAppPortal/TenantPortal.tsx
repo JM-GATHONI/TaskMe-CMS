@@ -689,7 +689,7 @@ const TenantPortal: React.FC = () => {
                                             <td className="px-3 py-3 text-gray-600">{pay.date}</td>
                                             <td className="px-3 py-3 text-xs font-mono text-gray-500">{pay.reference}</td>
                                             <td className="px-3 py-3 text-gray-600">{pay.method}</td>
-                                            <td className="px-3 py-3 text-right font-bold text-gray-800">KES {Number(pay.amount || 0).toLocaleString()}</td>
+                                            <td className="px-3 py-3 text-right font-bold text-gray-800">KES {(parseFloat(String(pay.amount || '0').replace(/,/g, '')) || 0).toLocaleString()}</td>
                                             <td className="px-3 py-3 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${pay.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{(pay.status || 'Paid').toUpperCase()}</span></td>
                                         </tr>
                                     ))
