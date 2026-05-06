@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
-import { TenantRequest, RequestMessage, TaskPriority, TaskStatus, Task, TenantProfile, Message } from '../../types';
+import { TenantRequest, RequestMessage, TaskPriority, TaskStatus, Task, TenantProfile, Message, OffboardingRecord } from '../../types';
 import { printSection } from '../../utils/exportHelper';
 import AdBanners from './AdBanners';
 import { useProfileFirstName } from '../../hooks/useProfileFirstName';
@@ -138,17 +138,136 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
     );
 };
 
+// --- VACATION NOTICE MODAL ---
+const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void }> = ({ tenant, onClose }) => {
+    const { addOffboardingRecord, updateTenant } = useData();
+    const [moveOutDate, setMoveOutDate] = useState('');
+    const [acceptForfeiture, setAcceptForfeiture] = useState(false);
+    const [done, setDone] = useState(false);
+
+    const todayMs = new Date(new Date().toDateString()).getTime();
+    const daysNotice = moveOutDate ? Math.round((new Date(moveOutDate).getTime() - todayMs) / 86400000) : null;
+    const isShortNotice = daysNotice !== null && daysNotice < 30;
+    const canSubmit = daysNotice !== null && daysNotice > 0 && (!isShortNotice || acceptForfeiture);
+
+    const handleSubmit = () => {
+        if (!canSubmit || !moveOutDate) return;
+        const noticeDate = new Date().toISOString().split('T')[0];
+        const record: OffboardingRecord = {
+            id: `ob-${Date.now()}`,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            unit: tenant.unit,
+            noticeDate,
+            moveOutDate,
+            status: 'Notice Given',
+            inspectionStatus: 'Pending',
+            utilityClearance: false,
+            depositRefunded: false,
+            keysReturned: false,
+        };
+        addOffboardingRecord(record);
+        updateTenant(tenant.id, { status: 'Notice', leaseEnd: moveOutDate });
+        setDone(true);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-[1100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
+                            <Icon name="offboarding" className="w-5 h-5 text-orange-600" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800">Vacation Notice</h3>
+                    </div>
+                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
+                </div>
+
+                {done ? (
+                    <div className="text-center py-6 space-y-4">
+                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                            <Icon name="check" className="w-8 h-8 text-green-600" />
+                        </div>
+                        <p className="text-lg font-bold text-gray-800">Notice Submitted</p>
+                        <p className="text-sm text-gray-500">Your vacation notice has been recorded. The property team will be in touch to guide you through the exit process.</p>
+                        <button onClick={onClose} className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2">Done</button>
+                    </div>
+                ) : (
+                    <div className="space-y-5">
+                        <div className="bg-gray-50 p-3 rounded-lg border text-sm">
+                            <p className="font-bold text-gray-800">{tenant.name}</p>
+                            <p className="text-gray-500">{tenant.unit} · {tenant.propertyName}</p>
+                            {Number(tenant.depositPaid ?? 0) > 0 && (
+                                <p className="text-xs mt-1 text-gray-500">Security Deposit Held: <span className="font-bold">KES {Number(tenant.depositPaid).toLocaleString()}</span></p>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Intended Move-Out Date</label>
+                            <input
+                                type="date"
+                                value={moveOutDate}
+                                min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                                onChange={e => { setMoveOutDate(e.target.value); setAcceptForfeiture(false); }}
+                                className="w-full p-3 border-2 rounded-xl focus:outline-none focus:border-primary"
+                            />
+                            {daysNotice !== null && daysNotice > 0 && (
+                                <p className="text-xs text-gray-500 mt-1">{daysNotice} day{daysNotice !== 1 ? 's' : ''} from today.</p>
+                            )}
+                        </div>
+                        {isShortNotice && (
+                            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3">
+                                <p className="text-sm font-bold text-amber-800">⚠ Notice Period Warning</p>
+                                <ul className="text-sm text-amber-700 space-y-1.5 list-disc list-inside">
+                                    <li>Vacation notice requires a minimum of <strong>30 days</strong>.</li>
+                                    <li>Current month's rent must be fully paid before vacating.</li>
+                                    <li>Vacating in less than 30 days means you <strong>forfeit your security deposit</strong>{Number(tenant.depositPaid ?? 0) > 0 ? ` of KES ${Number(tenant.depositPaid).toLocaleString()}` : ''}.</li>
+                                </ul>
+                                <label className="flex items-start gap-3 mt-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={acceptForfeiture}
+                                        onChange={e => setAcceptForfeiture(e.target.checked)}
+                                        className="w-4 h-4 mt-0.5 accent-amber-600 shrink-0"
+                                    />
+                                    <span className="text-sm text-amber-800 font-medium">I understand and agree to forfeit my security deposit to proceed with this move-out date.</span>
+                                </label>
+                            </div>
+                        )}
+                        <div className="flex gap-3 pt-2">
+                            <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200">Cancel</button>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={!canSubmit}
+                                className="flex-[2] py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                Submit Notice
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const TenantPortal: React.FC = () => {
     const { tenants, updateTenant, tasks, addTask, messages, addMessage, currentUser, isDataLoading, systemSettings, properties } = useData();
-    const [requestType, setRequestType] = useState<'Maintenance' | 'General'>('Maintenance');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
+    const [generalTitle, setGeneralTitle] = useState('');
+    const [generalDescription, setGeneralDescription] = useState('');
+    const [messagesSubTab, setMessagesSubTab] = useState<'admin' | 'general'>('admin');
     const [isPayRentModalOpen, setIsPayRentModalOpen] = useState(false);
+    const [isVacationModalOpen, setIsVacationModalOpen] = useState(false);
     const [selectedPortalKeys, setSelectedPortalKeys] = useState<Set<string>>(new Set());
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
     const [newMessageContent, setNewMessageContent] = useState('');
-    // Use logged-in user if available and is a tenant, fallback to first tenant only for dev/demo
-    const activeUser = (currentUser?.role === 'Tenant' ? (currentUser as TenantProfile) : undefined) || tenants[0];
+    // Resolve the real TenantProfile (has paymentHistory, propertyId, unitId, etc.).
+    // Match by id, email, or phone so a logged-in tenant sees their own data.
+    const activeUser = (currentUser?.role === 'Tenant'
+        ? tenants.find(t => t.id === currentUser.id || t.email === currentUser.email || t.phone === (currentUser as any).phone)
+        : undefined) ?? tenants[0];
     const { firstName, loading: profileLoading } = useProfileFirstName({ nameFallback: activeUser?.name });
 
     const myTasks = useMemo(() => {
@@ -196,13 +315,11 @@ const TenantPortal: React.FC = () => {
         const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
     });
 
-    const handleSubmitRequest = () => {
+    const handleSubmitMaintenanceRequest = () => {
         if (!title.trim() || !description.trim()) return alert('Please enter title and description.');
-        
-        // 1. Create Tenant Request
         const newReq: TenantRequest = {
             id: `req-${Date.now()}`,
-            type: requestType,
+            type: 'Maintenance',
             title,
             description,
             date: new Date().toISOString().split('T')[0],
@@ -210,38 +327,48 @@ const TenantPortal: React.FC = () => {
             priority: 'Medium',
             messages: []
         };
-
-        // 2. Create Task if Maintenance
-        if (requestType === 'Maintenance') {
-            const newTask: Task = {
-                id: `TASK-${Date.now()}`,
-                title: title,
-                description: description,
-                status: TaskStatus.Issued,
-                priority: TaskPriority.Medium,
-                dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
-                sla: 48,
-                assignedTo: 'Unassigned',
-                tenant: { name: activeUser.name, unit: activeUser.unit },
-                property: activeUser.propertyName || 'Unknown',
-                comments: [],
-                history: [{ id: `h-${Date.now()}`, timestamp: new Date().toLocaleString(), event: 'Reported by Tenant' }],
-                attachments: [],
-                source: 'Internal',
-                costs: { labor: 0, materials: 0, travel: 0 }
-            };
-            addTask(newTask);
-            newReq.status = 'Converted to Task';
-            newReq.taskId = newTask.id;
-        }
-
-        const updatedRequests = [...(activeUser.requests || []), newReq];
-        updateTenant(activeUser.id, { requests: updatedRequests });
-        
-        alert("Request submitted successfully!");
+        const newTask: Task = {
+            id: `TASK-${Date.now()}`,
+            title,
+            description,
+            status: TaskStatus.Issued,
+            priority: TaskPriority.Medium,
+            dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
+            sla: 48,
+            assignedTo: 'Unassigned',
+            tenant: { name: activeUser.name, unit: activeUser.unit },
+            property: activeUser.propertyName || 'Unknown',
+            comments: [],
+            history: [{ id: `h-${Date.now()}`, timestamp: new Date().toLocaleString(), event: 'Reported by Tenant' }],
+            attachments: [],
+            source: 'Internal',
+            costs: { labor: 0, materials: 0, travel: 0 }
+        };
+        addTask(newTask);
+        newReq.status = 'Converted to Task';
+        newReq.taskId = newTask.id;
+        updateTenant(activeUser.id, { requests: [...(activeUser.requests || []), newReq] });
+        alert('Maintenance request submitted!');
         setTitle('');
         setDescription('');
-        setActiveTab('maintenance');
+    };
+
+    const handleSubmitGeneralRequest = () => {
+        if (!generalTitle.trim() || !generalDescription.trim()) return alert('Please enter a subject and details.');
+        const newReq: TenantRequest = {
+            id: `req-${Date.now()}`,
+            type: 'General',
+            title: generalTitle,
+            description: generalDescription,
+            date: new Date().toISOString().split('T')[0],
+            status: 'Pending',
+            priority: 'Medium',
+            messages: []
+        };
+        updateTenant(activeUser.id, { requests: [...(activeUser.requests || []), newReq] });
+        alert('General request submitted!');
+        setGeneralTitle('');
+        setGeneralDescription('');
     };
 
     const handleSendMessage = () => {
@@ -279,7 +406,7 @@ const TenantPortal: React.FC = () => {
     const myUnit = properties
         .find(p => p.id === activeUser.propertyId)
         ?.units?.find(u => u.id === activeUser.unitId);
-    const myUnitTag = myUnit?.unitTag || '';
+    const myUnitTag = myUnit?.unitTag || activeUser?.unit || '';
     const agencyPaybill = systemSettings?.agencyPaybill || '';
     const canPayNow = Number(balance ?? 0) > 0;
 
@@ -426,6 +553,9 @@ const TenantPortal: React.FC = () => {
                                 <button onClick={() => setActiveTab('messages')} className="w-full text-left p-2 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center">
                                     <Icon name="mail" className="w-4 h-4 mr-2 text-blue-500"/> Contact Admin
                                 </button>
+                                <button onClick={() => setIsVacationModalOpen(true)} className="w-full text-left p-2 rounded hover:bg-orange-50 text-sm font-medium text-orange-700 flex items-center">
+                                    <Icon name="offboarding" className="w-4 h-4 mr-2 text-orange-500"/> Vacation Notice
+                                </button>
                             </div>
                         </div>
                             </>
@@ -521,16 +651,13 @@ const TenantPortal: React.FC = () => {
             {activeTab === 'maintenance' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Submit New Request</h3>
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">Report Maintenance Issue</h3>
+                        <p className="text-xs text-gray-500 mb-4">For general inquiries, use the <button onClick={() => setActiveTab('messages')} className="text-primary underline font-medium">Messages</button> tab.</p>
                         <div className="space-y-4">
-                            <div className="flex gap-2 p-1 bg-gray-50 rounded-lg w-fit">
-                                <button onClick={() => setRequestType('Maintenance')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${requestType === 'Maintenance' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}>Maintenance</button>
-                                <button onClick={() => setRequestType('General')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${requestType === 'General' ? 'bg-white shadow text-primary' : 'text-gray-500'}`}>General</button>
-                            </div>
-                            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Subject" className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none" />
-                            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Details..." rows={3} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none" />
-                            <button onClick={handleSubmitRequest} className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors w-full">
-                                Submit Ticket
+                            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Subject (e.g. Leaking tap, broken lock)" className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none" />
+                            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the issue in detail..." rows={3} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none" />
+                            <button onClick={handleSubmitMaintenanceRequest} className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors w-full">
+                                Submit Maintenance Ticket
                             </button>
                         </div>
                     </div>
@@ -561,65 +688,151 @@ const TenantPortal: React.FC = () => {
 
             {/* MESSAGES TAB */}
             {activeTab === 'messages' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in h-[600px]">
-                    <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col">
-                        <div className="p-4 border-b flex justify-between items-center">
-                            <h3 className="font-bold text-gray-800">Message Center</h3>
-                            <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded">Property Management</span>
-                        </div>
-                        <div className="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-50/50">
-                            {myMessages.length > 0 ? myMessages.map(msg => (
-                                <div key={msg.id} className={`flex flex-col ${msg.recipient.name === 'Property Management' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`max-w-[80%] p-3 rounded-xl text-sm ${msg.recipient.name === 'Property Management' ? 'bg-primary text-white rounded-tr-none' : 'bg-white border border-gray-200 rounded-tl-none'}`}>
-                                        <p>{msg.content}</p>
-                                    </div>
-                                    <span className="text-[10px] text-gray-400 mt-1 px-1">
-                                        {msg.recipient.name.startsWith('Group') ? <span className="font-bold text-blue-500 mr-1">BROADCAST</span> : ''}
-                                        {msg.timestamp}
-                                    </span>
-                                </div>
-                            )) : (
-                                <p className="text-center text-gray-400 py-10">No messages yet.</p>
+                <div className="space-y-4 animate-fade-in">
+                    {/* Sub-tabs */}
+                    <div className="flex bg-white rounded-xl shadow-sm p-1 border border-gray-100 w-fit">
+                        <button
+                            onClick={() => setMessagesSubTab('admin')}
+                            className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
+                                messagesSubTab === 'admin' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:bg-gray-50'
+                            }`}
+                        >
+                            Messages
+                        </button>
+                        <button
+                            onClick={() => setMessagesSubTab('general')}
+                            className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
+                                messagesSubTab === 'general' ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:bg-gray-50'
+                            }`}
+                        >
+                            General Requests
+                            {(activeUser.requests || []).filter(r => r.type === 'General').length > 0 && (
+                                <span className="ml-2 bg-primary text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                    {(activeUser.requests || []).filter(r => r.type === 'General').length}
+                                </span>
                             )}
-                        </div>
-                        <div className="p-4 bg-white border-t">
-                            <div className="flex gap-2">
-                                <input 
-                                    value={newMessageContent}
-                                    onChange={e => setNewMessageContent(e.target.value)}
-                                    placeholder="Type a message to admin..." 
-                                    className="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
-                                    onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                                />
-                                <button onClick={handleSendMessage} className="px-4 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors">
-                                    <Icon name="communication" className="w-5 h-5" />
-                                </button>
-                            </div>
-                        </div>
+                        </button>
                     </div>
 
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
-                        <h4 className="font-bold text-gray-700 mb-4 text-sm uppercase">Contact Info</h4>
-                        <div className="space-y-4 text-sm">
-                            <div>
-                                <p className="text-gray-500 text-xs">Property Manager</p>
-                                <p className="font-medium text-gray-800">TaskMe Office</p>
-                                <p className="text-blue-600">0700 000 000</p>
+                    {/* Admin Messages */}
+                    {messagesSubTab === 'admin' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[560px]">
+                            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col">
+                                <div className="p-4 border-b flex justify-between items-center">
+                                    <h3 className="font-bold text-gray-800">Message Center</h3>
+                                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded">Property Management</span>
+                                </div>
+                                <div className="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-50/50">
+                                    {myMessages.length > 0 ? myMessages.map(msg => (
+                                        <div key={msg.id} className={`flex flex-col ${msg.recipient.name === 'Property Management' ? 'items-end' : 'items-start'}`}>
+                                            <div className={`max-w-[80%] p-3 rounded-xl text-sm ${msg.recipient.name === 'Property Management' ? 'bg-primary text-white rounded-tr-none' : 'bg-white border border-gray-200 rounded-tl-none'}`}>
+                                                <p>{msg.content}</p>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 mt-1 px-1">
+                                                {msg.recipient.name.startsWith('Group') ? <span className="font-bold text-blue-500 mr-1">BROADCAST</span> : ''}
+                                                {msg.timestamp}
+                                            </span>
+                                        </div>
+                                    )) : (
+                                        <p className="text-center text-gray-400 py-10">No messages yet.</p>
+                                    )}
+                                </div>
+                                <div className="p-4 bg-white border-t">
+                                    <div className="flex gap-2">
+                                        <input
+                                            value={newMessageContent}
+                                            onChange={e => setNewMessageContent(e.target.value)}
+                                            placeholder="Type a message to admin..."
+                                            className="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                                            onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                                        />
+                                        <button onClick={handleSendMessage} className="px-4 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors">
+                                            <Icon name="communication" className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-gray-500 text-xs">Caretaker</p>
-                                <p className="font-medium text-gray-800">Charles</p>
-                                <p className="text-blue-600">0700 111 555</p>
-                            </div>
-                            <div className="pt-4 border-t">
-                                <p className="text-xs font-bold text-gray-500 uppercase mb-2">Emergency</p>
-                                <button className="w-full py-2 bg-red-50 text-red-600 font-bold rounded hover:bg-red-100 text-xs">
-                                    Report Emergency
-                                </button>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
+                                <h4 className="font-bold text-gray-700 mb-4 text-sm uppercase">Contact Info</h4>
+                                <div className="space-y-4 text-sm">
+                                    <div>
+                                        <p className="text-gray-500 text-xs">Property Manager</p>
+                                        <p className="font-medium text-gray-800">TaskMe Office</p>
+                                        <p className="text-blue-600">0700 000 000</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500 text-xs">Caretaker</p>
+                                        <p className="font-medium text-gray-800">Charles</p>
+                                        <p className="text-blue-600">0700 111 555</p>
+                                    </div>
+                                    <div className="pt-4 border-t">
+                                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Emergency</p>
+                                        <button className="w-full py-2 bg-red-50 text-red-600 font-bold rounded hover:bg-red-100 text-xs">
+                                            Report Emergency
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* General Requests */}
+                    {messagesSubTab === 'general' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-800 mb-1">Submit General Request</h3>
+                                <p className="text-xs text-gray-500 mb-4">Inquiries, complaints, lease questions, or any non-maintenance matter.</p>
+                                <div className="space-y-4">
+                                    <input
+                                        value={generalTitle}
+                                        onChange={e => setGeneralTitle(e.target.value)}
+                                        placeholder="Subject"
+                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                                    />
+                                    <textarea
+                                        value={generalDescription}
+                                        onChange={e => setGeneralDescription(e.target.value)}
+                                        placeholder="Describe your request..."
+                                        rows={4}
+                                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                                    />
+                                    <button onClick={handleSubmitGeneralRequest} className="w-full py-2.5 bg-primary text-white font-bold rounded-lg hover:bg-primary-dark transition-colors">
+                                        Submit Request
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4">My General Requests</h3>
+                                <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                                    {(activeUser.requests || []).filter(r => r.type === 'General').length > 0
+                                        ? (activeUser.requests || []).filter(r => r.type === 'General').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(req => (
+                                            <div key={req.id} className="p-4 border rounded-lg hover:shadow-sm transition-shadow">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <h4 className="font-bold text-gray-800 text-sm">{req.title}</h4>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                                                        req.status === 'Approved' ? 'bg-green-100 text-green-800' :
+                                                        req.status === 'Under Review' ? 'bg-blue-100 text-blue-800' :
+                                                        'bg-yellow-100 text-yellow-800'
+                                                    }`}>{req.status}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-600 mb-1 line-clamp-2">{req.description}</p>
+                                                <p className="text-[10px] text-gray-400">{req.date}</p>
+                                            </div>
+                                        ))
+                                        : <p className="text-gray-400 text-center py-8 text-sm">No general requests yet.</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
+            )}
+
+            {isVacationModalOpen && (
+                <VacationNoticeModal
+                    tenant={activeUser}
+                    onClose={() => setIsVacationModalOpen(false)}
+                />
             )}
 
             {isPayRentModalOpen && (
