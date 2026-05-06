@@ -322,8 +322,10 @@ const TenantPortal: React.FC = () => {
     const balance = useMemo(() => {
         if (!activeUser) return 0;
         const today = new Date().toISOString().split('T')[0];
-        const rentIsDue = activeUser.status === 'Overdue' ||
-            (!!activeUser.nextDueDate && activeUser.nextDueDate <= today && Number(activeUser.rentAmount ?? 0) > 0);
+        const activeStatuses = ['Active', 'Overdue', 'Notice'];
+        const rentIsDue = activeStatuses.includes(activeUser.status ?? '') &&
+            Number(activeUser.rentAmount ?? 0) > 0 &&
+            (!activeUser.nextDueDate || activeUser.nextDueDate <= today);
         const rent = rentIsDue ? Number(activeUser.rentAmount ?? 0) : 0;
         const bills = activeUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + Number(b.amount ?? 0), 0) || 0;
         const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + Number(f.amount ?? 0), 0) || 0;
@@ -333,8 +335,10 @@ const TenantPortal: React.FC = () => {
         if (!activeUser) return [] as { key: string; label: string; amount: number }[];
         const items: { key: string; label: string; amount: number }[] = [];
         const today = new Date().toISOString().split('T')[0];
-        const rentIsDue = activeUser.status === 'Overdue' ||
-            (!!activeUser.nextDueDate && activeUser.nextDueDate <= today && Number(activeUser.rentAmount ?? 0) > 0);
+        const activeStatuses = ['Active', 'Overdue', 'Notice'];
+        const rentIsDue = activeStatuses.includes(activeUser.status ?? '') &&
+            Number(activeUser.rentAmount ?? 0) > 0 &&
+            (!activeUser.nextDueDate || activeUser.nextDueDate <= today);
         if (rentIsDue && Number(activeUser.rentAmount ?? 0) > 0) {
             items.push({ key: 'rent', label: activeUser.status === 'Overdue' ? 'Rent (Overdue)' : 'Rent (Due)', amount: Number(activeUser.rentAmount ?? 0) });
         }
