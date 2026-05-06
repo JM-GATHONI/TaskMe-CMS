@@ -305,7 +305,10 @@ const TenantPortal: React.FC = () => {
 
     const balance = useMemo(() => {
         if (!activeUser) return 0;
-        const rent = activeUser.status === 'Overdue' ? Number(activeUser.rentAmount ?? 0) : 0;
+        const today = new Date().toISOString().split('T')[0];
+        const rentIsDue = activeUser.status === 'Overdue' ||
+            (!!activeUser.nextDueDate && activeUser.nextDueDate <= today && Number(activeUser.rentAmount ?? 0) > 0);
+        const rent = rentIsDue ? Number(activeUser.rentAmount ?? 0) : 0;
         const bills = activeUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + Number(b.amount ?? 0), 0) || 0;
         const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + Number(f.amount ?? 0), 0) || 0;
         return rent + bills + fines;
@@ -313,8 +316,11 @@ const TenantPortal: React.FC = () => {
     const portalLineItems = useMemo(() => {
         if (!activeUser) return [] as { key: string; label: string; amount: number }[];
         const items: { key: string; label: string; amount: number }[] = [];
-        if (activeUser.status === 'Overdue' && Number(activeUser.rentAmount ?? 0) > 0) {
-            items.push({ key: 'rent', label: 'Rent (Overdue)', amount: Number(activeUser.rentAmount ?? 0) });
+        const today = new Date().toISOString().split('T')[0];
+        const rentIsDue = activeUser.status === 'Overdue' ||
+            (!!activeUser.nextDueDate && activeUser.nextDueDate <= today && Number(activeUser.rentAmount ?? 0) > 0);
+        if (rentIsDue && Number(activeUser.rentAmount ?? 0) > 0) {
+            items.push({ key: 'rent', label: activeUser.status === 'Overdue' ? 'Rent (Overdue)' : 'Rent (Due)', amount: Number(activeUser.rentAmount ?? 0) });
         }
         for (const b of (activeUser.outstandingBills || []).filter(b => b.status === 'Pending')) {
             items.push({ key: `bill:${b.id}`, label: b.type + (b.description ? ` — ${b.description}` : ''), amount: b.amount });
@@ -420,9 +426,21 @@ const TenantPortal: React.FC = () => {
     // Resolve this tenant's Paybill account reference (unit tag). Tenants read
     // this off their dashboard and type it at the M-Pesa Paybill account prompt
     // when paying manually (C2B). The confirmation callback matches it back.
-    const myUnit = properties
-        .find(p => p.id === activeUser.propertyId)
-        ?.units?.find(u => u.id === activeUser.unitId);
+    // Fallback: if propertyId/unitId are not set, match by unit number string.
+    const myUnit = useMemo(() => {
+        if (activeUser.propertyId && activeUser.unitId) {
+            const p = properties.find(pr => pr.id === activeUser.propertyId);
+            const u = p?.units?.find(u => u.id === activeUser.unitId);
+            if (u) return u;
+        }
+        const unitStr = (activeUser.unit || '').trim().toLowerCase();
+        if (!unitStr) return undefined;
+        for (const p of properties) {
+            const u = p.units?.find(u => (u.unitNumber || '').trim().toLowerCase() === unitStr);
+            if (u) return u;
+        }
+        return undefined;
+    }, [activeUser, properties]);
     const myUnitTag = myUnit?.unitTag || activeUser?.unit || '';
     const agencyPaybill = systemSettings?.agencyPaybill || '';
     const canPayNow = Number(balance ?? 0) > 0;
