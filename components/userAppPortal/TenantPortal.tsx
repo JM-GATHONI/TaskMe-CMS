@@ -8,9 +8,11 @@ import AdBanners from './AdBanners';
 import { useProfileFirstName } from '../../hooks/useProfileFirstName';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
+import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
 
 // --- STK PUSH UI ---
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile; userId: string; leaseId?: string | null }> = ({ onClose, amount, tenant, userId, leaseId = null }) => {
+    const { updateTenant } = useData();
     const [step, setStep] = useState<'input' | 'processing' | 'success'>('input');
     const [phone, setPhone] = useState(tenant.phone);
     const [txCode, setTxCode] = useState('');
@@ -23,9 +25,23 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
 
         return followStkPaymentCompletion(supabase, userId, checkoutRequestId, (row) => {
             if (String(row.status ?? '') === 'completed') {
-                setTxCode(String(row.transaction_id ?? ''));
+                const ref = String(row.transaction_id ?? '');
+                setTxCode(ref);
                 setStep('success');
                 setIsSubmitting(false);
+                // Write payment to tenant's paymentHistory so the portal reflects it immediately.
+                const payDate = new Date().toISOString().split('T')[0];
+                const newPayment = { date: payDate, amount: String(amount), status: 'Paid' as const, method: 'M-Pesa STK', reference: ref };
+                const cycle = computeRentPaymentCycleUpdate(tenant, amount, payDate);
+                const updates: Partial<TenantProfile> = {
+                    paymentHistory: [newPayment, ...(tenant.paymentHistory || [])],
+                    nextDueDate: cycle.nextDueDateIso,
+                };
+                if (cycle.clearRentExtension && tenant.rentExtension) {
+                    updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
+                    updates.rentExtension = { ...tenant.rentExtension, enabled: false };
+                }
+                updateTenant(tenant.id, updates);
             }
             if (String(row.status ?? '') === 'failed' || String(row.status ?? '') === 'cancelled') {
                 setErrorMsg(String(row.result_desc ?? 'Payment did not complete.'));
@@ -33,7 +49,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
                 setIsSubmitting(false);
             }
         });
-    }, [userId, checkoutRequestId]);
+    }, [userId, checkoutRequestId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const handlePay = async () => {
         setErrorMsg(null);
@@ -667,15 +683,22 @@ const TenantPortal: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {(activeUser.paymentHistory || []).map((pay, i) => (
-                                    <tr key={i} className="hover:bg-gray-50">
-                                        <td className="px-3 py-3 text-gray-600">{pay.date}</td>
-                                        <td className="px-3 py-3 text-xs font-mono text-gray-500">{pay.reference}</td>
-                                        <td className="px-3 py-3 text-gray-600">{pay.method}</td>
-                                        <td className="px-3 py-3 text-right font-bold text-gray-800">{pay.amount}</td>
-                                        <td className="px-3 py-3 text-center"><span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-bold">PAID</span></td>
-                                    </tr>
-                                ))}
+                                {(activeUser.paymentHistory || []).length > 0
+                                    ? (activeUser.paymentHistory || []).map((pay, i) => (
+                                        <tr key={i} className="hover:bg-gray-50">
+                                            <td className="px-3 py-3 text-gray-600">{pay.date}</td>
+                                            <td className="px-3 py-3 text-xs font-mono text-gray-500">{pay.reference}</td>
+                                            <td className="px-3 py-3 text-gray-600">{pay.method}</td>
+                                            <td className="px-3 py-3 text-right font-bold text-gray-800">KES {Number(pay.amount || 0).toLocaleString()}</td>
+                                            <td className="px-3 py-3 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${pay.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{(pay.status || 'Paid').toUpperCase()}</span></td>
+                                        </tr>
+                                    ))
+                                    : (
+                                        <tr>
+                                            <td colSpan={5} className="px-3 py-12 text-center text-gray-400 text-sm">No payment records found.</td>
+                                        </tr>
+                                    )
+                                }
                             </tbody>
                         </table>
                     </div>
