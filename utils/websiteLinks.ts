@@ -7,35 +7,49 @@
  *
  * All share/referral link construction goes through here so there is
  * exactly one place to update when routes change.
+ *
+ * Links resolve to the app's own ReferralLanding page
+ * (/#/user-app-portal/referral-landing) so they are always functional
+ * regardless of whether an external website is live.
  */
 const WEBSITE_BASE = (
     ((import.meta as any).env?.VITE_WEBSITE_URL as string) ?? 'https://task-me.ke'
 ).replace(/\/$/, '');
 
+const LANDING = `${WEBSITE_BASE}/#/user-app-portal/referral-landing`;
+
 export const websiteLinks = {
     base: WEBSITE_BASE,
 
     unit: (unitId: string, refCode?: string | null, propertyListingUrl?: string | null): string => {
-        const ref = refCode ? `?ref=${encodeURIComponent(refCode)}` : '';
-        if (propertyListingUrl) return `${propertyListingUrl.replace(/\/$/, '')}${ref}`;
-        return `${WEBSITE_BASE}/book/${encodeURIComponent(unitId)}${ref}`;
+        if (propertyListingUrl) {
+            const sep = propertyListingUrl.includes('?') ? '&' : '?';
+            const ref = refCode ? `${sep}ref=${encodeURIComponent(refCode)}` : '';
+            return `${propertyListingUrl.replace(/\/$/, '')}${ref}`;
+        }
+        const params = new URLSearchParams({ type: 'unit', id: unitId });
+        if (refCode) params.set('ref', refCode);
+        return `${LANDING}?${params.toString()}`;
     },
 
     invest: (refCode?: string | null): string => {
-        const ref = refCode ? `?ref=${encodeURIComponent(refCode)}` : '';
-        return `${WEBSITE_BASE}/invest${ref}`;
+        const params = new URLSearchParams({ type: 'invest' });
+        if (refCode) params.set('ref', refCode);
+        return `${LANDING}?${params.toString()}`;
     },
 
     referral: (refCode: string): string =>
-        `${WEBSITE_BASE}/ref/${encodeURIComponent(refCode)}`,
+        `${LANDING}?ref=${encodeURIComponent(refCode)}`,
 
     landlord: (refCode?: string | null): string => {
-        const ref = refCode ? `?ref=${encodeURIComponent(refCode)}` : '';
-        return `${WEBSITE_BASE}/list${ref}`;
+        const params = new URLSearchParams({ type: 'landlord' });
+        if (refCode) params.set('ref', refCode);
+        return `${LANDING}?${params.toString()}`;
     },
 
     joinLandlord: (refCode?: string | null): string => {
-        const ref = refCode ? `?ref=${encodeURIComponent(refCode)}` : '';
-        return `${WEBSITE_BASE}/join/landlord${ref}`;
+        const params = new URLSearchParams({ type: 'landlord' });
+        if (refCode) params.set('ref', refCode);
+        return `${LANDING}?${params.toString()}`;
     },
 };

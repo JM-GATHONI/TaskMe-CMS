@@ -738,8 +738,17 @@ const LandlordsPortal: React.FC = () => {
     const referralLinkAgency = websiteLinks.joinLandlord(currentLandlord?.id);
     const referralLinkInvestor = websiteLinks.invest(currentLandlord?.id);
 
-    const handleCopy = (text: string) => { navigator.clipboard.writeText(text); alert("Link copied to clipboard!"); };
-    const handleShare = (platform: string, link: string) => { alert(`Opening ${platform} to share: ${link}`); };
+    const handleCopy = (text: string) => { navigator.clipboard.writeText(text); };
+    const handleShare = (platform: string, link: string) => {
+        const msg = encodeURIComponent(`Join TaskMe using my referral link: ${link}`);
+        if (platform === 'WhatsApp') {
+            window.open(`https://wa.me/?text=${msg}`, '_blank');
+        } else if (platform === 'Message' || platform === 'SMS') {
+            window.open(`sms:?body=${msg}`, '_blank');
+        } else {
+            window.open(`https://wa.me/?text=${msg}`, '_blank');
+        }
+    };
 
     const handleDownloadStatement = (type: 'Revenue' | 'Income') => {
         if (type === 'Income') {

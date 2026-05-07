@@ -547,12 +547,17 @@ const AppContent: React.FC = () => {
         if (path === '#/user-app-portal/agent-portal' && !checkAccess('User App Portal/Agent Portal')) return <AccessDenied />;
         if (path === '#/user-app-portal/refer-earn' && !checkAccess('User App Portal/Refer & Earn')) return <AccessDenied />;
         if (path === '#/user-app-portal/my-profile' && !checkAccess('User App Portal/My Profile')) return <AccessDenied />;
-        if (path === '#/user-app-portal/referral-landing' && !checkAccess('User App Portal/Referral Landing')) return <AccessDenied />;
+        if (path.startsWith('#/user-app-portal/referral-landing') && !checkAccess('User App Portal/Referral Landing')) return <AccessDenied />;
 
         // Handle Landlords Portal with sub-routes
         if (path.startsWith('#/user-app-portal/landlords-portal')) {
             if (!checkAccess('User App Portal/Landlords Portal')) return <AccessDenied />;
             return <LandlordsPortal />;
+        }
+
+        // Handle Referral Landing with query params (?type=&id=&ref=)
+        if (path.startsWith('#/user-app-portal/referral-landing')) {
+            return <ReferralLanding />;
         }
 
         if (path === '#/user-app-portal/affiliate-portal' && !checkAccess('User App Portal/Affiliate Portal')) return <AccessDenied />;
@@ -568,7 +573,6 @@ const AppContent: React.FC = () => {
             case '#/user-app-portal/investors-portal': return <InvestorsPortal />;
             case '#/user-app-portal/caretaker-portal': return <CaretakerPortal />;
             case '#/user-app-portal/contractor-portal': return <ContractorPortal />;
-            case '#/user-app-portal/referral-landing': return <ReferralLanding />; // Should be caught by public check, but as fallback
             case '#/user-app-portal/refer-earn': return <ReferAndGrow />;
             case '#/user-app-portal/my-profile': return <UserProfile />;
             default: return <TenantPortal />;

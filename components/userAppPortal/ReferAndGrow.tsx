@@ -13,7 +13,7 @@ const ReferAndGrow: React.FC = () => {
         if (!currentUser) return { name: "User", referralCode: "REF2025", tier: "Silver", points: 0 };
         return {
             name: currentUser.name || "User",
-            referralCode: (currentUser as any).referralCode || `${currentUser.name?.split(' ')[0].toUpperCase() || 'USER'}2025`,
+            referralCode: (currentUser as any).referralCode || String(currentUser.id).replace(/-/g, '').slice(0, 12).toUpperCase(),
             tier: "Silver",
             points: 1250,
             referralConfig: (currentUser as any).referralConfig
@@ -107,7 +107,8 @@ const ReferAndGrow: React.FC = () => {
                 location: p.location || p.branch,
                 pinLocationUrl: p.pinLocationUrl || '',
                 image: p.profilePictureUrl,
-                type: u.unitType || p.type
+                type: u.unitType || p.type,
+                websiteListingUrl: (p as any).websiteListingUrl || null,
             }))
         ).slice(0, 6); // Show top 6
     }, [properties]);

@@ -822,6 +822,7 @@ const ReferralLanding: React.FC = () => {
     const [currentPage, setCurrentPage] = useState<PageType>('Home'); // Home acts as the main landing, Properties/Funds act as filtered views if needed, About is separate.
     const [referrerCode, setReferrerCode] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [autoOpenParams, setAutoOpenParams] = useState<{ type: string; id?: string } | null>(null);
 
     const resolvedReferrerId = useMemo(() => {
         if (!referrerCode) return undefined;
@@ -850,21 +851,23 @@ const ReferralLanding: React.FC = () => {
     const [registrationType, setRegistrationType] = useState<'Landlord' | 'Investor' | 'Affiliate' | 'Contractor'>('Landlord');
 
     useEffect(() => {
-        // Parse referral code from URL (supports both ?ref=CODE and #...?ref=CODE)
-        const params = new URLSearchParams(window.location.search);
-        let ref = params.get('ref');
-        
-        if (!ref) {
+        const searchParams = new URLSearchParams(window.location.search);
+        let ref = searchParams.get('ref');
+        let type = searchParams.get('type');
+        let id = searchParams.get('id');
+
+        if (!ref || !type) {
             const hashParts = window.location.hash.split('?');
             if (hashParts.length > 1) {
                 const hashParams = new URLSearchParams(hashParts[1]);
-                ref = hashParams.get('ref');
+                if (!ref) ref = hashParams.get('ref');
+                if (!type) type = hashParams.get('type');
+                if (!id) id = hashParams.get('id');
             }
         }
 
-        if (ref) {
-            setReferrerCode(ref);
-        }
+        if (ref) setReferrerCode(ref);
+        if (type) setAutoOpenParams({ type, id: id ?? undefined });
     }, []);
 
     // --- DERIVED DATA ---
@@ -894,6 +897,23 @@ const ReferralLanding: React.FC = () => {
         setCallbackType(type);
         setIsCallbackOpen(true);
     };
+
+    useEffect(() => {
+        if (!autoOpenParams) return;
+        if (autoOpenParams.type === 'landlord') {
+            setAutoOpenParams(null);
+            handleOpenCallback('Landlord');
+        } else if (autoOpenParams.type === 'invest' && activeFunds.length > 0) {
+            setAutoOpenParams(null);
+            setSelectedFund(activeFunds[0]);
+        } else if (autoOpenParams.type === 'unit' && autoOpenParams.id) {
+            const unit = vacantUnits.find(u => u.id === autoOpenParams.id);
+            if (unit) {
+                setAutoOpenParams(null);
+                setSelectedUnit(unit);
+            }
+        }
+    }, [autoOpenParams, activeFunds, vacantUnits]);
 
     if (currentPage === 'About') {
         return <AboutUsPage onBack={() => setCurrentPage('Home')} />;
