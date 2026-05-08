@@ -7,6 +7,7 @@ const ReferAndGrow: React.FC = () => {
     const { properties, funds, currentUser, tenants, renovationInvestors, leads, applications, rfTransactions, commissionRules } = useData();
     const [activeTab, setActiveTab] = useState<'Campaigns' | 'Calculator' | 'History'>('Campaigns');
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [vacantSearch, setVacantSearch] = useState('');
 
     // --- CURRENT USER DATA ---
     const user = useMemo(() => {
@@ -110,8 +111,18 @@ const ReferAndGrow: React.FC = () => {
                 type: u.unitType || p.type,
                 websiteListingUrl: (p as any).websiteListingUrl || null,
             }))
-        ).slice(0, 6); // Show top 6
+        );
     }, [properties]);
+
+    const filteredVacantUnits = useMemo(() => {
+        const q = vacantSearch.trim().toLowerCase();
+        if (!q) return vacantUnits;
+        return vacantUnits.filter(u =>
+            (u.location || '').toLowerCase().includes(q) ||
+            (u.type || '').toLowerCase().includes(q) ||
+            u.title.toLowerCase().includes(q)
+        );
+    }, [vacantUnits, vacantSearch]);
 
     // 2. Active Funds for Referral
     const activeFunds = useMemo(() => funds.filter(f => f.status === 'Active').slice(0, 2), [funds]);
@@ -258,8 +269,19 @@ const ReferAndGrow: React.FC = () => {
                             </div>
                         </div>
                         
+                        <div className="relative mb-6">
+                            <Icon name="search" className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                value={vacantSearch}
+                                onChange={e => setVacantSearch(e.target.value)}
+                                placeholder="Search by location or house type..."
+                                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-primary focus:border-primary outline-none"
+                            />
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {vacantUnits.map(unit => (
+                            {filteredVacantUnits.map(unit => (
                                 <div key={unit.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-300 group flex flex-col h-full">
                                     <div className="h-56 bg-gray-100 relative flex items-center justify-center overflow-hidden">
                                         {unit.image ? (
@@ -310,7 +332,7 @@ const ReferAndGrow: React.FC = () => {
                                     </div>
                                 </div>
                             ))}
-                            {vacantUnits.length === 0 && (
+                            {filteredVacantUnits.length === 0 && (
                                 <div className="col-span-full py-16 text-center bg-white border border-dashed border-gray-200 rounded-2xl">
                                     <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <Icon name="check" className="w-8 h-8 text-gray-400" />

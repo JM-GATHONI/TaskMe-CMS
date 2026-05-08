@@ -100,6 +100,7 @@ const AgentPortal: React.FC = () => {
     const [selectedCollectionTenant, setSelectedCollectionTenant] = useState<TenantProfile | null>(null);
     const [taskTypeFilter, setTaskTypeFilter] = useState<'Work Orders' | 'Collections'>('Work Orders');
     const [tenantFilter, setTenantFilter] = useState('All');
+    const [vacancySearch, setVacancySearch] = useState('');
 
     const agent = useMemo(() => {
         if (currentUser && currentUser.role === 'Field Agent') {
@@ -127,6 +128,17 @@ const AgentPortal: React.FC = () => {
             }))
         );
     }, [myProperties]);
+
+    const filteredVacancies = useMemo(() => {
+        const q = vacancySearch.trim().toLowerCase();
+        if (!q) return myVacantUnits;
+        return myVacantUnits.filter(u =>
+            (u.location || '').toLowerCase().includes(q) ||
+            ((u as any).unitType || '').toLowerCase().includes(q) ||
+            (u.unitNumber || '').toLowerCase().includes(q) ||
+            (u.propertyName || '').toLowerCase().includes(q)
+        );
+    }, [myVacantUnits, vacancySearch]);
 
     const filteredMyTenants = useMemo(() => {
         let result = myTenants;
@@ -451,12 +463,24 @@ const AgentPortal: React.FC = () => {
             {/* NEW: Vacancies Tab */}
             {activeTab === 'Vacancies' && (
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                        <Icon name="vacant-house" className="w-5 h-5 mr-2 text-red-500"/>
-                        My Vacant Units ({myVacantUnits.length})
-                    </h3>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                            <Icon name="vacant-house" className="w-5 h-5 mr-2 text-red-500"/>
+                            My Vacant Units ({myVacantUnits.length})
+                        </h3>
+                        <div className="relative w-full sm:w-72">
+                            <Icon name="search" className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                value={vacancySearch}
+                                onChange={e => setVacancySearch(e.target.value)}
+                                placeholder="Search by location or house type..."
+                                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-primary focus:border-primary outline-none"
+                            />
+                        </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {myVacantUnits.length > 0 ? myVacantUnits.map(unit => (
+                        {filteredVacancies.length > 0 ? filteredVacancies.map(unit => (
                             <div key={unit.id} className="p-4 border border-red-200 bg-red-50/20 rounded-lg hover:shadow-md transition-shadow">
                                 <div className="flex justify-between items-center mb-2">
                                     <h4 className="font-bold text-gray-800">{unit.unitNumber}</h4>

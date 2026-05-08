@@ -888,7 +888,13 @@ const ReferralLanding: React.FC = () => {
                 bedrooms: u.bedrooms,
                 property: p,
             }))
-        ).filter(u => u.title.toLowerCase().includes(searchTerm.toLowerCase()) || u.location?.toLowerCase().includes(searchTerm.toLowerCase()));
+        ).filter(u => {
+            const q = searchTerm.toLowerCase();
+            return !q ||
+                u.title.toLowerCase().includes(q) ||
+                (u.location || '').toLowerCase().includes(q) ||
+                (u.type || '').toLowerCase().includes(q);
+        });
     }, [properties, searchTerm]);
 
     const activeFunds = useMemo(() => funds.filter(f => f.status === 'Active' || f.status === 'Closing Soon'), [funds]);
