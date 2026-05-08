@@ -3079,7 +3079,9 @@ const ActiveTenants: React.FC = () => {
             );
             if (listMode === 'inactive') return matchesSearch;
             const matchesFilter =
-                activeFilter === 'All' ||
+                // 'All' shows only live tenants — Active, Overdue, Notice.
+                // Pending* and Vacated have their own dedicated chips and must not bleed into 'All'.
+                (activeFilter === 'All' && ['Active', 'Overdue', 'Notice'].includes(t.status)) ||
                 t.status === activeFilter ||
                 // Treat legacy 'Pending' rows as PendingAllocation (no unit) or PendingPayment (has unit)
                 (activeFilter === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
@@ -3176,7 +3178,7 @@ const ActiveTenants: React.FC = () => {
                 <div className="flex gap-2 overflow-x-auto pb-2">
                     {STATUS_FILTERS.map(({ key, label }) => {
                         const count = key === 'All'
-                            ? tenants.length
+                            ? tenants.filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status)).length
                             : tenants.filter(t =>
                                 t.status === key ||
                                 (key === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
