@@ -294,7 +294,8 @@ const TenantPortal: React.FC = () => {
     const [isPayRentModalOpen, setIsPayRentModalOpen] = useState(false);
     const [isVacationModalOpen, setIsVacationModalOpen] = useState(false);
     const [selectedPortalKeys, setSelectedPortalKeys] = useState<Set<string>>(new Set());
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages' | 'browse'>('dashboard');
+    const [browseSearch, setBrowseSearch] = useState('');
     const [newMessageContent, setNewMessageContent] = useState('');
     // Resolve the real TenantProfile (has paymentHistory, propertyId, unitId, etc.).
     // Match by id, email, or phone so a logged-in tenant sees their own data.
@@ -440,6 +441,35 @@ const TenantPortal: React.FC = () => {
     // when paying manually (C2B). The confirmation callback matches it back.
     // Fallback: if propertyId/unitId are not set, match by unit number string.
     // NOTE: must stay above the early return to obey React's Rules of Hooks.
+    const allVacantUnits = useMemo(() =>
+        (properties || []).flatMap(p =>
+            p.units
+                .filter(u => u.status === 'Vacant')
+                .map(u => ({
+                    id: u.id,
+                    unitNumber: u.unitNumber,
+                    propertyName: p.name,
+                    location: p.subLocation || p.nearestLandmark || p.location || p.branch || '',
+                    type: (u as any).unitType || p.type || '',
+                    rent: u.rent || p.defaultMonthlyRent || 0,
+                    image: p.profilePictureUrl || '',
+                    pinLocationUrl: p.pinLocationUrl || '',
+                    phone: p.contactPhone || '',
+                }))
+        )
+    , [properties]);
+
+    const filteredBrowseUnits = useMemo(() => {
+        const q = browseSearch.trim().toLowerCase();
+        if (!q) return allVacantUnits;
+        return allVacantUnits.filter(u =>
+            (u.location || '').toLowerCase().includes(q) ||
+            (u.type || '').toLowerCase().includes(q) ||
+            u.propertyName.toLowerCase().includes(q) ||
+            u.unitNumber.toLowerCase().includes(q)
+        );
+    }, [allVacantUnits, browseSearch]);
+
     const myUnit = useMemo(() => {
         if (!activeUser) return undefined;
         if (activeUser.propertyId && activeUser.unitId) {
@@ -490,7 +520,7 @@ const TenantPortal: React.FC = () => {
 
             {/* Navigation Tabs */}
             <div className="flex bg-white rounded-xl shadow-sm p-1 overflow-x-auto">
-                {['dashboard', 'payments', 'maintenance', 'messages'].map(tab => (
+                {(['dashboard', 'payments', 'maintenance', 'messages', 'browse'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab as any)}
@@ -498,7 +528,7 @@ const TenantPortal: React.FC = () => {
                             activeTab === tab ? 'bg-primary/10 text-primary' : 'text-gray-500 hover:bg-gray-50'
                         }`}
                     >
-                        {tab}
+                        {tab === 'browse' ? 'Available Units' : tab}
                     </button>
                 ))}
             </div>
@@ -913,6 +943,98 @@ const TenantPortal: React.FC = () => {
                 />
             )}
             
+            {/* BROWSE TAB */}
+            {activeTab === 'browse' && (
+                <div className="space-y-5 animate-fade-in">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                    <Icon name="vacant-house" className="w-5 h-5 text-primary" />
+                                    Available Units
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-0.5">{allVacantUnits.length} unit{allVacantUnits.length !== 1 ? 's' : ''} currently available</p>
+                            </div>
+                            <div className="relative w-full sm:w-72">
+                                <Icon name="search" className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={browseSearch}
+                                    onChange={e => setBrowseSearch(e.target.value)}
+                                    placeholder="Search by location or house type..."
+                                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-primary focus:border-primary outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        {filteredBrowseUnits.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {filteredBrowseUnits.map(unit => (
+                                    <div key={unit.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                                        <div className="h-36 bg-gray-100 relative">
+                                            {unit.image
+                                                ? <img src={unit.image} alt={unit.propertyName} className="w-full h-full object-cover" />
+                                                : <div className="w-full h-full flex items-center justify-center"><Icon name="branch" className="w-12 h-12 text-gray-300" /></div>
+                                            }
+                                            <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Available</span>
+                                        </div>
+                                        <div className="p-4">
+                                            <p className="font-bold text-gray-800 text-sm truncate">{unit.unitNumber} — {unit.propertyName}</p>
+                                            {unit.type && <p className="text-xs text-primary font-semibold mt-0.5">{unit.type}</p>}
+                                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                                <Icon name="map-pin" className="w-3 h-3" /> {unit.location || 'Location not set'}
+                                            </p>
+                                            <p className="text-sm font-extrabold text-gray-800 mt-2">KES {Number(unit.rent).toLocaleString()} <span className="font-normal text-gray-400 text-xs">/ mo</span></p>
+                                            <div className="flex gap-2 mt-3">
+                                                {unit.phone ? (
+                                                    <a
+                                                        href={`https://wa.me/${unit.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi, I'm interested in ${unit.unitNumber} at ${unit.propertyName} (${unit.location}).`)}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex-1 text-center py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition-colors"
+                                                    >
+                                                        Enquire
+                                                    </a>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setActiveTab('messages')}
+                                                        className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-dark transition-colors"
+                                                    >
+                                                        Enquire
+                                                    </button>
+                                                )}
+                                                {unit.pinLocationUrl && (
+                                                    <a
+                                                        href={unit.pinLocationUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="px-3 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors"
+                                                    >
+                                                        Map
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="py-16 text-center">
+                                <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Icon name="check" className="w-8 h-8 text-green-500" />
+                                </div>
+                                <p className="font-bold text-gray-700">
+                                    {browseSearch ? 'No units match your search' : 'No units available right now'}
+                                </p>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    {browseSearch ? 'Try a different location or house type' : 'Check back soon!'}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Advertising Banners */}
             <AdBanners />
         </div>
