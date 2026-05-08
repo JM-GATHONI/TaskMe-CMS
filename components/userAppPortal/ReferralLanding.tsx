@@ -811,6 +811,109 @@ const AboutUsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     );
 };
 
+// --- Self-Registration Modal ---
+const SelfRegistrationModal: React.FC<{ onClose: () => void; referrerId?: string }> = ({ onClose, referrerId }) => {
+    const { addApplication } = useData();
+    const [step, setStep] = useState<'form' | 'success'>('form');
+    const [busy, setBusy] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
+    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', location: '' });
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setErrorMsg('');
+        if (!form.name || !form.phone || !form.email || !form.password) {
+            return setErrorMsg('Please fill in all required fields.');
+        }
+        setBusy(true);
+        try {
+            let userId: string | undefined;
+            const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+                email: form.email,
+                password: form.password,
+                options: { data: { name: form.name, phone: form.phone } },
+            });
+            if (signUpErr && !signUpErr.message.toLowerCase().includes('already registered')) {
+                throw new Error(signUpErr.message);
+            }
+            userId = signUpData?.user?.id;
+
+            addApplication({
+                id: `app-self-${Date.now()}`,
+                name: form.name,
+                phone: form.phone,
+                email: form.email,
+                status: 'New',
+                submittedDate: new Date().toISOString().split('T')[0],
+                source: 'Self-Registration',
+                propertyName: form.location || undefined,
+                referrerId: referrerId,
+                authUserId: userId,
+            });
+            setStep('success');
+        } catch (err: any) {
+            setErrorMsg(err.message || 'Something went wrong. Please try again.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[2000] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                    <div>
+                        <h3 className="font-bold text-gray-800 text-lg">Register as a Tenant</h3>
+                        <p className="text-xs text-gray-500">Submit your details — our team will be in touch.</p>
+                    </div>
+                    <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
+                </div>
+
+                {step === 'success' ? (
+                    <div className="p-8 text-center space-y-4">
+                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                            <Icon name="check" className="w-8 h-8 text-green-600" />
+                        </div>
+                        <p className="text-xl font-bold text-gray-800">Application Submitted!</p>
+                        <p className="text-sm text-gray-500">Your details have been recorded. A member of our team will verify your application and contact you shortly to guide you through allocation and onboarding.</p>
+                        <button onClick={onClose} className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2">Done</button>
+                    </div>
+                ) : (
+                    <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                        {errorMsg && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">{errorMsg}</p>}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name <span className="text-red-500">*</span></label>
+                                <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="John Doe" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone <span className="text-red-500">*</span></label>
+                                <input required type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="07..." />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address <span className="text-red-500">*</span></label>
+                            <input required type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="john@example.com" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Create Password <span className="text-red-500">*</span></label>
+                            <input required type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="Min. 6 characters" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Preferred Location / Property <span className="text-gray-400 font-normal">(optional)</span></label>
+                            <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="e.g. Westlands, Kilimani..." />
+                        </div>
+                        <p className="text-xs text-gray-400">Your application will be reviewed and verified by our team before you are assigned a unit.</p>
+                        <button type="submit" disabled={busy} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary-dark transition-all disabled:opacity-60">
+                            {busy ? 'Submitting...' : 'Submit Application'}
+                        </button>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const ReferralLanding: React.FC = () => {
     const { properties, funds, tenants, staff, landlords, renovationInvestors } = useData();
     const [viewMode, setViewMode] = useState<UserPersona>('Tenant'); // Default view
@@ -848,6 +951,7 @@ const ReferralLanding: React.FC = () => {
 
     // Registration Modal State
     const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+    const [isSelfRegOpen, setIsSelfRegOpen] = useState(false);
     const [registrationType, setRegistrationType] = useState<'Landlord' | 'Investor' | 'Affiliate' | 'Contractor'>('Landlord');
 
     useEffect(() => {
@@ -999,7 +1103,15 @@ const ReferralLanding: React.FC = () => {
 
                         {/* Listings Grid */}
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-                            <h2 className="text-3xl font-bold text-gray-800 mb-8">Featured Vacancies</h2>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                                <h2 className="text-3xl font-bold text-gray-800">Featured Vacancies</h2>
+                                <button
+                                    onClick={() => setIsSelfRegOpen(true)}
+                                    className="px-5 py-2.5 bg-primary text-white text-sm font-bold rounded-full hover:bg-primary-dark transition-all shadow-md flex items-center gap-2"
+                                >
+                                    <Icon name="add" className="w-4 h-4" /> Register as Tenant
+                                </button>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {vacantUnits.length > 0 ? vacantUnits.map(unit => (
                                     <div key={unit.id} className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden group flex flex-col">
@@ -1345,6 +1457,13 @@ const ReferralLanding: React.FC = () => {
                 <RegistrationModal 
                     type={registrationType} 
                     onClose={() => setIsRegistrationOpen(false)} 
+                />
+            )}
+
+            {isSelfRegOpen && (
+                <SelfRegistrationModal
+                    onClose={() => setIsSelfRegOpen(false)}
+                    referrerId={resolvedReferrerId}
                 />
             )}
         </div>
