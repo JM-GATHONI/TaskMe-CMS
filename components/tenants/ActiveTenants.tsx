@@ -76,6 +76,8 @@ const STATUS_FILTERS: Array<{ key: string; label: string }> = [
     { key: 'Overdue', label: 'Overdue' },
     { key: 'Notice', label: 'Notice' },
     { key: 'Vacated', label: 'Vacated' },
+    { key: 'Inactive', label: 'Inactive' },
+    { key: 'Applications', label: 'Applications' },
 ];
 
 // --- HELPER: Get Arrears Text ---
@@ -3184,6 +3186,8 @@ const ActiveTenants: React.FC = () => {
                     {STATUS_FILTERS.map(({ key, label }) => {
                         const count = key === 'All'
                             ? tenants.filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status)).length
+                            : key === 'Applications'
+                            ? applications.length
                             : tenants.filter(t =>
                                 t.status === key ||
                                 (key === 'PendingAllocation' && t.status === 'Pending' && !tenantFullyAllocated(t)) ||
@@ -3203,8 +3207,64 @@ const ActiveTenants: React.FC = () => {
                 </div>
             )}
 
-            {/* Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Applications Grid — shown when Applications chip is active */}
+            {listMode === 'active' && activeFilter === 'Applications' && (() => {
+                const q = searchQuery.trim().toLowerCase();
+                const filteredApps = applications.filter(a =>
+                    !q ||
+                    a.name.toLowerCase().includes(q) ||
+                    (a.phone || '').toLowerCase().includes(q) ||
+                    (a.email || '').toLowerCase().includes(q) ||
+                    (a.propertyName || '').toLowerCase().includes(q)
+                );
+                const statusColor = (s: string) => {
+                    if (s === 'Approved') return 'bg-green-100 text-green-800';
+                    if (s === 'Under Review') return 'bg-blue-100 text-blue-800';
+                    if (s === 'Rejected') return 'bg-red-100 text-red-800';
+                    return 'bg-gray-100 text-gray-700';
+                };
+                return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filteredApps.map(app => (
+                            <div key={app.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary text-lg">
+                                            {app.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-800 text-sm">{app.name}</p>
+                                            <p className="text-xs text-gray-500">{app.phone}</p>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${statusColor(app.status)}`}>{app.status}</span>
+                                </div>
+                                <div className="text-xs text-gray-500 space-y-1">
+                                    {app.email && <p><span className="font-semibold text-gray-600">Email:</span> {app.email}</p>}
+                                    {app.propertyName && <p><span className="font-semibold text-gray-600">Property:</span> {app.propertyName}{app.unit ? ` · ${app.unit}` : ''}</p>}
+                                    {app.rentAmount && <p><span className="font-semibold text-gray-600">Rent:</span> KES {Number(app.rentAmount).toLocaleString()}/mo</p>}
+                                    <p><span className="font-semibold text-gray-600">Submitted:</span> {app.submittedDate}</p>
+                                    {app.source && <p><span className="font-semibold text-gray-600">Source:</span> {app.source}</p>}
+                                </div>
+                                <button
+                                    onClick={() => { window.location.hash = '#/tenants/applications'; }}
+                                    className="mt-auto w-full py-2 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary/20 transition-colors"
+                                >
+                                    Review in Applications
+                                </button>
+                            </div>
+                        ))}
+                        {filteredApps.length === 0 && (
+                            <div className="col-span-full text-center py-10 text-gray-500">
+                                {q ? 'No applications match your search.' : 'No applications yet.'}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
+            {/* Tenant Grid — hidden when Applications chip is active */}
+            {activeFilter !== 'Applications' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredTenants.map(tenant => {
                     const currentMonthIso = new Date().toISOString().slice(0, 7);
                     const isAllocated = tenantFullyAllocated(tenant);
@@ -3372,7 +3432,7 @@ const ActiveTenants: React.FC = () => {
                         No tenants found matching criteria.
                     </div>
                 )}
-            </div>
+            </div>}
         </div>
     );
 };
