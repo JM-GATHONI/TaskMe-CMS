@@ -261,34 +261,48 @@ const QuickSearch: React.FC = () => {
         }
 
         if (activeFilter === 'Arrears') {
-            return searchedTenants
-                .filter(t => {
-                    if (t.status !== 'Overdue') return false;
-                    // Compute the ISO due date so isInDateRange can filter by it
-                    const now = new Date();
-                    const dueDay = t.rentDueDate || 5;
-                    let d = new Date(now.getFullYear(), now.getMonth(), dueDay);
-                    if (now.getDate() < dueDay) d = new Date(now.getFullYear(), now.getMonth() - 1, dueDay);
-                    return isInDateRange(d.toISOString().split('T')[0]);
-                })
-                .map(t => {
-                    const { days, date } = getDaysOverdue(t.rentDueDate);
-                    const lastPay = t.paymentHistory[0]; 
-                    const paidVal = lastPay ? parseFloat(lastPay.amount.replace(/[^0-9.]/g, '')) : 0;
-                    const isPartial = paidVal > 0 && paidVal < t.rentAmount;
-                    const outstandingBalance = isPartial ? t.rentAmount - paidVal : t.rentAmount;
+            const now = new Date();
+            // Previous billing month: rent for last month that is unpaid = in arrears
+            const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+            const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+            const prevPeriod = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
 
-                    return {
-                        id: t.id,
-                        tenant: t.name,
-                        property: `${t.propertyName} - ${t.unit}`,
-                        amountDisplay: `KES ${outstandingBalance.toLocaleString()}`,
-                        val: outstandingBalance,
-                        partial: isPartial ? `Yes (Paid ${paidVal.toLocaleString()})` : 'No',
-                        daysOverdue: days,
-                        dueDate: date
-                    };
-                });
+            return searchedTenants.flatMap(t => {
+                if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return [];
+
+                // Sum all payments made in the previous calendar month
+                const totalPaidLastMonth = t.paymentHistory.reduce((sum, p) => {
+                    const parsed = parseFlexDate(p.date);
+                    if (!parsed) return sum;
+                    const pk = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+                    if (pk !== prevPeriod) return sum;
+                    return sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0);
+                }, 0);
+
+                // Not in arrears if last month's rent was fully covered
+                if (totalPaidLastMonth >= t.rentAmount) return [];
+
+                // Apply optional date range filter using the previous month's due date
+                const dueDay = t.rentDueDate || 1;
+                const prevDueDate = new Date(prevYear, prevMonth, dueDay);
+                if (!isInDateRange(prevDueDate.toISOString().split('T')[0])) return [];
+
+                const outstandingBalance = t.rentAmount - totalPaidLastMonth;
+                const { days, date } = getDaysOverdue(t.rentDueDate);
+
+                return [{
+                    id: t.id,
+                    tenant: t.name,
+                    property: `${t.propertyName} - ${t.unit}`,
+                    amountDisplay: `KES ${outstandingBalance.toLocaleString()}`,
+                    val: outstandingBalance,
+                    partial: totalPaidLastMonth > 0
+                        ? `Yes (Paid KES ${totalPaidLastMonth.toLocaleString()})`
+                        : 'No',
+                    daysOverdue: days,
+                    dueDate: date
+                }];
+            });
         }
 
         if (activeFilter === 'Unpaid Fines') {
