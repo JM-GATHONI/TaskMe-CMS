@@ -32,8 +32,14 @@ export interface MonthlyRentStatus {
 const DEFAULT_LATE_PER_DAY = 100;
 
 /**
- * Calendar-month view: compares today's day-of-month to due + grace.
- * Fine accrues for each full day after (dueDay + graceDays) when current month rent not marked paid.
+ * Current-month view: accrues a late fee for every day past (dueDay + graceDays)
+ * in the current calendar month when rent has not been fully paid.
+ *
+ * Example: due=1st, grace=4 days → lateStartsOnDay=5 → fee from 6th onward.
+ * On the 8th with no payment: daysLate = 8 - 5 = 3, fee = 3 × lateFeePerDay.
+ *
+ * Applies to Active/Overdue tenants only. Not charged in the activation month.
+ * Only triggered when rent itself is unpaid — outstanding bills do not qualify.
  */
 export function getMonthlyRentStatus(
     tenant: TenantProfile,
@@ -42,51 +48,11 @@ export function getMonthlyRentStatus(
     const lateFeePerDay = opts?.lateFeePerDay ?? DEFAULT_LATE_PER_DAY;
     const today = new Date();
     const dom = today.getDate();
-
-    // Requirement alignment:
-    // - Last due date is effectively the last rent payment date (activation uses first payment).
-    // - Next due date is always the 1st of the next month after last due date.
-    // - Late fees only accrue after (nextDueDate + graceDays).
-    const paidDates = (tenant.paymentHistory || [])
-        .filter(p => p.status === 'Paid' && !!p.date)
-        .map(p => String(p.date));
-
-    const latestPaidDateStr =
-        paidDates.length > 0 ? paidDates.reduce((max, d) => (d > max ? d : max), paidDates[0]) : null;
-
-    // Prefer the latest rent payment date for "last due date", but fall back to onboardingDate if paymentHistory is empty.
-    const onboardingDateStr = tenant.onboardingDate ? String(tenant.onboardingDate) : null;
-    const chosenLastDueStr =
-        latestPaidDateStr && onboardingDateStr
-            ? onboardingDateStr > latestPaidDateStr
-                ? onboardingDateStr
-                : latestPaidDateStr
-            : (latestPaidDateStr ?? onboardingDateStr ?? null);
-
-    const lastDueDate = chosenLastDueStr ? new Date(chosenLastDueStr) : today;
-    lastDueDate.setHours(0, 0, 0, 0);
-
-    const nextDueDate = new Date(lastDueDate);
-    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    nextDueDate.setDate(1);
-    nextDueDate.setHours(0, 0, 0, 0);
-
-    const nextPeriodPrefix = nextDueDate.toISOString().slice(0, 7);
     const todayPrefix = today.toISOString().slice(0, 7);
 
     const grace = getRentGraceDays(tenant);
     const dueDay = getRentDueDay(tenant);
-    const lateStartsOnDay = dueDay + grace; // late starts on (1 + graceDays) day-of-month
-
-    let paidForNextDuePeriod = opts?.isRentPaidThisMonth;
-    if (paidForNextDuePeriod === undefined) {
-        paidForNextDuePeriod = (tenant.paymentHistory || []).some(
-            p => p.date.startsWith(nextPeriodPrefix) && p.status === 'Paid',
-        );
-    } else {
-        // Only trust the caller's "isRentPaidThisMonth" when it refers to the same period we are calculating.
-        if (todayPrefix !== nextPeriodPrefix) paidForNextDuePeriod = false;
-    }
+    const lateStartsOnDay = dueDay + grace;
 
     const allocated =
         !!tenant.propertyId &&
@@ -94,51 +60,36 @@ export function getMonthlyRentStatus(
         !!String(tenant.unit ?? '').trim() &&
         !!String(tenant.propertyName ?? '').trim();
 
-    // Late fees only accrue once a tenant is in the Active lifecycle and the
-    // first move-in month has passed. Pending* / Vacated / Notice tenants are
-    // not in the rent cycle yet, and the activation month itself is fee-free
-    // — fines start the 6th of the FIRST FULL month after activation.
+    // Only Active or Overdue tenants accrue late fees
     const isInLateFeeWindow = tenant.status === 'Active' || tenant.status === 'Overdue';
-    // Fall back to onboardingDate when activationDate was never written (legacy
-    // records or tenants onboarded before the field was added), so the first
-    // month is always treated as fee-free regardless of when the field was set.
+
+    // Activation month is always fee-free (fines start the first full month after move-in)
     const activationStr = (tenant as any).activationDate
         ? String((tenant as any).activationDate)
         : (tenant.onboardingDate ? String(tenant.onboardingDate) : null);
     const activationMonthPrefix = activationStr ? activationStr.slice(0, 7) : null;
     const inActivationMonth = !!(activationMonthPrefix && activationMonthPrefix === todayPrefix);
 
-    if (!allocated || paidForNextDuePeriod || tenant.status === 'Vacated' || !isInLateFeeWindow || inActivationMonth) {
-        return {
-            dueDay,
-            graceDays: grace,
-            lateStartsOnDay,
-            daysLateThisMonth: 0,
-            automatedLateFine: 0,
-        };
+    // Determine whether this month's rent has been paid in full.
+    // Trust the caller's value when provided; otherwise compute from payment history.
+    let isRentPaidThisMonth = opts?.isRentPaidThisMonth;
+    if (isRentPaidThisMonth === undefined) {
+        const totalPaidThisMonth = (tenant.paymentHistory || [])
+            .filter(p => p.status === 'Paid' && p.date.startsWith(todayPrefix))
+            .reduce((sum, p) => sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0), 0);
+        isRentPaidThisMonth = totalPaidThisMonth >= (tenant.rentAmount || 0);
     }
 
-    // Only accrue late fees during the month of the *next due date*.
-    if (todayPrefix !== nextPeriodPrefix) {
-        return {
-            dueDay,
-            graceDays: grace,
-            lateStartsOnDay,
-            daysLateThisMonth: 0,
-            automatedLateFine: 0,
-        };
+    if (!allocated || isRentPaidThisMonth || tenant.status === 'Vacated' || !isInLateFeeWindow || inActivationMonth) {
+        return { dueDay, graceDays: grace, lateStartsOnDay, daysLateThisMonth: 0, automatedLateFine: 0 };
     }
 
+    // Still within grace period — no fee yet
     if (dom <= lateStartsOnDay) {
-        return {
-            dueDay,
-            graceDays: grace,
-            lateStartsOnDay,
-            daysLateThisMonth: 0,
-            automatedLateFine: 0,
-        };
+        return { dueDay, graceDays: grace, lateStartsOnDay, daysLateThisMonth: 0, automatedLateFine: 0 };
     }
 
+    // Backdate: every day since grace ended in the current month accrues a fee
     const daysLate = dom - lateStartsOnDay;
     return {
         dueDay,
