@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { websiteLinks } from '../../utils/websiteLinks';
+import { generateUnitReferralCode } from '../../utils/referralCode';
 
 const ReferralProgram: React.FC = () => {
     const { leads, rfTransactions, currentUser, commissionRules, properties } = useData();
@@ -101,10 +102,19 @@ const ReferralProgram: React.FC = () => {
         );
     }, [vacantUnits, vacantSearch]);
 
+    const getUnitCode = (unitId: string): string => {
+        const u = currentUser as { id?: string; name?: string } | null;
+        if (!u?.id || !u?.name) return referralCode;
+        const prop = properties.find(p => p.units.some(x => x.id === unitId));
+        const unit = prop?.units.find(x => x.id === unitId);
+        if (!unit) return referralCode;
+        return generateUnitReferralCode(u.name, unit.unitNumber, u.id);
+    };
+
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
         if (type === 'unit') {
             const prop = properties.find(p => p.units.some(u => u.id === id));
-            return websiteLinks.unit(id, referralCode, prop?.websiteListingUrl);
+            return websiteLinks.unit(id, getUnitCode(id), prop?.websiteListingUrl);
         } else {
             return websiteLinks.invest(referralCode);
         }
@@ -174,21 +184,25 @@ const ReferralProgram: React.FC = () => {
                             className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:ring-primary focus:border-primary outline-none"
                         />
                     </div>
-                    <div className="space-y-2 max-h-52 overflow-y-auto">
-                        {filteredVacantUnits.map(u => (
-                            <div key={u.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                                <div className="min-w-0">
-                                    <p className="text-sm font-medium text-gray-800 truncate">{u.title}</p>
-                                    <p className="text-xs text-gray-500">KES {u.rent.toLocaleString()} / mo · {u.location}</p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {filteredVacantUnits.map(u => {
+                            const unitCode = getUnitCode(u.id);
+                            return (
+                                <div key={u.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium text-gray-800 truncate">{u.title}</p>
+                                        <p className="text-xs text-gray-500">KES {u.rent.toLocaleString()} / mo · {u.location}</p>
+                                        <p className="text-[10px] font-mono text-primary mt-0.5">Code: <span className="font-bold select-all">{unitCode}</span></p>
+                                    </div>
+                                    <button
+                                        onClick={() => handleCopyShare('unit', u.id)}
+                                        className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${copiedShareId === u.id ? 'bg-green-100 text-green-700' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+                                    >
+                                        {copiedShareId === u.id ? 'Copied!' : 'Copy Link'}
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => handleCopyShare('unit', u.id)}
-                                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${copiedShareId === u.id ? 'bg-green-100 text-green-700' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
-                                >
-                                    {copiedShareId === u.id ? 'Copied!' : 'Copy Link'}
-                                </button>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}

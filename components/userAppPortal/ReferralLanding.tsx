@@ -7,6 +7,7 @@ import { INITIAL_FUNDS } from '../../constants';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { websiteLinks } from '../../utils/websiteLinks';
+import { resolveReferralCode } from '../../utils/referralCode';
 import type { Property } from '../../types';
 
 import RegistrationModal from './RegistrationModal';
@@ -929,9 +930,9 @@ const ReferralLanding: React.FC = () => {
 
     const resolvedReferrerId = useMemo(() => {
         if (!referrerCode) return undefined;
-        const allPeople: any[] = [...tenants, ...staff, ...landlords, ...renovationInvestors];
-        const match = allPeople.find(u => u?.id && String(u.id).replace(/-/g, '').slice(0, 12).toUpperCase() === referrerCode.toUpperCase());
-        return match?.id ?? referrerCode;
+        const allPeople = [...(tenants || []), ...(staff || []), ...(landlords || []), ...(renovationInvestors || [])]
+            .map((u: any) => ({ id: u.id, name: u.name || '', referralCode: u.referralCode }));
+        return resolveReferralCode(referrerCode, allPeople) ?? referrerCode;
     }, [referrerCode, tenants, staff, landlords, renovationInvestors]);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {

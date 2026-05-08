@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { websiteLinks } from '../../utils/websiteLinks';
+import { generateUnitReferralCode } from '../../utils/referralCode';
 
 const ReferAndGrow: React.FC = () => {
     const { properties, funds, currentUser, tenants, renovationInvestors, leads, applications, rfTransactions, commissionRules } = useData();
@@ -149,14 +150,21 @@ const ReferAndGrow: React.FC = () => {
         };
     }, [calcState, vacantUnits, commissionRules, user]);
 
+    const getUnitCode = (unit: any): string => {
+        if (!currentUser?.id || !currentUser?.name) return user.referralCode;
+        return generateUnitReferralCode(currentUser.name, unit.unitNumber, currentUser.id);
+    };
+
     const handleShareUnit = (unit: any) => {
-        const shareUrl = websiteLinks.unit(unit.id, user.referralCode, unit.websiteListingUrl);
-        const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${Number(unit.rent ?? 0).toLocaleString()}. \n\nInterested? Book it here using my referral code *${user.referralCode}* to get priority processing! \n\nLink: ${shareUrl}`;
+        const unitCode = getUnitCode(unit);
+        const shareUrl = websiteLinks.unit(unit.id, unitCode, unit.websiteListingUrl);
+        const msg = `Hey! Check out this ${unit.type} at ${unit.location} going for KES ${Number(unit.rent ?? 0).toLocaleString()}. \n\nInterested? Book it here using my referral code *${unitCode}* to get priority processing! \n\nLink: ${shareUrl}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
     const handleCopyUnit = (unit: any) => {
-        const url = websiteLinks.unit(unit.id, user.referralCode, unit.websiteListingUrl);
+        const unitCode = getUnitCode(unit);
+        const url = websiteLinks.unit(unit.id, unitCode, unit.websiteListingUrl);
         navigator.clipboard.writeText(url);
         setCopiedId(unit.id);
         setTimeout(() => setCopiedId(null), 2000);
