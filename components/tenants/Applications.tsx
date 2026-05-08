@@ -329,12 +329,14 @@ export const ApplicationFormModal: React.FC<{
                 note = "Full month rent charged (joined 1st-9th)";
             } else if (day <= 24) {
                 // 10th to 24th: Prorated rent + Deposit
-                const daysRemaining = Math.max(0, 30 - day); // days AFTER join day
+                const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+                const daysRemaining = Math.max(0, lastDay - day); // days AFTER join day (join day excluded)
                 calculated = (monthlyRent / 30) * daysRemaining;
                 note = `Prorated: ${daysRemaining} days remaining (joined 10th-24th)`;
             } else {
                 // 25th onward: Prorated remainder + full next month's rent + Deposit
-                const daysRemaining = Math.max(0, 30 - day); // days AFTER join day
+                const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+                const daysRemaining = Math.max(0, lastDay - day); // days AFTER join day (join day excluded)
                 const prorated = (monthlyRent / 30) * daysRemaining;
                 calculated = prorated + monthlyRent;
                 note = "Prorated days + next month's rent (joined 25th+)";
@@ -1419,8 +1421,27 @@ const ProfileHubModal: React.FC<{
     isApproved?: boolean;
     canApprove?: boolean;
 }> = ({ record, onClose, onManualPay, onStkPay, onEdit, onMove, onDelete, onApprove, onReverseAllocation, isApproved = false, canApprove = false }) => {
+    const { properties, tenants, staff, landlords, renovationInvestors } = useData();
     const isApp = record.recordType === 'Application';
     const payDisabled = isApp && !isApproved;
+
+    const referredUnitLabel = useMemo(() => {
+        const uid = (record as any).referredUnitId as string | undefined;
+        if (!uid) return null;
+        for (const prop of (properties || [])) {
+            const unit = prop.units?.find(u => u.id === uid);
+            if (unit) return `${unit.unitNumber}${unit.unitType ? ' (' + unit.unitType + ')' : ''} — ${prop.name}`;
+        }
+        return null;
+    }, [(record as any).referredUnitId, properties]);
+
+    const referrerName = useMemo(() => {
+        const rid = record.referrerId;
+        if (!rid) return null;
+        const allPeople: any[] = [...(tenants || []), ...(staff || []), ...(landlords || []), ...(renovationInvestors || [])];
+        return allPeople.find(p => p.id === rid)?.name ?? null;
+    }, [record.referrerId, tenants, staff, landlords, renovationInvestors]);
+
     return (
         <div className="fixed inset-0 bg-black/60 z-[2150] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
@@ -1433,6 +1454,22 @@ const ProfileHubModal: React.FC<{
                         <Icon name="close" className="w-4 h-4" />
                     </button>
                 </div>
+
+                {isApp && (referredUnitLabel || referrerName) && (
+                    <div className="mb-3 p-3 bg-teal-50 border border-teal-100 rounded-lg text-xs space-y-1">
+                        {referrerName && (
+                            <p className="text-teal-800">
+                                <span className="font-bold">Referred by:</span> {referrerName}
+                            </p>
+                        )}
+                        {referredUnitLabel && (
+                            <p className="text-teal-800">
+                                <span className="font-bold">Referred for:</span> {referredUnitLabel}
+                                {isApp && !isApproved && <span className="ml-1 text-teal-600 italic">(can be changed at approval)</span>}
+                            </p>
+                        )}
+                    </div>
+                )}
 
                 {isApp && (
                     <div className="mt-1">
@@ -1882,13 +1919,14 @@ const Applications: React.FC = () => {
             const joinDate = app.rentStartDate ? new Date(app.rentStartDate) : new Date();
             const joinDay = joinDate.getDate();
             let firstMonthRent: number;
+            const lastDayOfMonth = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
             if (joinDay <= 9) {
                 firstMonthRent = rentAmount;
             } else if (joinDay <= 24) {
-                const daysLeft = Math.max(0, 30 - joinDay); // days AFTER join day
+                const daysLeft = Math.max(0, lastDayOfMonth - joinDay); // days AFTER join day (join day excluded)
                 firstMonthRent = Math.round((rentAmount / 30) * daysLeft);
             } else {
-                const daysLeft = Math.max(0, 30 - joinDay); // days AFTER join day
+                const daysLeft = Math.max(0, lastDayOfMonth - joinDay); // days AFTER join day (join day excluded)
                 firstMonthRent = Math.round((rentAmount / 30) * daysLeft) + rentAmount;
             }
 
@@ -2228,6 +2266,9 @@ const Applications: React.FC = () => {
                                             <div>
                                                 <h3 className="font-bold text-gray-800">{record.name}</h3>
                                                 <p className="text-xs text-gray-500">{record.unit} • {record.propertyName || record.property}</p>
+                                {record.recordType === 'Application' && (record as any).referredUnitId && (
+                                    <p className="text-[10px] text-teal-600 font-bold mt-0.5">Referred unit set</p>
+                                )}
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1">

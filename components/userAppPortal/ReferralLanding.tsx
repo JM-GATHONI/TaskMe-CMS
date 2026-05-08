@@ -7,7 +7,7 @@ import { INITIAL_FUNDS } from '../../constants';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { websiteLinks } from '../../utils/websiteLinks';
-import { resolveReferralCode } from '../../utils/referralCode';
+import { resolveReferralCode, extractUnitTagFromCode } from '../../utils/referralCode';
 import type { Property } from '../../types';
 
 import RegistrationModal from './RegistrationModal';
@@ -813,12 +813,12 @@ const AboutUsPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 };
 
 // --- Self-Registration Modal ---
-const SelfRegistrationModal: React.FC<{ onClose: () => void; referrerId?: string }> = ({ onClose, referrerId }) => {
-    const { addApplication } = useData();
+const SelfRegistrationModal: React.FC<{ onClose: () => void; referrerId?: string; referralCodeRaw?: string }> = ({ onClose, referrerId, referralCodeRaw }) => {
+    const { addApplication, tenants, staff, landlords, renovationInvestors, properties } = useData();
     const [step, setStep] = useState<'form' | 'success'>('form');
     const [busy, setBusy] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', location: '' });
+    const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', location: '', referralCode: referralCodeRaw || '' });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -839,6 +839,27 @@ const SelfRegistrationModal: React.FC<{ onClose: () => void; referrerId?: string
             }
             userId = signUpData?.user?.id;
 
+            // Resolve referral code: manual input takes precedence over URL-embedded ID
+            let resolvedId = referrerId;
+            let resolvedUnitId: string | undefined;
+            const rawCode = form.referralCode.trim();
+            if (rawCode) {
+                const people = [
+                    ...(tenants || []), ...(staff || []),
+                    ...(landlords || []), ...(renovationInvestors || []),
+                ].map((u: any) => ({ id: u.id, name: u.name || '', referralCode: u.referralCode }));
+                const found = resolveReferralCode(rawCode, people);
+                if (found) resolvedId = found;
+                const unitTag = extractUnitTagFromCode(rawCode);
+                if (unitTag) {
+                    const tag = unitTag.toUpperCase();
+                    for (const prop of (properties || [])) {
+                        const unit = prop.units?.find(u => u.unitNumber.toUpperCase() === tag);
+                        if (unit) { resolvedUnitId = unit.id; break; }
+                    }
+                }
+            }
+
             addApplication({
                 id: `app-self-${Date.now()}`,
                 name: form.name,
@@ -848,7 +869,8 @@ const SelfRegistrationModal: React.FC<{ onClose: () => void; referrerId?: string
                 submittedDate: new Date().toISOString().split('T')[0],
                 source: 'Self-Registration',
                 propertyName: form.location || undefined,
-                referrerId: referrerId,
+                referrerId: resolvedId,
+                referredUnitId: resolvedUnitId,
                 authUserId: userId,
             });
             setStep('success');
@@ -903,6 +925,18 @@ const SelfRegistrationModal: React.FC<{ onClose: () => void; referrerId?: string
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Preferred Location / Property <span className="text-gray-400 font-normal">(optional)</span></label>
                             <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="e.g. Westlands, Kilimani..." />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referral Code <span className="text-gray-400 font-normal">(optional)</span></label>
+                            <input
+                                value={form.referralCode}
+                                onChange={e => setForm({...form, referralCode: e.target.value.toUpperCase()})}
+                                className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary/20 font-mono tracking-wider"
+                                placeholder="e.g. JOSKIR/15J"
+                            />
+                            {form.referralCode && (
+                                <p className="text-xs text-teal-600 mt-1">Code applied — you will be linked to this referrer and their suggested unit during approval.</p>
+                            )}
                         </div>
                         <p className="text-xs text-gray-400">Your application will be reviewed and verified by our team before you are assigned a unit.</p>
                         <button type="submit" disabled={busy} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary-dark transition-all disabled:opacity-60">
@@ -1465,6 +1499,7 @@ const ReferralLanding: React.FC = () => {
                 <SelfRegistrationModal
                     onClose={() => setIsSelfRegOpen(false)}
                     referrerId={resolvedReferrerId}
+                    referralCodeRaw={referrerCode ?? undefined}
                 />
             )}
         </div>

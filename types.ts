@@ -364,6 +364,10 @@ export interface TenantApplication {
   avatar?: string;
   profilePicture?: string;
   referrerId?: string;
+  /** The unit the referrer specifically directed this applicant to.
+   *  Preserved even if a different unit is allocated at approval time,
+   *  ensuring the referrer still earns commission on the signed lease. */
+  referredUnitId?: string;
 
   // ── Deposit special-case fields (carried to TenantProfile on approval) ───
   depositExempt?: boolean;
