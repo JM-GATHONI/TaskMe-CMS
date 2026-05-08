@@ -8,6 +8,7 @@ const ReferralProgram: React.FC = () => {
     const { leads, rfTransactions, currentUser, commissionRules, properties } = useData();
     const [copied, setCopied] = useState(false);
     const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
+    const [vacantSearch, setVacantSearch] = useState('');
 
     const referralLeads = useMemo(
         () => (leads || []).filter(l => l.source === 'Referral'),
@@ -85,9 +86,20 @@ const ReferralProgram: React.FC = () => {
                 title: `${u.unitNumber} at ${p.name}`,
                 rent: u.rent || p.defaultMonthlyRent || 0,
                 location: p.subLocation || p.location || p.zone || '',
+                type: (u as any).unitType || p.type || '',
             }))
         )
     , [properties]);
+
+    const filteredVacantUnits = useMemo(() => {
+        const q = vacantSearch.trim().toLowerCase();
+        if (!q) return vacantUnits;
+        return vacantUnits.filter(u =>
+            u.title.toLowerCase().includes(q) ||
+            (u.location || '').toLowerCase().includes(q) ||
+            (u.type || '').toLowerCase().includes(q)
+        );
+    }, [vacantUnits, vacantSearch]);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {
         if (type === 'unit') {
@@ -151,9 +163,19 @@ const ReferralProgram: React.FC = () => {
             {vacantUnits.length > 0 && (
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-1">Share Vacant Units</h3>
-                    <p className="text-xs text-gray-500 mb-4">Copy a direct link to any vacant unit — your referral code is embedded automatically.</p>
+                    <p className="text-xs text-gray-500 mb-3">Copy a direct link to any vacant unit — your referral code is embedded automatically.</p>
+                    <div className="relative mb-3">
+                        <Icon name="search" className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+                        <input
+                            type="text"
+                            value={vacantSearch}
+                            onChange={e => setVacantSearch(e.target.value)}
+                            placeholder="Search by location or house type..."
+                            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:ring-primary focus:border-primary outline-none"
+                        />
+                    </div>
                     <div className="space-y-2 max-h-52 overflow-y-auto">
-                        {vacantUnits.map(u => (
+                        {filteredVacantUnits.map(u => (
                             <div key={u.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
                                 <div className="min-w-0">
                                     <p className="text-sm font-medium text-gray-800 truncate">{u.title}</p>

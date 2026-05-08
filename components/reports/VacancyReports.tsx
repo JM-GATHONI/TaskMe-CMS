@@ -58,6 +58,7 @@ interface VacancyData {
     agentName: string;
     rent: number;
     daysVacant: number; // Mocked or calculated
+    unitType: string;
 }
 
 const VacancyReports: React.FC = () => {
@@ -87,7 +88,8 @@ const VacancyReports: React.FC = () => {
                         propertyBranch: p.branch,
                         agentName: agent ? agent.name : 'Unassigned',
                         rent: u.rent || p.defaultMonthlyRent || 0,
-                        daysVacant: daysVacant
+                        daysVacant: daysVacant,
+                        unitType: (u as any).unitType || p.type || ''
                     });
                 }
             });
@@ -99,9 +101,13 @@ const VacancyReports: React.FC = () => {
     // --- FILTERING ---
     const filteredList = useMemo(() => {
         return vacancyList.filter(item => {
-            const matchesSearch = item.propertyName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                  item.agentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                  item.unitNumber.toLowerCase().includes(searchQuery.toLowerCase());
+            const q = searchQuery.toLowerCase();
+            const matchesSearch = !q ||
+                item.propertyName.toLowerCase().includes(q) ||
+                item.agentName.toLowerCase().includes(q) ||
+                item.unitNumber.toLowerCase().includes(q) ||
+                (item.propertyLocation || '').toLowerCase().includes(q) ||
+                (item.unitType || '').toLowerCase().includes(q);
             
             let matchesFilter = true;
             if (filter === 'High Value') matchesFilter = item.rent > 30000;
@@ -235,7 +241,7 @@ const VacancyReports: React.FC = () => {
                         </select>
                         <input 
                             type="text" 
-                            placeholder="Search property or agent..." 
+                            placeholder="Search by property, location, house type or agent..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="p-2 border rounded-lg w-full sm:w-64 focus:ring-2 focus:ring-primary/20 outline-none"
