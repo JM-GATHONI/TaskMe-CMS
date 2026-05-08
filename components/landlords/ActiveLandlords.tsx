@@ -1511,7 +1511,7 @@ const ActiveLandlords: React.FC = () => {
     }, [landlords]);
 
     const filteredLandlords = useMemo(() =>
-        landlords.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        landlords.filter(l => (l as any).role !== 'Affiliate' && l.name.toLowerCase().includes(searchQuery.toLowerCase()))
     , [landlords, searchQuery]);
 
     if (selectedLandlord) {
