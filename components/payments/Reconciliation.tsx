@@ -222,6 +222,12 @@ const Reconciliation: React.FC = () => {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [selectedTx, setSelectedTx] = useState<UnmatchedPayment | null>(null);
 
+    // Search + pagination state
+    const [externalSearch, setExternalSearch] = useState('');
+    const [internalSearch, setInternalSearch] = useState('');
+    const [pageSize, setPageSize] = useState(20);
+    const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
+
     // Verify (Pull Transactions) state.
     const [isVerifying, setIsVerifying] = useState(false);
     const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
@@ -240,7 +246,7 @@ const Reconciliation: React.FC = () => {
                 .eq('source', 'c2b')
                 .is('matched_tenant_id', null)
                 .order('created_at', { ascending: false })
-                .limit(200);
+                .limit(1000);
             if (error) throw error;
             setUnmatched((data ?? []) as UnmatchedPayment[]);
         } catch (e: any) {
@@ -396,12 +402,37 @@ const Reconciliation: React.FC = () => {
         }
     };
 
-    const internalLedgerRows = useMemo(() => {
+    const allInternalRows = useMemo(() => {
         return tenants
             .flatMap(t => (t.paymentHistory ?? []).map(p => ({ ...p, tenant: t })))
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 20);
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [tenants]);
+
+    const filteredExternalRows = useMemo(() => {
+        const q = externalSearch.trim().toLowerCase();
+        if (!q) return unmatched;
+        return unmatched.filter(tx =>
+            (tx.transaction_id || '').toLowerCase().includes(q) ||
+            (tx.bill_ref_number || '').toLowerCase().includes(q) ||
+            senderName(tx).toLowerCase().includes(q) ||
+            (tx.msisdn || tx.phone || '').includes(q)
+        );
+    }, [unmatched, externalSearch]);
+
+    const filteredInternalRows = useMemo(() => {
+        const q = internalSearch.trim().toLowerCase();
+        if (!q) return allInternalRows;
+        return allInternalRows.filter(item =>
+            (item.tenant.name || '').toLowerCase().includes(q) ||
+            (item.tenant.unit || '').toLowerCase().includes(q) ||
+            (item.reference || '').toLowerCase().includes(q) ||
+            (item.amount || '').toLowerCase().includes(q)
+        );
+    }, [allInternalRows, internalSearch]);
+
+    const internalLedgerRows = useMemo(() =>
+        filteredInternalRows.slice(0, pageSize)
+    , [filteredInternalRows, pageSize]);
 
     return (
         <div className="space-y-8">
@@ -458,6 +489,26 @@ const Reconciliation: React.FC = () => {
                             </div>
                         </div>
 
+                        <div className="flex flex-col sm:flex-row gap-2 mb-3 items-center">
+                            <div className="relative flex-grow w-full">
+                                <input
+                                    type="text"
+                                    value={externalSearch}
+                                    onChange={e => setExternalSearch(e.target.value)}
+                                    placeholder="Search by receipt, account ref, sender, phone..."
+                                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-primary focus:border-primary outline-none"
+                                />
+                                <Icon name="search" className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-gray-500 whitespace-nowrap">Rows:</span>
+                                <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="border border-gray-200 rounded-md text-sm px-2 py-1.5 focus:outline-none">
+                                    {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                                <span className="text-xs text-gray-400 whitespace-nowrap">{filteredExternalRows.length} total</span>
+                            </div>
+                        </div>
+
                         <div className="overflow-x-auto">
                             <table className="min-w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-500 font-bold uppercase">
@@ -473,7 +524,7 @@ const Reconciliation: React.FC = () => {
                                 <tbody className="divide-y divide-gray-100">
                                     {isLoading && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>}
                                     {!isLoading && loadError && <tr><td colSpan={6} className="px-4 py-8 text-center text-red-500">{loadError}</td></tr>}
-                                    {!isLoading && !loadError && unmatched.map(tx => (
+                                    {!isLoading && !loadError && filteredExternalRows.slice(0, pageSize).map(tx => (
                                         <tr key={tx.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3 text-gray-600">{new Date(tx.created_at).toLocaleString()}</td>
                                             <td className="px-4 py-3 font-mono text-xs">{tx.transaction_id || '—'}</td>
@@ -506,7 +557,26 @@ const Reconciliation: React.FC = () => {
 
                 {activeTab === 'internal' && (
                     <div>
-                         <p className="text-sm text-gray-500 mb-4">Recently recorded payments (Tenant Ledgers). Click 'Move' to reassign to another tenant.</p>
+                        <p className="text-sm text-gray-500 mb-3">All recorded payments (Tenant Ledgers). Click 'Move' to reassign to another tenant.</p>
+                        <div className="flex flex-col sm:flex-row gap-2 mb-3 items-center">
+                            <div className="relative flex-grow w-full">
+                                <input
+                                    type="text"
+                                    value={internalSearch}
+                                    onChange={e => setInternalSearch(e.target.value)}
+                                    placeholder="Search by tenant, unit, reference, amount..."
+                                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-primary focus:border-primary outline-none"
+                                />
+                                <Icon name="search" className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-gray-500 whitespace-nowrap">Rows:</span>
+                                <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="border border-gray-200 rounded-md text-sm px-2 py-1.5 focus:outline-none">
+                                    {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                                <span className="text-xs text-gray-400 whitespace-nowrap">{filteredInternalRows.length} total</span>
+                            </div>
+                        </div>
                          <div className="overflow-x-auto">
                             <table className="min-w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-500 font-bold uppercase">
