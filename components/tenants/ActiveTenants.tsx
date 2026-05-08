@@ -2087,7 +2087,9 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 const settledByPayment = tenant.proratedDeposit?.enabled
                     ? Number(amount) >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
                     : Number(amount) >= effectiveRent + depositExpectedStandard;
-                if (alreadySettled || settledByPayment) {
+                // When deposit is pre-settled, still require rent to be covered before activating.
+                const rentPaidThisTransaction = !!tenant.rentExtension?.enabled || Number(amount) >= effectiveRent;
+                if ((alreadySettled && rentPaidThisTransaction) || settledByPayment) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
                 }
@@ -2189,11 +2191,14 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 updates.recurringBillsPaidThisMonth = { period, amounts: existingAmounts };
             }
 
-            // 10. Activate pending tenant if both rent and deposit are now covered
+            // 10. Activate pending tenant if both rent and deposit are now covered.
+            // Checkbox selection alone is not enough — validate the payment amount too.
             if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+                const depositSelectedAndPaid = selectedPaymentKeys.has('deposit') && Number(amount) >= depositDueForInvoice;
                 const depositCovered = tenant.depositExempt || isDepositFullyPaid
-                    || !!tenant.rentExtension?.enabled || selectedPaymentKeys.has('deposit');
-                const rentCovered = selectedPaymentKeys.has('rent');
+                    || !!tenant.rentExtension?.enabled || depositSelectedAndPaid;
+                const rentCovered = selectedPaymentKeys.has('rent')
+                    && (!!tenant.rentExtension?.enabled || Number(amount) >= rentDue);
                 if (depositCovered && rentCovered) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
