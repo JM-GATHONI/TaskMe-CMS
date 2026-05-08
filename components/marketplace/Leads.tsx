@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
-import { Lead } from '../../types';
+import { Lead, Property } from '../../types';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
@@ -104,10 +104,30 @@ const LeadCard: React.FC<{ lead: Lead; onMove: (id: string, stage: string) => vo
     );
 };
 
-const AddLeadModal: React.FC<{ onClose: () => void; onSave: (lead: Lead) => void; referrerOptions: Array<{ id: string; name: string; role: string }> }> = ({ onClose, onSave, referrerOptions }) => {
+const AddLeadModal: React.FC<{ onClose: () => void; onSave: (lead: Lead) => void; referrerOptions: Array<{ id: string; name: string; role: string }>; properties: Property[] }> = ({ onClose, onSave, referrerOptions, properties }) => {
     const [formData, setFormData] = useState<Partial<Lead>>({
         tenantName: '', contact: '', email: '', interest: '', status: 'New', source: 'Walk-in', notes: ''
     });
+    const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [selectedUnitId, setSelectedUnitId] = useState('');
+    const [selectedReferrerGroup, setSelectedReferrerGroup] = useState('');
+
+    const REFERRER_GROUPS = [
+        { label: 'Tenants',      match: (r: { role: string }) => r.role === 'Tenant' },
+        { label: 'Landlords',    match: (r: { role: string }) => r.role === 'Landlord' },
+        { label: 'Affiliates',   match: (r: { role: string }) => r.role === 'Affiliate' },
+        { label: 'Field Agents', match: (r: { role: string }) => r.role === 'Field Agent' },
+        { label: 'Caretakers',   match: (r: { role: string }) => r.role === 'Caretaker' },
+        { label: 'Contractors',  match: (r: { role: string }) => r.role === 'Contractor' },
+        { label: 'System Users', match: (r: { role: string }) => !['Tenant','Landlord','Affiliate','Field Agent','Caretaker','Contractor'].includes(r.role) },
+    ];
+    const activeGroups = REFERRER_GROUPS.filter(g => referrerOptions.some(r => g.match(r)));
+    const groupMembers = selectedReferrerGroup
+        ? referrerOptions.filter(r => {
+            const g = REFERRER_GROUPS.find(x => x.label === selectedReferrerGroup);
+            return g ? g.match(r) : false;
+        })
+        : [];
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,20 +152,100 @@ const AddLeadModal: React.FC<{ onClose: () => void; onSave: (lead: Lead) => void
                     <input className="w-full p-2 border rounded" placeholder="Prospect Name" value={formData.tenantName} onChange={e => setFormData({...formData, tenantName: e.target.value})} required />
                     <input className="w-full p-2 border rounded" placeholder="Phone Number" value={formData.contact} onChange={e => setFormData({...formData, contact: e.target.value})} required />
                     <input className="w-full p-2 border rounded" placeholder="Email (Optional)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                    <input className="w-full p-2 border rounded" placeholder="Interest (e.g. 2BR Apartment)" value={formData.interest} onChange={e => setFormData({...formData, interest: e.target.value})} />
-                    <select className="w-full p-2 border rounded bg-white" value={formData.source} onChange={e => setFormData({...formData, source: e.target.value as any, referrerId: e.target.value !== 'Referral' ? undefined : formData.referrerId})}>
+                    {/* Interest: Property → Unit cascade */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-bold text-gray-500 uppercase">Interest — Vacant Unit</label>
+                        <select
+                            className="w-full p-2 border rounded bg-white"
+                            value={selectedPropertyId}
+                            onChange={e => {
+                                setSelectedPropertyId(e.target.value);
+                                setSelectedUnitId('');
+                                setFormData(f => ({ ...f, interest: '' }));
+                            }}
+                        >
+                            <option value="">-- Select Property --</option>
+                            {properties
+                                .filter(p => p.units.some(u => u.status === 'Vacant'))
+                                .map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                            }
+                        </select>
+                        {selectedPropertyId && (() => {
+                            const prop = properties.find(p => p.id === selectedPropertyId);
+                            const vacantUnits = prop?.units.filter(u => u.status === 'Vacant') || [];
+                            return (
+                                <select
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={selectedUnitId}
+                                    onChange={e => {
+                                        const uid = e.target.value;
+                                        setSelectedUnitId(uid);
+                                        const unit = vacantUnits.find(u => u.id === uid);
+                                        if (unit && prop) {
+                                            setFormData(f => ({ ...f, interest: `Unit ${unit.unitNumber}${unit.unitType ? ' (' + unit.unitType + ')' : ''} — ${prop.name}` }));
+                                        } else {
+                                            setFormData(f => ({ ...f, interest: '' }));
+                                        }
+                                    }}
+                                >
+                                    <option value="">-- Select Unit --</option>
+                                    {vacantUnits.map(u => (
+                                        <option key={u.id} value={u.id}>
+                                            {u.unitNumber}{u.unitType ? ` — ${u.unitType}` : ''}{u.rent ? ` · KES ${u.rent.toLocaleString()}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            );
+                        })()}
+                        <input
+                            className="w-full p-2 border rounded text-sm text-gray-600"
+                            placeholder="Or type custom interest..."
+                            value={formData.interest || ''}
+                            onChange={e => {
+                                setSelectedUnitId('');
+                                setFormData(f => ({ ...f, interest: e.target.value }));
+                            }}
+                        />
+                    </div>
+                    <select className="w-full p-2 border rounded bg-white" value={formData.source} onChange={e => {
+                        const src = e.target.value as any;
+                        setFormData({...formData, source: src, referrerId: src !== 'Referral' ? undefined : formData.referrerId});
+                        if (src !== 'Referral') { setSelectedReferrerGroup(''); }
+                    }}>
                         <option>Walk-in</option>
                         <option>Referral</option>
                         <option>Social Media</option>
                         <option>Website</option>
                     </select>
                     {formData.source === 'Referral' && (
-                        <select className="w-full p-2 border rounded bg-white" value={formData.referrerId || ''} onChange={e => setFormData({...formData, referrerId: e.target.value || undefined})}>
-                            <option value="">-- Select Referrer --</option>
-                            {referrerOptions.map(r => (
-                                <option key={r.id} value={r.id}>{r.name} ({r.role})</option>
-                            ))}
-                        </select>
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase">Referrer</label>
+                            <select
+                                className="w-full p-2 border rounded bg-white"
+                                value={selectedReferrerGroup}
+                                onChange={e => {
+                                    setSelectedReferrerGroup(e.target.value);
+                                    setFormData(f => ({ ...f, referrerId: undefined }));
+                                }}
+                            >
+                                <option value="">-- Select Group --</option>
+                                {activeGroups.map(g => (
+                                    <option key={g.label} value={g.label}>{g.label}</option>
+                                ))}
+                            </select>
+                            {selectedReferrerGroup && (
+                                <select
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={formData.referrerId || ''}
+                                    onChange={e => setFormData(f => ({ ...f, referrerId: e.target.value || undefined }))}
+                                >
+                                    <option value="">-- Select {selectedReferrerGroup.slice(0, -1)} --</option>
+                                    {groupMembers.map(r => (
+                                        <option key={r.id} value={r.id}>{r.name}</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
                     )}
                     <textarea className="w-full p-2 border rounded" rows={3} placeholder="Notes..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
                     <div className="flex justify-end gap-2 pt-2">
@@ -213,7 +313,7 @@ const PayCommissionModal: React.FC<{
 };
 
 const Leads: React.FC = () => {
-    const { leads, addLead, updateLead, deleteLead, syncWebsiteLeads, staff, landlords, tenants, renovationInvestors, commissionRules, rfTransactions, addRFTransaction, addBill, checkPermission, currentUser } = useData();
+    const { leads, addLead, updateLead, deleteLead, syncWebsiteLeads, staff, landlords, tenants, renovationInvestors, commissionRules, rfTransactions, addRFTransaction, addBill, checkPermission, currentUser, properties } = useData();
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
     const canCreate = isSuperAdmin || checkPermission('Marketplace', 'create');
     const canEdit = isSuperAdmin || checkPermission('Marketplace', 'edit');
@@ -645,7 +745,7 @@ const Leads: React.FC = () => {
                 </div>
             )}
 
-            {isModalOpen && <AddLeadModal onClose={() => setIsModalOpen(false)} onSave={handleSaveLead} referrerOptions={referrerOptions} />}
+            {isModalOpen && <AddLeadModal onClose={() => setIsModalOpen(false)} onSave={handleSaveLead} referrerOptions={referrerOptions} properties={properties} />}
             {payModalData && (
                 <PayCommissionModal
                     referrerName={payModalData.referrerName}
