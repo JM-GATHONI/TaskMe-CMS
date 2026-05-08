@@ -333,28 +333,41 @@ const QuickSearch: React.FC = () => {
         }
 
         if (activeFilter === 'Partial Payments') {
-            return searchedTenants.flatMap(t =>
-                t.paymentHistory
-                    .filter(p => {
-                        const paid = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
-                        return paid > 0 && paid < t.rentAmount && isInDateRange(p.date);
-                    })
-                    .map(p => {
-                        const paid = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
-                        const shortfall = t.rentAmount - paid;
-                        return {
-                            id: `${t.id}-${p.reference}`,
-                            tenant: t.name,
-                            property: `${t.propertyName} - ${t.unit}`,
-                            amountDisplay: p.amount,
-                            val: paid,
-                            expected: t.rentAmount,
-                            shortfall,
-                            date: p.date,
-                            method: p.method
-                        };
-                    })
-            );
+            return searchedTenants.flatMap(t => {
+                // Group all payment entries by billing period (YYYY-MM)
+                const byPeriod: Record<string, { totalPaid: number; latestDate: string; methods: string[] }> = {};
+                t.paymentHistory.forEach(p => {
+                    const parsed = parseFlexDate(p.date);
+                    if (!parsed) return;
+                    const periodKey = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+                    if (!byPeriod[periodKey]) byPeriod[periodKey] = { totalPaid: 0, latestDate: p.date, methods: [] };
+                    const paid = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
+                    byPeriod[periodKey].totalPaid += paid;
+                    // Track the latest date in this period for display
+                    if (new Date(p.date) > new Date(byPeriod[periodKey].latestDate)) {
+                        byPeriod[periodKey].latestDate = p.date;
+                    }
+                    if (p.method && !byPeriod[periodKey].methods.includes(p.method)) {
+                        byPeriod[periodKey].methods.push(p.method);
+                    }
+                });
+
+                return Object.entries(byPeriod)
+                    .filter(([, { totalPaid, latestDate }]) =>
+                        totalPaid > 0 && totalPaid < t.rentAmount && isInDateRange(latestDate)
+                    )
+                    .map(([periodKey, { totalPaid, latestDate, methods }]) => ({
+                        id: `${t.id}-${periodKey}`,
+                        tenant: t.name,
+                        property: `${t.propertyName} - ${t.unit}`,
+                        amountDisplay: `KES ${totalPaid.toLocaleString()}`,
+                        val: totalPaid,
+                        expected: t.rentAmount,
+                        shortfall: t.rentAmount - totalPaid,
+                        date: latestDate,
+                        method: methods.join(', ') || '—'
+                    }));
+            });
         }
 
         return [];
