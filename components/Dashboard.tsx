@@ -690,6 +690,7 @@ const Dashboard: React.FC = () => {
 
     const FILTER_BUTTONS = [
         { label: 'Paid', color: 'bg-green-100 text-green-800 hover:bg-green-200' },
+        { label: 'Unpaid', color: 'bg-amber-100 text-amber-800 hover:bg-amber-200' },
         { label: 'Arrears', color: 'bg-red-100 text-red-800 hover:bg-red-200' },
         { label: 'Unpaid Fines', color: 'bg-orange-100 text-orange-800 hover:bg-orange-200' },
         { label: 'Paid Fines', color: 'bg-teal-100 text-teal-800 hover:bg-teal-200' },
