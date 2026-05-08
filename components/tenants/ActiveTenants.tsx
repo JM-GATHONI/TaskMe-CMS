@@ -892,13 +892,13 @@ const NoticeTemplateModal: React.FC<{
             setSubject('Formal Warning: Lease Violation');
             setContent(`Dear ${tenant.name},\n\nThis letter serves as a formal warning regarding a violation of your lease agreement for ${tenant.unit}. specifically:\n\n[Enter Details of Violation]\n\nPlease rectify this immediately to avoid further action.`);
         } else if (type === 'Vacation') {
-            setSubject('Acknowledgement of Vacation Notice');
+            setSubject('Acknowledgement of Vacate Notice');
             setContent(`Dear ${tenant.name},\n\nWe acknowledge receipt of your notice to vacate ${tenant.unit}. Your move-out date is set for [Enter Date].\n\nPlease ensure the unit is cleaned and keys are returned by the move-out date for deposit processing.`);
         } else if (type === 'Force') {
             setSubject('Notice of Eviction');
             setContent(`Dear ${tenant.name},\n\nDue to repeated violations/non-payment, your lease for ${tenant.unit} is hereby terminated effective immediately.\n\nYou are required to vacate the premises by [Enter Date]. Failure to comply will result in legal action.`);
         } else if (type === 'Review Client Notice') {
-            setSubject('Re: Your Vacation Notice');
+            setSubject('Re: Your Vacate Notice');
             setContent(`Dear ${tenant.name},\n\nWe have received your request to vacate. \n\n[If Accepted]: We accept your notice. Move out date: ${clientNotice?.effectiveDate}.\n[If Rejected]: We cannot accept your notice at this time due to...`);
         }
     }, [type, tenant, clientNotice]);
@@ -1921,7 +1921,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
     // nextDueDate & lastDueDate are now derived above to match the automated late fine rule.
 
-    // Check for client-initiated vacation notices
+    // Check for client-initiated vacate notices
     useEffect(() => {
         const clientVacationNotice = tenant.notices?.find(n => n.origin === 'Client' && n.status === 'Active');
         if (clientVacationNotice) {
@@ -2535,7 +2535,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 {reviewNotice && (
                     <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex justify-between items-center animate-pulse">
                         <div>
-                            <p className="text-blue-800 font-bold text-sm">Client Submitted Vacation Notice</p>
+                            <p className="text-blue-800 font-bold text-sm">Client Submitted Vacate Notice</p>
                             <p className="text-xs text-blue-600">Requested Move Out: {reviewNotice.effectiveDate}</p>
                         </div>
                         <button onClick={() => openNoticeModal('Review Client Notice')} className="px-4 py-2 bg-blue-600 text-white rounded-md text-xs font-bold shadow-sm hover:bg-blue-700">

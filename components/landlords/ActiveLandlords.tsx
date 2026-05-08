@@ -1317,7 +1317,7 @@ export const LandlordDetailView: React.FC<{
                                     <div key={t.id} className="p-3 bg-orange-50 rounded border border-orange-100 flex items-start">
                                         <Icon name="offboarding" className="w-5 h-5 text-orange-600 mr-2 mt-0.5" />
                                         <div>
-                                            <p className="font-bold text-sm text-orange-800">Vacation Notice</p>
+                                            <p className="font-bold text-sm text-orange-800">Vacate Notice</p>
                                             <p className="text-xs text-orange-700">Tenant <strong>{t.name}</strong> (Unit {t.unit}) is vacating on {t.leaseEnd}.</p>
                                         </div>
                                     </div>

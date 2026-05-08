@@ -154,7 +154,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: Ten
     );
 };
 
-// --- VACATION NOTICE MODAL ---
+// --- VACATE NOTICE MODAL ---
 const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void }> = ({ tenant, onClose }) => {
     const { addOffboardingRecord, updateTenant } = useData();
     const [moveOutDate, setMoveOutDate] = useState('');
@@ -206,7 +206,7 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                         <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
                             <Icon name="offboarding" className="w-5 h-5 text-orange-600" />
                         </div>
-                        <h3 className="text-xl font-bold text-gray-800">Vacation Notice</h3>
+                        <h3 className="text-xl font-bold text-gray-800">Vacate Notice</h3>
                     </div>
                     <button onClick={onClose}><Icon name="close" className="w-5 h-5 text-gray-400" /></button>
                 </div>
@@ -217,7 +217,7 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                             <Icon name="check" className="w-8 h-8 text-green-600" />
                         </div>
                         <p className="text-lg font-bold text-gray-800">Notice Submitted</p>
-                        <p className="text-sm text-gray-500">Your vacation notice has been recorded. The property team will be in touch to guide you through the exit process.</p>
+                        <p className="text-sm text-gray-500">Your vacate notice has been recorded. The property team will be in touch to guide you through the exit process.</p>
                         <button onClick={onClose} className="w-full py-3 bg-primary text-white font-bold rounded-xl mt-2">Done</button>
                     </div>
                 ) : (
@@ -232,7 +232,7 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                         {!currentMonthRentPaid && (
                             <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
                                 <p className="text-sm font-bold text-red-800">⛔ Outstanding Rent</p>
-                                <p className="text-sm text-red-700 mt-1">Your current month's rent is unpaid. Please clear your outstanding balance before submitting a vacation notice.</p>
+                                <p className="text-sm text-red-700 mt-1">Your current month's rent is unpaid. Please clear your outstanding balance before submitting a vacate notice.</p>
                             </div>
                         )}
                         <div>
@@ -252,7 +252,7 @@ const VacationNoticeModal: React.FC<{ tenant: TenantProfile; onClose: () => void
                             <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3">
                                 <p className="text-sm font-bold text-amber-800">⚠ Notice Period Warning</p>
                                 <ul className="text-sm text-amber-700 space-y-1.5 list-disc list-inside">
-                                    <li>Vacation notice requires a minimum of <strong>30 days</strong>.</li>
+                                    <li>Vacate notice requires a minimum of <strong>30 days</strong>.</li>
                                     <li>Current month's rent must be fully paid before vacating.</li>
                                     <li>Vacating in less than 30 days means you <strong>forfeit your security deposit</strong>{Number(tenant.depositPaid ?? 0) > 0 ? ` of KES ${Number(tenant.depositPaid).toLocaleString()}` : ''}.</li>
                                 </ul>
@@ -645,7 +645,7 @@ const TenantPortal: React.FC = () => {
                                     onClick={() => setIsVacationModalOpen(true)}
                                     className="w-full mt-1 py-2.5 px-3 bg-orange-50 border-2 border-orange-300 text-orange-700 font-bold rounded-lg hover:bg-orange-100 transition-colors text-sm flex items-center justify-center gap-2"
                                 >
-                                    <Icon name="offboarding" className="w-4 h-4"/> Issue Vacation Notice
+                                    <Icon name="offboarding" className="w-4 h-4"/> Issue Vacate Notice
                                 </button>
                             </div>
                         </div>
