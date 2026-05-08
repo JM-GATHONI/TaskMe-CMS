@@ -526,6 +526,8 @@ export interface OffboardingRecord {
   finalBillAmount?: number;
   propertyId?: string;
   securityDepositForfeited?: boolean;
+  /** True when management and tenant mutually agreed to waive the 30-day notice period. */
+  negotiated?: boolean;
 }
 
 export interface GeospatialData {

@@ -172,6 +172,62 @@ const InitiateOffboardingModal: React.FC<{
     );
 }
 
+// --- Negotiated Vacating Modal ---
+const NegotiatedVacatingModal: React.FC<{
+    tenant: TenantProfile;
+    onClose: () => void;
+    onConfirm: (moveOutDate: string, reason: string) => void;
+}> = ({ tenant, onClose, onConfirm }) => {
+    const [moveOutDate, setMoveOutDate] = useState('');
+    const [reason, setReason] = useState('');
+
+    const handleSubmit = () => {
+        if (!moveOutDate) return alert('Please select an agreed move-out date.');
+        onConfirm(moveOutDate, reason);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-[1500] flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-lg p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-1">
+                    <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center">
+                        <Icon name="check" className="w-5 h-5 text-teal-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Negotiated Vacating</h3>
+                </div>
+                <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-sm text-teal-800">
+                    <p className="font-bold mb-1">Mutual Agreement</p>
+                    <p>Management and <strong>{tenant.name}</strong> have agreed to an exit without the standard 30-day notice period. The tenant will still go through the full offboarding process.</p>
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Agreed Move-Out Date</label>
+                    <input
+                        type="date"
+                        value={moveOutDate}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setMoveOutDate(e.target.value)}
+                        className="w-full p-2 border rounded-lg"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Reason / Notes <span className="font-normal text-gray-400">(optional)</span></label>
+                    <textarea
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        rows={3}
+                        placeholder="e.g. Tenant relocating, mutual agreement reached on..."
+                        className="w-full p-2 border rounded-lg text-sm resize-none"
+                    />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-lg text-gray-700 font-medium">Cancel</button>
+                    <button onClick={handleSubmit} className="px-4 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700">Confirm &amp; Begin Offboarding</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- Manual Payment Recording Modal ---
 const RecordPaymentModal: React.FC<{
     tenant: TenantProfile;
@@ -1568,7 +1624,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const canPay        = isSuperAdmin || checkPermission('Tenants', 'pay');
     const canDeactivate = isSuperAdmin || checkPermission('Tenants', 'deactivate');
     const [chatInput, setChatInput] = useState('');
-    const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'recordPayment' | null>(null);
+    const [activeModal, setActiveModal] = useState<'bills' | 'fines' | 'status' | 'request' | 'pay' | 'notice' | 'manageOffboarding' | 'initiateOffboarding' | 'negotiatedVacating' | 'recordPayment' | null>(null);
     const [activeFollowUpId, setActiveFollowUpId] = useState<string | null>(null);
     const [selectedPaymentKeys, setSelectedPaymentKeys] = useState<Set<string>>(new Set());
     useEffect(() => { setSelectedPaymentKeys(new Set()); }, [tenant.id]);
@@ -1644,6 +1700,31 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             setActiveModal(null);
             alert("Notice revoked. Tenant status restored to Active.");
         }
+    };
+
+    const handleStartNegotiatedVacating = (moveOutDate: string, reason: string) => {
+        const today = new Date().toISOString().split('T')[0];
+        const newRecord: OffboardingRecord = {
+            id: `off-neg-${Date.now()}`,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            unit: tenant.unit,
+            noticeDate: today,
+            moveOutDate,
+            status: 'Notice Given',
+            inspectionStatus: 'Pending',
+            utilityClearance: false,
+            depositRefunded: false,
+            keysReturned: false,
+            propertyId: tenant.propertyId,
+            negotiated: true,
+            ...(reason ? { securityDepositForfeited: false } : {}),
+        };
+        addOffboardingRecord(newRecord);
+        updateTenant(tenant.id, { status: 'Notice', leaseEnd: moveOutDate });
+        setCreatedRecord(newRecord);
+        setActiveModal('manageOffboarding');
+        alert(`Negotiated vacating confirmed for ${tenant.name}. Move-out: ${moveOutDate}.${reason ? '\nReason: ' + reason : ''}`);
     };
 
     const handleFinalizeOffboarding = (record: OffboardingRecord) => {
@@ -2547,24 +2628,38 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 )}
 
                 {canEdit && (
-                <div className="grid grid-cols-3 gap-4">
-                    <button onClick={() => openNoticeModal('Warning')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-yellow-300">
-                         <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 mb-2 group-hover:scale-110 transition-transform">
-                            <Icon name="bell" className="w-5 h-5" />
+                <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-4">
+                        <button onClick={() => openNoticeModal('Warning')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-yellow-300">
+                             <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600 mb-2 group-hover:scale-110 transition-transform">
+                                <Icon name="bell" className="w-5 h-5" />
+                            </div>
+                            <p className="font-bold text-gray-700 text-sm text-center">Issue Warning</p>
+                        </button>
+                        <button onClick={() => openNoticeModal('Vacation')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-blue-300">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-2 group-hover:scale-110 transition-transform">
+                                <Icon name="offboarding" className="w-5 h-5" />
+                            </div>
+                            <p className="font-bold text-gray-700 text-sm text-center">Record Vacation</p>
+                        </button>
+                        <button onClick={() => openNoticeModal('Force')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-red-300">
+                            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-2 group-hover:scale-110 transition-transform">
+                                <Icon name="close" className="w-5 h-5" />
+                            </div>
+                            <p className="font-bold text-gray-700 text-sm text-center">Force Vacation</p>
+                        </button>
+                    </div>
+                    <button
+                        onClick={() => setActiveModal('negotiatedVacating')}
+                        className="w-full flex items-center justify-center gap-3 p-4 bg-teal-50 border border-teal-200 rounded-xl hover:bg-teal-100 transition-colors group"
+                    >
+                        <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <Icon name="check" className="w-5 h-5 text-teal-600" />
                         </div>
-                        <p className="font-bold text-gray-700 text-sm text-center">Issue Warning</p>
-                    </button>
-                    <button onClick={() => openNoticeModal('Vacation')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-blue-300">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-2 group-hover:scale-110 transition-transform">
-                            <Icon name="offboarding" className="w-5 h-5" />
+                        <div className="text-left">
+                            <p className="font-bold text-teal-800 text-sm">Negotiated Vacating</p>
+                            <p className="text-xs text-teal-600">Mutually agreed exit — waives the 30-day notice period</p>
                         </div>
-                        <p className="font-bold text-gray-700 text-sm text-center">Record Vacation</p>
-                    </button>
-                    <button onClick={() => openNoticeModal('Force')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center border border-gray-100 h-32 cursor-pointer hover:shadow-md transition-all group hover:border-red-300">
-                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-2 group-hover:scale-110 transition-transform">
-                            <Icon name="close" className="w-5 h-5" />
-                        </div>
-                        <p className="font-bold text-gray-700 text-sm text-center">Force Vacation</p>
                     </button>
                 </div>
                 )}
@@ -3016,6 +3111,14 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                 />
             )}
             
+            {activeModal === 'negotiatedVacating' && (
+                <NegotiatedVacatingModal
+                    tenant={tenant}
+                    onClose={() => setActiveModal(null)}
+                    onConfirm={handleStartNegotiatedVacating}
+                />
+            )}
+
             {activeModal === 'initiateOffboarding' && (
                 <InitiateOffboardingModal 
                     tenant={tenant}
