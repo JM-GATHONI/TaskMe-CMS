@@ -1582,16 +1582,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   : !blobDue ? svrDue
                   : !svrDue  ? blobDue
                   : (blobDue >= svrDue ? blobDue : svrDue);
+                // paymentHistory: merge blob + server by reference deduplication.
+                // server entries are used as the base (authoritative for C2B /
+                // recovered by migration 0079); blob-only entries (manually
+                // recorded app-side payments) are appended if their reference
+                // is not already present.  Result is sorted newest-first.
+                // If blob is empty, server entries fill in (C2B recovery path).
+                // If server is empty, blob entries are kept untouched.
+                const blobPH = existing.paymentHistory ?? [];
+                const svrPH  = t.paymentHistory ?? [];
+                const resolvedPaymentHistory = (() => {
+                  if (blobPH.length === 0) return svrPH;
+                  if (svrPH.length  === 0) return blobPH;
+                  const svrRefs = new Set(
+                    svrPH.map(p => p.reference).filter((r): r is string => !!r)
+                  );
+                  const blobOnly = blobPH.filter(
+                    p => !p.reference || !svrRefs.has(p.reference)
+                  );
+                  return [...svrPH, ...blobOnly].sort(
+                    (a, b) => (b.date ?? '').localeCompare(a.date ?? '')
+                  );
+                })();
+                // onboardingDate: always take the EARLIER of blob vs server.
+                // applyPaidState in May reset the blob's onboardingDate to today;
+                // migration 0079 now holds the correct April date on the server.
+                // Taking the earlier value always preserves the true join date.
+                const blobObd = existing.onboardingDate;
+                const svrObd  = t.onboardingDate;
+                const resolvedOnboardingDate = (!blobObd || !svrObd)
+                  ? (blobObd ?? svrObd)
+                  : (blobObd <= svrObd ? blobObd : svrObd);
                 byId.set(t.id, {
                   ...existing,
                   ...t,
                   status:         resolvedStatus,
                   nextDueDate:    resolvedNextDueDate,
-                  // Blob wins for payment history — server's payment_history is
-                  // never independently authoritative (C2B webhook only updates
-                  // next_due_date). An empty/null server value must not wipe
-                  // payments that are correctly stored in the blob.
-                  paymentHistory: existing.paymentHistory,
+                  paymentHistory: resolvedPaymentHistory,
+                  onboardingDate: resolvedOnboardingDate,
                   propertyId:     existing.propertyId,
                   unitId:         existing.unitId,
                   unit:           existing.unit,
