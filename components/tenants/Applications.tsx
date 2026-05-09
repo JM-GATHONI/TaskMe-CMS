@@ -8,6 +8,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 import { canonicalizePhone, digitsOnly } from '../../utils/phone';
+import { resolveReferralCode } from '../../utils/referralCode';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -1539,7 +1540,7 @@ const ProfileHubModal: React.FC<{
 };
 
 const Applications: React.FC = () => {
-    const { applications, tenants, properties, addApplication, updateApplication, addTenant, updateTenant, updateProperty, deleteTenant, deleteApplication, checkPermission, currentUser } = useData();
+    const { applications, tenants, properties, staff, landlords, renovationInvestors, commissionRules, addApplication, updateApplication, addTenant, updateTenant, updateStaff, updateProperty, deleteTenant, deleteApplication, checkPermission, currentUser } = useData();
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
     const canCreate  = isSuperAdmin || checkPermission('Tenants', 'create');
     const canEdit    = isSuperAdmin || checkPermission('Tenants', 'edit');
@@ -1577,6 +1578,21 @@ const Applications: React.FC = () => {
 
         const hasUnit = !!(record.propertyId && record.unitId);
 
+        // ── Resolve referrer: explicit referrerId takes priority, then try
+        // resolving a referralCode left by self-registration. ─────────────────
+        const resolvedReferrerId = (() => {
+            if ((record as any).referrerId) return (record as any).referrerId as string;
+            const code = (record as any).referralCode as string | undefined;
+            if (!code) return undefined;
+            const people = [
+                ...tenants,
+                ...(staff as any[]),
+                ...(landlords as any[]),
+                ...(renovationInvestors as any[]),
+            ] as Array<{ id: string; name: string; referralCode?: string }>;
+            return resolveReferralCode(code, people);
+        })();
+
         // ── Shared identity fields (both paths) ──────────────────────────────
         const baseFields: Partial<TenantProfile> = {
             id:                     record.id,
@@ -1603,7 +1619,7 @@ const Applications: React.FC = () => {
             maintenanceRequests:    [],
             // Carry referrer from the application so commission can be
             // attributed later when the tenant reaches Active status.
-            referrerId:             (record as any).referrerId || undefined,
+            referrerId:             resolvedReferrerId,
         };
 
         if (hasUnit) {
@@ -1960,6 +1976,25 @@ const Applications: React.FC = () => {
                 status: isPending ? 'Active' : t.status,
                 activationDate: isPending ? new Date().toISOString().split('T')[0] : (t as any).activationDate,
             });
+            // ── Auto-assign Tenancy Referral commission on first activation ──────
+            // Fire-and-forget: silently skipped if no matching rule or referrer.
+            if (isPending && t.referrerId) {
+                const rule = commissionRules.find(r => r.trigger === 'Tenancy Referral');
+                if (rule && rule.rateValue > 0) {
+                    const commissionAmount = rule.rateType === '%'
+                        ? Math.round((t.rentAmount || 0) * (rule.rateValue / 100))
+                        : rule.rateValue;
+                    const referrer = staff.find(s => s.id === t.referrerId);
+                    if (referrer) {
+                        updateStaff(t.referrerId, {
+                            commissions: [
+                                { date: new Date().toISOString().split('T')[0], amount: commissionAmount, source: `Tenancy Referral — ${t.name}` },
+                                ...(referrer.commissions || []),
+                            ],
+                        });
+                    }
+                }
+            }
             return;
         }
         if (record.recordType === 'Application' && record.id) {
