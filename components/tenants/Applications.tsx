@@ -1483,7 +1483,7 @@ const ProfileHubModal: React.FC<{
                                     : 'bg-primary text-white hover:bg-primary-dark border border-primary/20'
                             } ${(!canApprove || isApproved) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
-                            {isApproved ? 'Approved' : 'Approve then Pay'}
+                            {isApproved ? 'Approved' : (record.unitId ? 'Approve → Pending Payment' : 'Approve → Pending Allocation')}
                         </button>
                     </div>
                 )}
@@ -1575,83 +1575,159 @@ const Applications: React.FC = () => {
     const handleApproveApplication = (record: UnifiedRecord) => {
         if (record.recordType !== 'Application' || !record.id) return;
 
-        if (!record.propertyId || !record.unitId) {
-            alert('Select a property and unit before approving.');
-            return;
-        }
+        const hasUnit = !!(record.propertyId && record.unitId);
 
-        const prop = properties.find(p => p.id === record.propertyId);
-        const unit = prop?.units?.find(u => u.id === record.unitId);
+        // ── Shared identity fields (both paths) ──────────────────────────────
+        const baseFields: Partial<TenantProfile> = {
+            id:                     record.id,
+            name:                   record.name,
+            username:               '',
+            email:                  String(record.email  || ''),
+            phone:                  String(record.phone  || ''),
+            alternativePhone:       (record as any).alternativePhone      || undefined,
+            nextOfKinName:          (record as any).nextOfKinName         || undefined,
+            nextOfKinPhone:         (record as any).nextOfKinPhone        || undefined,
+            nextOfKinRelationship:  (record as any).nextOfKinRelationship || undefined,
+            idNumber:               String(record.idNumber || ''),
+            leaseSigned:            !!(record as any).leaseSigned,
+            leaseStartDate:         (record as any).leaseStartDate,
+            leaseEnd:               (record as any).leaseEnd,
+            authUserId:             (record as any).authUserId,
+            avatar:                 record.avatar,
+            profilePicture:         (record as any).profilePicture,
+            kraPin:                 record.kraPin,
+            onboardingDate:         new Date().toISOString().split('T')[0],
+            paymentHistory:         [],
+            outstandingBills:       [],
+            outstandingFines:       [],
+            maintenanceRequests:    [],
+            // Carry referrer from the application so commission can be
+            // attributed later when the tenant reaches Active status.
+            referrerId:             (record as any).referrerId || undefined,
+        };
 
-        if (!prop || !unit) {
-            alert('Could not find property/unit to approve this application.');
-            return;
-        }
+        if (hasUnit) {
+            // ── Path A: unit pre-allocated → PendingPayment ──────────────────
+            const prop = properties.find(p => p.id === record.propertyId);
+            const unit = prop?.units?.find(u => u.id === record.unitId);
+            if (!prop || !unit) {
+                alert('Could not find property/unit to approve this application.');
+                return;
+            }
 
-        const resolvedPropertyName = (record.propertyName || record.property || prop.name || '').toString();
-        const resolvedUnitNumber = (record.unit || unit.unitNumber || '').toString();
-        const rentAmount = Number(record.rentAmount || unit.rent || prop.defaultMonthlyRent || 0);
-        const isDepositExempt = !!(record as any).depositExempt;
-        const depositMonths = Number((record as any).depositMonths ?? 1);
-        const proratedDeposit = (record as any).proratedDeposit;
-        const rentExtension = (record as any).rentExtension;
-        const depositPaidRaw = Number((record as any).depositPaid || 0);
+            const resolvedPropertyName = (record.propertyName || (record as any).property || prop.name || '').toString();
+            const resolvedUnitNumber   = (record.unit || unit.unitNumber || '').toString();
+            const rentAmount           = Number(record.rentAmount || unit.rent || prop.defaultMonthlyRent || 0);
+            const isDepositExempt      = !!(record as any).depositExempt;
+            const depositMonths        = Number((record as any).depositMonths ?? 1);
+            const proratedDeposit      = (record as any).proratedDeposit as TenantProfile['proratedDeposit'];
+            const rentExtension        = (record as any).rentExtension  as TenantProfile['rentExtension'];
 
-        let depositPaid: number;
-        if (isDepositExempt) {
-            depositPaid = 0;
-        } else if (proratedDeposit?.enabled) {
-            depositPaid = 0; // starts at 0, increments per installment
-        } else if (rentExtension?.enabled) {
-            depositPaid = rentExtension.depositPaidUpfront || 0;
+            if (rentAmount <= 0) {
+                alert('Rent must be set before approving.');
+                return;
+            }
+            if (!isDepositExempt && !proratedDeposit?.enabled && !rentExtension?.enabled && rentAmount * depositMonths <= 0) {
+                alert('Deposit amount cannot be determined. Set the rent amount or mark tenant as Deposit Exempt.');
+                return;
+            }
+
+            // Proration: first-month rent based on join day
+            const joinDate       = (record as any).rentStartDate ? new Date((record as any).rentStartDate) : new Date();
+            const joinDay        = joinDate.getDate();
+            const lastDayOfMonth = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 0).getDate();
+            let firstMonthRent: number;
+            if (joinDay <= 9) {
+                firstMonthRent = rentAmount;
+            } else if (joinDay <= 24) {
+                firstMonthRent = Math.round((rentAmount / 30) * Math.max(0, lastDayOfMonth - joinDay));
+            } else {
+                firstMonthRent = Math.round((rentAmount / 30) * Math.max(0, lastDayOfMonth - joinDay)) + rentAmount;
+            }
+
+            // Pre-compute next due date (advanced by payment webhook on actual payment)
+            const dueDay  = Math.min(28, Math.max(1, Number((record as any).rentDueDate ?? 1)));
+            let graceDays = Number((record as any).rentGraceDays ?? 4);
+            let nextDueDateIso: string;
+            if (rentExtension?.enabled) {
+                nextDueDateIso = rentExtension.rentDeferredUntil;
+                graceDays = 0;
+            } else {
+                const d = new Date();
+                d.setMonth(d.getMonth() + 1);
+                d.setDate(dueDay);
+                d.setHours(0, 0, 0, 0);
+                nextDueDateIso = d.toISOString().split('T')[0];
+            }
+
+            const depositExpected = isDepositExempt
+                ? 0
+                : rentExtension?.enabled
+                    ? (rentExtension.depositPaidUpfront || 0)
+                    : proratedDeposit?.enabled
+                        ? (proratedDeposit.totalDepositAmount || 0)
+                        : rentAmount * depositMonths;
+
+            // depositPaid starts at 0 — recorded only via actual payment.
+            // Exception: rent-extension upfront deposit is pre-collected.
+            const depositPaid = rentExtension?.enabled ? (rentExtension.depositPaidUpfront || 0) : 0;
+
+            // Mark unit as Occupied
+            updateProperty(prop.id, {
+                units: prop.units.map(u =>
+                    u.id === record.unitId ? { ...u, status: 'Occupied' as const } : u
+                ) as Unit[],
+            });
+
+            const tenantPayload: Partial<TenantProfile> = {
+                ...baseFields,
+                status:        'PendingPayment',
+                propertyId:    record.propertyId,
+                propertyName:  resolvedPropertyName,
+                unitId:        record.unitId,
+                unit:          resolvedUnitNumber,
+                rentAmount,
+                firstMonthRent:  firstMonthRent !== rentAmount ? firstMonthRent : undefined,
+                rentDueDate:     (record as any).rentDueDate,
+                rentGraceDays:   graceDays,
+                depositPaid,
+                depositExpected,
+                nextDueDate:     nextDueDateIso,
+                depositExempt:   isDepositExempt || undefined,
+                depositMonths:   depositMonths > 1 ? depositMonths : undefined,
+                proratedDeposit: proratedDeposit?.enabled ? proratedDeposit : undefined,
+                rentExtension:   rentExtension?.enabled  ? rentExtension   : undefined,
+            };
+
+            const alreadyTenant = tenants.find(t => t.id === record.id);
+            if (alreadyTenant) {
+                updateTenant(record.id, tenantPayload as any);
+            } else {
+                addTenant(tenantPayload as TenantProfile);
+            }
+            deleteApplication(record.id);
+            setProfileHubRecord(null);
+            alert(`${record.name} approved and moved to Pending Payment. Record their payment to activate.`);
+
         } else {
-            depositPaid = 0; // Must be set only via actual payment (Manual Pay, Mpesa STK or C2B)
-        }
+            // ── Path B: no unit yet → PendingAllocation ──────────────────────
+            const tenantPayload: Partial<TenantProfile> = {
+                ...baseFields,
+                status:     'PendingAllocation',
+                unit:       '',
+                rentAmount: Number(record.rentAmount || 0),
+            };
 
-        if (rentAmount <= 0) {
-            alert('Rent must be set before approving.');
-            return;
+            const alreadyTenant = tenants.find(t => t.id === record.id);
+            if (alreadyTenant) {
+                updateTenant(record.id, tenantPayload as any);
+            } else {
+                addTenant(tenantPayload as TenantProfile);
+            }
+            deleteApplication(record.id);
+            setProfileHubRecord(null);
+            alert(`${record.name} approved and moved to Pending Allocation. Assign a unit to proceed to payment.`);
         }
-        if (!isDepositExempt && !proratedDeposit?.enabled && !rentExtension?.enabled && rentAmount * depositMonths <= 0) {
-            alert('Deposit amount cannot be determined. Set the rent amount or mark tenant as Deposit Exempt.');
-            return;
-        }
-
-        updateApplication(record.id, {
-            status: 'Approved',
-            propertyName: resolvedPropertyName,
-            property: resolvedPropertyName, // legacy
-            unit: resolvedUnitNumber,
-            unitId: record.unitId,
-            propertyId: record.propertyId,
-            rentAmount,
-            depositPaid,
-            depositExempt: isDepositExempt,
-            depositMonths,
-            proratedDeposit,
-            rentExtension,
-        } as any);
-
-        setProfileHubRecord(prev =>
-            prev && prev.id === record.id
-                ? ({
-                    ...prev,
-                    status: 'Approved',
-                    displayStatus: 'Approved',
-                    propertyId: record.propertyId,
-                    unitId: record.unitId,
-                    propertyName: resolvedPropertyName,
-                    property: resolvedPropertyName,
-                    unit: resolvedUnitNumber,
-                    rentAmount,
-                    depositPaid,
-                    depositExempt: isDepositExempt,
-                    depositMonths,
-                    proratedDeposit,
-                    rentExtension,
-                } as any)
-                : prev,
-        );
     };
 
     const handleReverseAllocation = (record: UnifiedRecord) => {
@@ -2382,7 +2458,7 @@ const Applications: React.FC = () => {
                     } : undefined}
                     onApprove={canApprove ? () => handleApproveApplication(profileHubRecord) : undefined}
                     isApproved={profileHubRecord.recordType === 'Application' ? String((profileHubRecord as any).status ?? '') === 'Approved' : true}
-                    canApprove={canApprove && profileHubRecord.recordType === 'Application' ? !!profileHubRecord.propertyId && !!profileHubRecord.unitId : false}
+                    canApprove={canApprove && profileHubRecord.recordType === 'Application'}
                     onReverseAllocation={
                         isSuperAdmin && profileHubRecord.recordType === 'Tenant' && !!profileHubRecord.propertyId && !!profileHubRecord.unitId
                             ? () => { setProfileHubRecord(null); handleReverseAllocation(profileHubRecord); }
