@@ -1565,14 +1565,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const resolvedStatus = LIVE_STATUSES.has(existing.status ?? '')
                   ? existing.status
                   : (t.status ?? existing.status);
+                // nextDueDate: take the later of blob vs server.
+                // Server wins when a C2B webhook advanced next_due_date past what
+                // the blob recorded; blob wins when the server holds a stale/null
+                // value from before the tenant was properly activated.
+                const blobDue = existing.nextDueDate;
+                const svrDue  = t.nextDueDate;
+                const resolvedNextDueDate = (!blobDue && !svrDue) ? undefined
+                  : !blobDue ? svrDue
+                  : !svrDue  ? blobDue
+                  : (blobDue >= svrDue ? blobDue : svrDue);
                 byId.set(t.id, {
                   ...existing,
                   ...t,
-                  status:       resolvedStatus,
-                  propertyId:   existing.propertyId,
-                  unitId:       existing.unitId,
-                  unit:         existing.unit,
-                  propertyName: existing.propertyName,
+                  status:         resolvedStatus,
+                  nextDueDate:    resolvedNextDueDate,
+                  // Blob wins for payment history — server's payment_history is
+                  // never independently authoritative (C2B webhook only updates
+                  // next_due_date). An empty/null server value must not wipe
+                  // payments that are correctly stored in the blob.
+                  paymentHistory: existing.paymentHistory,
+                  propertyId:     existing.propertyId,
+                  unitId:         existing.unitId,
+                  unit:           existing.unit,
+                  propertyName:   existing.propertyName,
                 });
               } else {
                 byId.set(t.id, t);
