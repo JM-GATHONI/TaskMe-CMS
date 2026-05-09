@@ -268,7 +268,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[tenants] upsert_tenants_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -314,7 +314,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[properties] upsert_properties_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -344,7 +344,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[landlords] upsert_landlords_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -374,7 +374,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[tasks] upsert_tasks_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -404,7 +404,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[bills] upsert_bills_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -434,7 +434,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[invoices] upsert_invoices_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -464,7 +464,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[quotations] upsert_quotations_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -494,7 +494,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[applications] upsert_tenant_applications_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -524,7 +524,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[landlord_apps] upsert_landlord_applications_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -554,7 +554,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[staff] upsert_staff_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -584,7 +584,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[fines] upsert_fine_rules_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -614,7 +614,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[offboarding] upsert_offboarding_records_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -644,7 +644,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[ll_offboarding] upsert_landlord_offboarding_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -691,7 +691,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[commissions] upsert_commission_rules_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -721,7 +721,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[deductions] upsert_deduction_rules_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -751,7 +751,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[vendors] upsert_vendors_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -781,7 +781,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[messages] upsert_messages_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -811,7 +811,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[notifications] upsert_notifications_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -841,7 +841,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[templates] upsert_communication_templates_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -871,7 +871,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[workflows] upsert_workflows_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -901,7 +901,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[automation] upsert_automation_rules_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -931,7 +931,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[escalation] upsert_escalation_rules_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -958,7 +958,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[audit_logs] insert_audit_logs_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -988,7 +988,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[ext_tx] upsert_external_transactions_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1018,7 +1018,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[overpayments] upsert_overpayments_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1048,7 +1048,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[income_sources] upsert_income_sources_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1078,7 +1078,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[preventive_tasks] upsert_preventive_tasks_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1099,7 +1099,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _fundsUpsertTimer.current = setTimeout(async () => {
               const toWrite = _pendingChangedFunds.current; _pendingChangedFunds.current = [];
               try { const { error } = await supabase.schema('app').rpc('upsert_funds_bulk', { p_funds: toWrite as unknown as object }); if (error) console.warn('[funds] upsert_funds_bulk failed:', error.message); } catch (e) { console.warn('[funds] upsert_funds_bulk error:', (e as Error)?.message); }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1120,7 +1120,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _investmentsUpsertTimer.current = setTimeout(async () => {
               const toWrite = _pendingChangedInvestments.current; _pendingChangedInvestments.current = [];
               try { const { error } = await supabase.schema('app').rpc('upsert_investments_bulk', { p_investments: toWrite as unknown as object }); if (error) console.warn('[investments] upsert_investments_bulk failed:', error.message); } catch (e) { console.warn('[investments] upsert_investments_bulk error:', (e as Error)?.message); }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1141,7 +1141,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _withdrawalsUpsertTimer.current = setTimeout(async () => {
               const toWrite = _pendingChangedWithdrawals.current; _pendingChangedWithdrawals.current = [];
               try { const { error } = await supabase.schema('app').rpc('upsert_withdrawals_bulk', { p_withdrawals: toWrite as unknown as object }); if (error) console.warn('[withdrawals] upsert_withdrawals_bulk failed:', error.message); } catch (e) { console.warn('[withdrawals] upsert_withdrawals_bulk error:', (e as Error)?.message); }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1162,7 +1162,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _renovInvestorsUpsertTimer.current = setTimeout(async () => {
               const toWrite = _pendingChangedRenovInvestors.current; _pendingChangedRenovInvestors.current = [];
               try { const { error } = await supabase.schema('app').rpc('upsert_renovation_investors_bulk', { p_investors: toWrite as unknown as object }); if (error) console.warn('[renov_investors] upsert_renovation_investors_bulk failed:', error.message); } catch (e) { console.warn('[renov_investors] upsert_renovation_investors_bulk error:', (e as Error)?.message); }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1183,7 +1183,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _rfTxUpsertTimer.current = setTimeout(async () => {
               const toWrite = _pendingChangedRFTx.current; _pendingChangedRFTx.current = [];
               try { const { error } = await supabase.schema('app').rpc('upsert_rf_transactions_bulk', { p_txs: toWrite as unknown as object }); if (error) console.warn('[rf_tx] upsert_rf_transactions_bulk failed:', error.message); } catch (e) { console.warn('[rf_tx] upsert_rf_transactions_bulk error:', (e as Error)?.message); }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1204,7 +1204,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _renovBillsUpsertTimer.current = setTimeout(async () => {
               const toWrite = _pendingChangedRenovBills.current; _pendingChangedRenovBills.current = [];
               try { const { error } = await supabase.schema('app').rpc('upsert_renovation_project_bills_bulk', { p_bills: toWrite as unknown as object }); if (error) console.warn('[renov_bills] upsert_renovation_project_bills_bulk failed:', error.message); } catch (e) { console.warn('[renov_bills] upsert_renovation_project_bills_bulk error:', (e as Error)?.message); }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1257,7 +1257,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[scheduled_reports] upsert_scheduled_reports_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1287,7 +1287,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[tax_records] upsert_tax_records_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1320,7 +1320,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[leads] upsert_leads_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1350,7 +1350,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[fundi_jobs] upsert_fundi_jobs_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
@@ -1380,7 +1380,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } catch (e) {
                 console.warn('[marketing_banners] upsert_marketing_banners_bulk error:', (e as Error)?.message);
               }
-            }, 800);
+            }, 2500);
           }
         }
         return next;
