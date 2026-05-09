@@ -1555,9 +1555,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // handleSave) and public.tenants may lag if upsert_tenants_bulk
                 // hasn't fired yet, which previously caused moved tenants to revert
                 // to their old unit after every page refresh.
+                //
+                // Additionally, protect live-tenant statuses (Active/Overdue/Notice)
+                // from server downgrade. Payment webhooks only ever upgrade status
+                // (Pending* → Active/Overdue), never demote an already-active tenant.
+                // Stale public.tenants rows with PendingAllocation/PendingPayment must
+                // not override a correctly-activated blob status.
+                const LIVE_STATUSES = new Set(['Active', 'Overdue', 'Notice']);
+                const resolvedStatus = LIVE_STATUSES.has(existing.status ?? '')
+                  ? existing.status
+                  : (t.status ?? existing.status);
                 byId.set(t.id, {
                   ...existing,
                   ...t,
+                  status:       resolvedStatus,
                   propertyId:   existing.propertyId,
                   unitId:       existing.unitId,
                   unit:         existing.unit,
