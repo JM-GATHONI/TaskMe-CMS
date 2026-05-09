@@ -256,7 +256,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const toWrite = _pendingChangedTenants.current;
               _pendingChangedTenants.current = [];
               try {
-                const { error } = await supabase.schema('app').rpc('upsert_tenants_bulk', { p_tenants: toWrite as unknown as object });
+                // Strip large blob-only arrays before sending to public.tenants.
+                // paymentHistory, maintenanceRequests, notes, notices, requests,
+                // and collectionHistory are managed exclusively in the app_state
+                // blob and are never read by any backend RPC (record_c2b_payment,
+                // check_phone_unique, etc.). Excluding them cuts payload size by
+                // ~80-90% for tenants with long payment or maintenance histories.
+                const slim = toWrite.map(({ paymentHistory: _ph, maintenanceRequests: _mr, notes: _n, notices: _nv, requests: _rq, collectionHistory: _ch, ...rest }) => rest);
+                const { error } = await supabase.schema('app').rpc('upsert_tenants_bulk', { p_tenants: slim as unknown as object });
                 if (error) console.warn('[tenants] upsert_tenants_bulk failed:', error.message);
               } catch (e) {
                 console.warn('[tenants] upsert_tenants_bulk error:', (e as Error)?.message);
