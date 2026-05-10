@@ -13,6 +13,7 @@ import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
 import { ComposeModal } from '../operations/communication/Messages';
 import { communicationApi } from '../../utils/communicationApi';
+import { fmtDate } from '../../utils/date';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, RadialLinearScale, Title, Tooltip, Legend);
 
@@ -563,7 +564,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                     <div className="flex justify-between items-center mb-8 border-b pb-4">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">Agent Performance Report</h1>
-                            <p className="text-gray-500">Generated on {new Date().toLocaleDateString()}</p>
+                            <p className="text-gray-500">Generated on {fmtDate(new Date())}</p>
                         </div>
                     </div>
 
@@ -1041,7 +1042,7 @@ const AgentDetailView: React.FC<{ agent: StaffProfile; onClose: () => void }> = 
                                                         t.priority === 'High' || t.priority === 'Very High' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                                                     }`}>{t.priority}</span>
                                                 </td>
-                                                <td className="px-6 py-4 text-gray-600 font-mono text-xs">{new Date(t.dueDate).toLocaleDateString()}</td>
+                                                <td className="px-6 py-4 text-gray-600 font-mono text-xs">{fmtDate(t.dueDate)}</td>
                                                 <td className="px-6 py-4 text-center">
                                                     <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${
                                                         t.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-700'

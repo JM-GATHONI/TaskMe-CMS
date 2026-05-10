@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
+import { fmtDate } from '../../utils/date';
 import Icon from '../Icon';
 import { Vendor, FundiJob } from '../../types';
 
@@ -109,7 +110,7 @@ const JobRequestCard: React.FC<{ job: FundiJob; onProcess: (status: 'Accepted' |
              }`}>
                  {job.status}
              </span>
-             <span className="text-xs text-gray-400 font-mono">{new Date(job.date).toLocaleDateString()}</span>
+             <span className="text-xs text-gray-400 font-mono">{fmtDate(job.date)}</span>
         </div>
         <h4 className="font-bold text-gray-800 text-sm mb-1">{job.description}</h4>
         <div className="text-xs text-gray-500 mb-3 space-y-1">

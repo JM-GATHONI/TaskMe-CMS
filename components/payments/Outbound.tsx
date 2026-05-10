@@ -5,6 +5,7 @@ import Icon from '../Icon';
 import { Bill, Invoice, Message } from '../../types';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
 import { communicationApi } from '../../utils/communicationApi';
+import { fmtDate } from '../../utils/date';
 
 // --- TYPES ---
 interface OutboundItem {
@@ -78,7 +79,7 @@ const ReceiptModal: React.FC<{ item: OutboundItem; onClose: () => void }> = ({ i
                             <p className="text-xs text-gray-500 mt-1">TaskMe Realty</p>
                         </div>
                         <div className="text-right text-xs">
-                            <p>Date: {new Date(item.date).toLocaleDateString()}</p>
+                            <p>Date: {fmtDate(item.date)}</p>
                             <p>Ref: {item.reference}</p>
                         </div>
                     </div>

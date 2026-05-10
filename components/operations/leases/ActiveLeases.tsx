@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Lease, LeaseStatus } from '../../../types';
 import { useData } from '../../../context/DataContext';
+import { fmtDate } from '../../../utils/date';
 import Icon from '../../Icon';
 
 // Chart Helper
@@ -224,8 +225,8 @@ const ActiveLeases: React.FC = () => {
                                             <span className="block text-xs text-gray-400">{lease.unit}</span>
                                         </td>
                                         <td className="px-4 py-3 text-gray-600 text-xs">
-                                            {new Date(lease.startDate).toLocaleDateString()} - <br/>
-                                            {lease.endDate === 'Indefinite' ? 'Month-to-Month' : new Date(lease.endDate).toLocaleDateString()}
+                                            {fmtDate(lease.startDate)} - <br/>
+                                            {lease.endDate === 'Indefinite' ? 'Month-to-Month' : fmtDate(lease.endDate)}
                                         </td>
                                         <td className="px-4 py-3 text-right font-bold text-gray-800">KES {lease.rent.toLocaleString()}</td>
                                         <td className="px-4 py-3 text-center">{getStatusBadge(lease.status)}</td>

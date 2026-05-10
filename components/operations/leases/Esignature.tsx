@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { useData } from '../../../context/DataContext';
+import { fmtDate } from '../../../utils/date';
 import Icon from '../../Icon';
 
 const Esignature: React.FC = () => {
@@ -17,7 +18,7 @@ const Esignature: React.FC = () => {
                 name: a.name,
                 docName: 'Residential Lease Agreement',
                 status: 'Sent',
-                date: new Date().toLocaleDateString(),
+                date: fmtDate(new Date()),
                 email: a.email
             });
         });

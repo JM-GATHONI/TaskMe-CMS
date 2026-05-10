@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Task, TaskStatus, TaskPriority } from '../../types';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
+import { fmtDate } from '../../utils/date';
 
 const RequestIntake: React.FC = () => {
     const { addTask, tasks, users, checkPermission, currentUser } = useData();
@@ -234,7 +235,7 @@ const RequestIntake: React.FC = () => {
                                     <div className="flex-grow">
                                         <div className="flex justify-between items-start">
                                             <h4 className="font-bold text-gray-800 text-sm group-hover:text-primary transition-colors">{req.title}</h4>
-                                            <span className="text-[10px] text-gray-400">{new Date(req.dueDate).toLocaleDateString()}</span>
+                                            <span className="text-[10px] text-gray-400">{fmtDate(req.dueDate)}</span>
                                         </div>
                                         <p className="text-sm text-gray-600 mt-1 line-clamp-2">{req.description}</p>
                                         <div className="flex items-center gap-3 mt-3">

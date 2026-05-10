@@ -5,6 +5,7 @@ import { TaskStatus, TaskPriority, Task, TenantProfile, Message, CollectionLog, 
 import Icon from '../Icon';
 import { uploadToBucket } from '../../utils/supabaseStorage';
 import { supabase } from '../../utils/supabaseClient';
+import { fmtDate } from '../../utils/date';
 
 const CURRENT_USER = 'System Admin'; // Simulated logged-in user
 
@@ -790,7 +791,7 @@ const TaskManagement: React.FC = () => {
                                 <div>
                                     <h3 className="font-bold text-gray-800 text-lg group-hover:text-primary transition-colors">{task.title}</h3>
                                     <p className="text-sm text-gray-500">{task.property} • {task.tenant.name} {task.tenant.unit ? `(${task.tenant.unit})` : ''}</p>
-                                    <p className="text-xs text-gray-400 mt-1">Due: {new Date(task.dueDate).toLocaleDateString()} • Assigned: {task.assignedTo}</p>
+                                    <p className="text-xs text-gray-400 mt-1">Due: {fmtDate(task.dueDate)} • Assigned: {task.assignedTo}</p>
                                 </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">

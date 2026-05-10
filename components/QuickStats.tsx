@@ -280,7 +280,7 @@ const QuickStats: React.FC = () => {
         const vacancies = properties.reduce((acc, p) => acc + p.units.filter(u => u.status === 'Vacant').length, 0);
         const expiringLeases = tenants.filter(t => t.leaseEnd && new Date(t.leaseEnd) < new Date(new Date().setDate(new Date().getDate() + 60))).length;
         
-        const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const today = new Date().toLocaleDateString('en-GB', { month: 'long', day: 'numeric', year: 'numeric' });
         
         let summaryText = `"TaskMe AI analysis for system state as of ${today}. `;
         if (membershipStats.occupancyRate > 90) summaryText += "High occupancy surplus detected. ";

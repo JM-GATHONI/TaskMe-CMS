@@ -6,6 +6,7 @@ import { Property, Unit, User, Task, Bill, Fund, Investment, TenantProfile, Land
 import Icon from '../Icon';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
 import { websiteLinks } from '../../utils/websiteLinks';
+import { fmtDate } from '../../utils/date';
 import { supabase } from '../../utils/supabaseClient';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, Filler } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
@@ -229,7 +230,7 @@ const IncomeStatementModal: React.FC<{
                     </table>
 
                     <div className="mt-12 text-xs text-gray-400 text-center border-t pt-4">
-                        <p>Generated on {new Date().toLocaleDateString()}</p>
+                        <p>Generated on {fmtDate(new Date())}</p>
                         <p>This is a computer generated document and does not require a signature.</p>
                     </div>
                 </div>
@@ -761,7 +762,7 @@ const LandlordsPortal: React.FC = () => {
                 Rent: t.rentAmount,
                 Status: t.status,
                 New_Tenant: t.onboardingDate.startsWith(financialPeriod) ? 'Yes' : 'No',
-                Date: new Date().toLocaleDateString()
+                Date: fmtDate(new Date())
             }));
             exportToCSV(data, `${currentLandlord.name}_Revenue_Report`);
         }

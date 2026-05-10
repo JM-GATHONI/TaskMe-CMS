@@ -9,6 +9,7 @@ import { useProfileFirstName } from '../../hooks/useProfileFirstName';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
+import { fmtDate } from '../../utils/date';
 
 // --- STK PUSH UI ---
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile; userId: string; leaseId?: string | null }> = ({ onClose, amount, tenant, userId, leaseId = null }) => {
@@ -620,7 +621,7 @@ const TenantPortal: React.FC = () => {
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Lease Ends</span>
                                     <span className="font-medium">
-                                        {hasLease ? (activeUser.leaseEnd ? new Date(activeUser.leaseEnd).toLocaleDateString() : 'Month-to-Month') : '—'}
+                                        {hasLease ? (activeUser.leaseEnd ? fmtDate(activeUser.leaseEnd) : 'Month-to-Month') : '—'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between">

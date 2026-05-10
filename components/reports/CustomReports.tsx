@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { supabase } from '../../utils/supabaseClient';
+import { fmtDate } from '../../utils/date';
 
 const CustomReports: React.FC = () => {
     const [reportType, setReportType] = useState('Tenancy');
@@ -24,7 +25,7 @@ const CustomReports: React.FC = () => {
                         col1: t.name,
                         col2: t.unit,
                         col3: t.status,
-                        col4: new Date(t.onboardingDate).toLocaleDateString()
+                        col4: fmtDate(t.onboardingDate)
                     }));
                     setGeneratedData(rows);
                 } else if (reportType === 'Financial') {
@@ -45,7 +46,7 @@ const CustomReports: React.FC = () => {
                             col1: `Transaction ${String(p.id).slice(0, 8)}`,
                             col2: `KES ${Number(p.amount ?? 0).toLocaleString()}`,
                             col3: p.status,
-                            col4: new Date(p.created_at).toLocaleDateString()
+                            col4: fmtDate(p.created_at)
                         }));
                         setGeneratedData(rows);
                     }
@@ -55,7 +56,7 @@ const CustomReports: React.FC = () => {
                         col1: t.title,
                         col2: t.property,
                         col3: t.status,
-                        col4: new Date(t.dueDate).toLocaleDateString()
+                        col4: fmtDate(t.dueDate)
                     }));
                     setGeneratedData(rows);
                 } else {
@@ -67,7 +68,7 @@ const CustomReports: React.FC = () => {
                             col1: t.title,
                             col2: t.property,
                             col3: t.status,
-                            col4: new Date(t.dueDate).toLocaleDateString()
+                            col4: fmtDate(t.dueDate)
                         }));
                     setGeneratedData(rows);
                 }

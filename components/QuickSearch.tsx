@@ -4,6 +4,7 @@ import Icon from './Icon';
 import { SearchResult } from '../types';
 import { useData } from '../context/DataContext';
 import { exportToCSV, printSection } from '../utils/exportHelper';
+import { fmtDate } from '../utils/date';
 
 // --- Helper Functions ---
 
@@ -19,7 +20,7 @@ const getDaysOverdue = (rentDueDate: number) => {
     
     const diffTime = Math.abs(now.getTime() - dueDate.getTime());
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return { days, date: dueDate.toLocaleDateString() };
+    return { days, date: fmtDate(dueDate) };
 };
 
 const QuickSearch: React.FC = () => {

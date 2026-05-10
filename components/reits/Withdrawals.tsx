@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { WithdrawalRequest } from '../../types';
 import { useData } from '../../context/DataContext';
+import { fmtDate } from '../../utils/date';
 
 const Withdrawals: React.FC = () => {
     const { withdrawals, addWithdrawal, currentUser, investments } = useData();
@@ -33,7 +34,7 @@ const Withdrawals: React.FC = () => {
             id: `wr-${Date.now()}`,
             investorName: displayName,
             amount: val,
-            requestDate: new Date().toLocaleDateString(),
+            requestDate: fmtDate(new Date()),
             type: 'Interest',
             method: 'M-Pesa',
             status: 'Pending Approval'

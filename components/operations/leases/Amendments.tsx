@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { useData } from '../../../context/DataContext';
+import { fmtDate } from '../../../utils/date';
 import Icon from '../../Icon';
 
 const Amendments: React.FC = () => {
@@ -22,7 +23,7 @@ const Amendments: React.FC = () => {
                 updateTenant(selectedTenantId, { rentAmount: parseFloat(newValue) });
             }
             // Add note to tenant record
-            const note = `Lease Amendment: ${amendmentType} to ${newValue} on ${new Date().toLocaleDateString()}`;
+            const note = `Lease Amendment: ${amendmentType} to ${newValue} on ${fmtDate(new Date())}`;
             updateTenant(selectedTenantId, { notes: [...(tenant.notes || []), note] });
             
             alert("Amendment applied and recorded.");

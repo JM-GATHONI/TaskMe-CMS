@@ -9,6 +9,7 @@ import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
 import { printSection } from '../../utils/exportHelper';
+import { fmtDate } from '../../utils/date';
 import { ManageOffboardingModal } from './Offboarding';
 
 // --- STYLES ---
@@ -1042,7 +1043,7 @@ const NoticeTemplateModal: React.FC<{
                                         <p className="text-xs text-gray-500">Property Management</p>
                                     </div>
                                     <div className="text-right text-xs text-gray-500">
-                                        <p>{new Date().toLocaleDateString()}</p>
+                                        <p>{fmtDate(new Date())}</p>
                                     </div>
                                 </div>
                                 <h2 className="text-lg font-bold text-center mb-6 uppercase underline">{subject}</h2>
@@ -1583,7 +1584,7 @@ const StatementView: React.FC<{ tenant: TenantProfile; onClose: () => void }> = 
                         <h2 className="text-2xl font-bold uppercase text-gray-400">Statement</h2>
                         <p className="font-bold">{tenant.name}</p>
                         <p className="text-sm">{tenant.unit} - {tenant.propertyName}</p>
-                        <p className="text-sm">Date: {new Date().toLocaleDateString()}</p>
+                        <p className="text-sm">Date: {fmtDate(new Date())}</p>
                     </div>
                 </div>
                
@@ -2499,10 +2500,10 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                             <p className="text-xs text-gray-400 font-bold uppercase">Lease Type</p>
                             <p className="text-sm font-semibold text-gray-700">{tenant.leaseType || 'Fixed'}</p>
                             <p className="text-[11px] text-gray-500 mt-1">
-                                Start: {tenant.leaseStartDate ? new Date(tenant.leaseStartDate).toLocaleDateString() : 'Not set'}
+                                Start: {tenant.leaseStartDate ? fmtDate(tenant.leaseStartDate) : 'Not set'}
                             </p>
                             <p className="text-[11px] text-gray-500">
-                                Expiry: {tenant.leaseEnd ? new Date(tenant.leaseEnd).toLocaleDateString() : 'Not set'}
+                                Expiry: {tenant.leaseEnd ? fmtDate(tenant.leaseEnd) : 'Not set'}
                             </p>
                         </div>
                         <div className="flex flex-col items-start">
@@ -2522,12 +2523,12 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
                     <div className="grid grid-cols-2 gap-4 mt-6 border-t pt-4">
                         <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                             <p className="text-xs text-gray-400 font-bold uppercase">Last Due Date</p>
-                            <p className="font-bold text-gray-700">{firstDueDate.toLocaleDateString()}</p>
+                            <p className="font-bold text-gray-700">{fmtDate(firstDueDate)}</p>
                         </div>
                         <div className="bg-gray-50 p-3 rounded-lg text-center border border-gray-100">
                             <p className="text-xs text-gray-400 font-bold uppercase">Next Due Date</p>
                             <p className="font-bold text-gray-700">
-                                {tenant.nextDueDate ? new Date(tenant.nextDueDate).toLocaleDateString() : nextDueDate.toLocaleDateString()}
+                                {tenant.nextDueDate ? fmtDate(tenant.nextDueDate) : fmtDate(nextDueDate)}
                             </p>
                         </div>
                     </div>

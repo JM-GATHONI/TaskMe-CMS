@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ReportCardData } from '../../types';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
+import { fmtDate } from '../../utils/date';
 
 // --- Card Styles ---
 const MAJOR_CARD_CLASSES = "relative bg-white rounded-2xl border-t-[8px] border-t-primary border-b-[4px] border-b-secondary border-x-[3px] border-x-secondary shadow-[inset_0_0_60px_-15px_rgba(157,31,21,0.15)] hover:shadow-lg transition-all duration-300 overflow-hidden";
@@ -275,7 +276,7 @@ const ReportsOverview: React.FC = () => {
                         </div>
                     )}
                     <div className="text-[10px] text-gray-400 font-mono">
-                        {dateRange.start.toLocaleDateString()} - {dateRange.end.toLocaleDateString()}
+                        {fmtDate(dateRange.start)} - {fmtDate(dateRange.end)}
                     </div>
                 </div>
             </div>

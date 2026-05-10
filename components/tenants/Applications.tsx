@@ -9,6 +9,7 @@ import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
 import { canonicalizePhone, digitsOnly } from '../../utils/phone';
 import { resolveReferralCode } from '../../utils/referralCode';
+import { fmtDate } from '../../utils/date';
 
 // Helper type to unify TenantProfile and TenantApplication for the UI
 export type UnifiedRecord = Omit<Partial<TenantApplication> & Partial<TenantProfile>, 'status'> & {
@@ -1760,7 +1761,7 @@ const Applications: React.FC = () => {
                 updateProperty(prop.id, { units: updatedUnits as Unit[] });
             }
         }
-        const reverseNote = `Allocation to ${record.propertyName || ''} - ${record.unit || ''} reversed by Super Admin on ${new Date().toLocaleDateString()}`;
+        const reverseNote = `Allocation to ${record.propertyName || ''} - ${record.unit || ''} reversed by Super Admin on ${fmtDate(new Date())}`;
         updateTenant(record.id, {
             propertyId: undefined,
             unitId: undefined,
@@ -1811,7 +1812,7 @@ const Applications: React.FC = () => {
             const targetRent = Number(targetUnit?.rent ?? 0) || 0;
 
             // 3. Update Tenant
-            const moveNote = `Moved from ${moveTenant.propertyName} - ${moveTenant.unit} to ${propertyName} - ${unitName} on ${new Date().toLocaleDateString()}`;
+            const moveNote = `Moved from ${moveTenant.propertyName} - ${moveTenant.unit} to ${propertyName} - ${unitName} on ${fmtDate(new Date())}`;
             updateTenant(moveTenant.id, {
                 propertyId,
                 unitId,

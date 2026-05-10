@@ -3,6 +3,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { Task, TaskStatus } from '../../types';
 import { exportToCSV } from '../../utils/exportHelper';
+import { fmtDate } from '../../utils/date';
 import Icon from '../Icon';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
@@ -166,7 +167,7 @@ const TaskAndOperationsReports: React.FC = () => {
                                         <td className="px-4 py-3 text-center">
                                             <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded-full bg-blue-50 text-blue-800`}>{task.status}</span>
                                         </td>
-                                        <td className="px-4 py-3 text-right text-gray-500 font-mono text-xs">{new Date(task.dueDate).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3 text-right text-gray-500 font-mono text-xs">{fmtDate(task.dueDate)}</td>
                                     </tr>
                                 ))}
                                 {filteredTasks.length === 0 && (

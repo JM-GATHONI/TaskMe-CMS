@@ -3,6 +3,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { TenantProfile, Task } from '../../types';
 import { exportToCSV } from '../../utils/exportHelper';
+import { fmtDate } from '../../utils/date';
 import Icon from '../Icon';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
@@ -159,7 +160,7 @@ const TenantTasksModal: React.FC<{
                                                 {task.status}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right text-gray-500">{new Date(task.dueDate).toLocaleDateString()}</td>
+                                        <td className="px-4 py-3 text-right text-gray-500">{fmtDate(task.dueDate)}</td>
                                         <td className="px-4 py-3 text-center">
                                             <Icon name={expandedTaskId === task.id ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-gray-400" />
                                         </td>

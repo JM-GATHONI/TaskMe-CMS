@@ -4,6 +4,7 @@ import { StaffProfile, BusinessUnit, SalaryType, UserRole, StaffDeduction } from
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { AGENT_TARGET_OPTIONS } from '../../constants';
+import { fmtDate } from '../../utils/date';
 
 // --- Card Style ---
 const UNIT_CARD_CLASSES = "bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 cursor-pointer group relative overflow-hidden";
@@ -561,7 +562,7 @@ const PayslipModal: React.FC<{ staff: StaffProfile; onClose: () => void }> = ({ 
                         <span className="text-white font-black text-2xl">{fmt(payData.net)}</span>
                     </div>
 
-                    <p className="text-xs text-gray-400 text-center">Generated on {new Date().toLocaleDateString()} · {companyName}</p>
+                    <p className="text-xs text-gray-400 text-center">Generated on {fmtDate(new Date())} · {companyName}</p>
                 </div>
 
                 {/* Action Buttons */}

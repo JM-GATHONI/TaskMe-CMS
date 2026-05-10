@@ -7,6 +7,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { PropertyForm } from '../registration/Properties';
 import { Property, TenantApplication, User, TenantProfile, Task, TaskStatus, TaskPriority, LandlordApplication, StaffProfile } from '../../types';
 import { CollectionManagerModal } from '../operations/TaskManagement';
+import { fmtDate } from '../../utils/date';
 import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
 import AdBanners from './AdBanners';
@@ -400,7 +401,7 @@ const AgentPortal: React.FC = () => {
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${task.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
                                                 {task.priority}
                                             </span>
-                                            <span className="text-xs text-gray-400 font-mono">{new Date(task.dueDate).toLocaleDateString()}</span>
+                                            <span className="text-xs text-gray-400 font-mono">{fmtDate(task.dueDate)}</span>
                                         </div>
                                         <h4 className="font-bold text-gray-800 text-sm">{task.title}</h4>
                                         <p className="text-xs text-gray-600 mt-1">{task.property} • {task.tenant.name}</p>
@@ -624,7 +625,7 @@ const AgentPortal: React.FC = () => {
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${task.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
                                                 {task.priority}
                                             </span>
-                                            <span className="text-xs text-gray-400 font-mono">{new Date(task.dueDate).toLocaleDateString()}</span>
+                                            <span className="text-xs text-gray-400 font-mono">{fmtDate(task.dueDate)}</span>
                                         </div>
                                         <h4 className="font-bold text-gray-800 text-sm">{task.title}</h4>
                                         <p className="text-xs text-gray-600 mt-1">{task.property} • {task.tenant.name}</p>

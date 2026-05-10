@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../../context/DataContext';
+import { fmtDate } from '../../../utils/date';
 import Icon from '../../Icon';
 
 interface RenewalItem {
@@ -82,7 +83,7 @@ const Renewals: React.FC = () => {
                                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4 font-bold text-gray-800">{item.tenant}</td>
                                     <td className="px-6 py-4 text-gray-600">{item.unit}</td>
-                                    <td className="px-6 py-4 text-red-600 font-medium">{new Date(item.expiryDate).toLocaleDateString()}</td>
+                                    <td className="px-6 py-4 text-red-600 font-medium">{fmtDate(item.expiryDate)}</td>
                                     <td className="px-6 py-4 text-right text-gray-600">KES {item.currentRent.toLocaleString()}</td>
                                     <td className="px-6 py-4 text-right font-bold text-green-600">KES {item.offerAmount?.toLocaleString()}</td>
                                     <td className="px-6 py-4 text-center">
