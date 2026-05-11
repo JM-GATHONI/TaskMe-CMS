@@ -164,6 +164,11 @@ const QuickSearch: React.FC = () => {
             return target >= qStart && target <= qEnd;
         }
         if (activeDateRange === 'This Year') return target.getFullYear() === today.getFullYear();
+        if (activeDateRange === 'Last Month') {
+            const lmStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const lmEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+            return target >= lmStart && target <= lmEnd;
+        }
         if (activeDateRange === 'Custom' && customDrFrom && customDrTo) {
             const from = new Date(customDrFrom); from.setHours(0,0,0,0);
             const to = new Date(customDrTo); to.setHours(23,59,59,999);
@@ -235,6 +240,13 @@ const QuickSearch: React.FC = () => {
             return searchedTenants
                 .filter(t => {
                     if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return false;
+                    if (!Number(t.rentAmount ?? 0)) return false;
+                    // Only flag as unpaid once the due date has passed this cycle
+                    const dueDay = t.rentDueDate || 5;
+                    const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+                    if (dueDate > now) return false;
+                    // Apply period filter to the due date (so 'This Month', 'Last Month' etc. work)
+                    if (!isInDateRange(dueDate.toISOString().split('T')[0])) return false;
                     // Sum all payments in the current calendar month
                     const totalPaidThisMonth = t.paymentHistory.reduce((sum, p) => {
                         const parsed = parseFlexDate(p.date);
@@ -247,15 +259,17 @@ const QuickSearch: React.FC = () => {
                     return totalPaidThisMonth === 0;
                 })
                 .map(t => {
-                    const dueDay = t.rentDueDate || 1;
+                    const dueDay = t.rentDueDate || 5;
                     const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+                    const daysOverdue = Math.max(0, Math.floor((now.getTime() - dueDate.getTime()) / 86400000));
                     return {
                         id: t.id,
                         tenant: t.name,
                         property: `${t.propertyName} - ${t.unit}`,
-                        amountDisplay: `KES ${t.rentAmount.toLocaleString()}`,
-                        val: t.rentAmount,
-                        dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+                        amountDisplay: `KES ${Number(t.rentAmount).toLocaleString()}`,
+                        val: Number(t.rentAmount),
+                        dueDate: fmtDate(dueDate),
+                        daysOverdue,
                         status: t.status
                     };
                 });
@@ -263,43 +277,63 @@ const QuickSearch: React.FC = () => {
 
         if (activeFilter === 'Arrears') {
             const now = new Date();
-            // Previous billing month: rent for last month that is unpaid = in arrears
-            const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-            const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-            const prevPeriod = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
+            const MAX_LOOKBACK = 24; // months
 
             return searchedTenants.flatMap(t => {
                 if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return [];
+                if (!Number(t.rentAmount ?? 0)) return [];
 
-                // Sum all payments made in the previous calendar month
-                const totalPaidLastMonth = t.paymentHistory.reduce((sum, p) => {
+                // Build map: how much was paid in each YYYY-MM billing period
+                const paidByPeriod: Record<string, number> = {};
+                t.paymentHistory.forEach(p => {
                     const parsed = parseFlexDate(p.date);
-                    if (!parsed) return sum;
+                    if (!parsed) return;
                     const pk = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
-                    if (pk !== prevPeriod) return sum;
-                    return sum + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0);
-                }, 0);
+                    paidByPeriod[pk] = (paidByPeriod[pk] || 0) + (parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0);
+                });
 
-                // Not in arrears if last month's rent was fully covered
-                if (totalPaidLastMonth >= t.rentAmount) return [];
+                // Walk back month-by-month and accumulate unpaid shortfalls
+                let totalArrears = 0;
+                let monthsMissed = 0;
+                const activationDate = t.activationDate ? parseFlexDate(t.activationDate) : null;
 
-                // Apply optional date range filter using the previous month's due date
-                const dueDay = t.rentDueDate || 1;
-                const prevDueDate = new Date(prevYear, prevMonth, dueDay);
-                if (!isInDateRange(prevDueDate.toISOString().split('T')[0])) return [];
+                for (let i = 1; i <= MAX_LOOKBACK; i++) {
+                    const y = now.getMonth() - i < 0 ? now.getFullYear() - Math.ceil((i - now.getMonth()) / 12) : now.getFullYear();
+                    const mRaw = ((now.getMonth() - i) % 12 + 12) % 12;
+                    const checkStart = new Date(y, mRaw, 1);
+                    if (activationDate && checkStart < new Date(activationDate.getFullYear(), activationDate.getMonth(), 1)) break;
+                    const pk = `${checkStart.getFullYear()}-${String(checkStart.getMonth() + 1).padStart(2, '0')}`;
+                    const paid = paidByPeriod[pk] || 0;
+                    const shortfall = Number(t.rentAmount) - paid;
+                    if (shortfall > 0) {
+                        totalArrears += shortfall;
+                        monthsMissed++;
+                    }
+                }
 
-                const outstandingBalance = t.rentAmount - totalPaidLastMonth;
+                // Also respect admin-set arrears field — use whichever is higher
+                const adminArrears = Math.max(0, Number((t as any).arrears ?? 0));
+                const finalArrears = Math.max(totalArrears, adminArrears);
+
+                if (finalArrears <= 0) return [];
+
+                // Date range: only apply if a range is actively selected;
+                // compare against last month's due date so 'Last Month' works naturally
+                if (activeDateRange) {
+                    const prevDueDay = t.rentDueDate || 5;
+                    const prevDue = new Date(now.getFullYear(), now.getMonth() - 1, prevDueDay);
+                    if (!isInDateRange(prevDue.toISOString().split('T')[0])) return [];
+                }
+
                 const { days, date } = getDaysOverdue(t.rentDueDate);
 
                 return [{
                     id: t.id,
                     tenant: t.name,
                     property: `${t.propertyName} - ${t.unit}`,
-                    amountDisplay: `KES ${outstandingBalance.toLocaleString()}`,
-                    val: outstandingBalance,
-                    partial: totalPaidLastMonth > 0
-                        ? `Yes (Paid KES ${totalPaidLastMonth.toLocaleString()})`
-                        : 'No',
+                    amountDisplay: `KES ${finalArrears.toLocaleString()}`,
+                    val: finalArrears,
+                    monthsMissed,
                     daysOverdue: days,
                     dueDate: date
                 }];
@@ -383,7 +417,11 @@ const QuickSearch: React.FC = () => {
         }
 
         if (activeFilter === 'Partial Payments') {
+            const now = new Date();
+            const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             return searchedTenants.flatMap(t => {
+                if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return [];
+                if (!Number(t.rentAmount ?? 0)) return [];
                 // Group all payment entries by billing period (YYYY-MM)
                 const byPeriod: Record<string, { totalPaid: number; latestDate: string; methods: string[] }> = {};
                 t.paymentHistory.forEach(p => {
@@ -393,7 +431,6 @@ const QuickSearch: React.FC = () => {
                     if (!byPeriod[periodKey]) byPeriod[periodKey] = { totalPaid: 0, latestDate: p.date, methods: [] };
                     const paid = parseFloat(p.amount.replace(/[^0-9.]/g, '')) || 0;
                     byPeriod[periodKey].totalPaid += paid;
-                    // Track the latest date in this period for display
                     if (new Date(p.date) > new Date(byPeriod[periodKey].latestDate)) {
                         byPeriod[periodKey].latestDate = p.date;
                     }
@@ -403,20 +440,30 @@ const QuickSearch: React.FC = () => {
                 });
 
                 return Object.entries(byPeriod)
-                    .filter(([, { totalPaid, latestDate }]) =>
-                        totalPaid > 0 && totalPaid < t.rentAmount && isInDateRange(latestDate)
-                    )
-                    .map(([periodKey, { totalPaid, latestDate, methods }]) => ({
-                        id: `${t.id}-${periodKey}`,
-                        tenant: t.name,
-                        property: `${t.propertyName} - ${t.unit}`,
-                        amountDisplay: `KES ${totalPaid.toLocaleString()}`,
-                        val: totalPaid,
-                        expected: t.rentAmount,
-                        shortfall: t.rentAmount - totalPaid,
-                        date: latestDate,
-                        method: methods.join(', ') || '—'
-                    }));
+                    .filter(([periodKey, { totalPaid, latestDate }]) => {
+                        if (totalPaid <= 0 || totalPaid >= Number(t.rentAmount)) return false;
+                        // Default (no date range): show current month partials only
+                        // With date range: filter by the latest payment date in that period
+                        if (!activeDateRange) return periodKey === currentPeriod;
+                        return isInDateRange(latestDate);
+                    })
+                    .map(([periodKey, { totalPaid, latestDate, methods }]) => {
+                        const [yr, mo] = periodKey.split('-');
+                        const period = new Date(+yr, +mo - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+                        return {
+                            id: `${t.id}-${periodKey}`,
+                            tenant: t.name,
+                            property: `${t.propertyName} - ${t.unit}`,
+                            amountDisplay: `KES ${totalPaid.toLocaleString()}`,
+                            val: totalPaid,
+                            expected: Number(t.rentAmount),
+                            shortfall: Number(t.rentAmount) - totalPaid,
+                            date: latestDate,
+                            period,
+                            method: methods.join(', ') || '—'
+                        };
+                    })
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             });
         }
 
@@ -493,6 +540,7 @@ const QuickSearch: React.FC = () => {
             { label: 'This Week', value: 'This Week' },
             { label: 'Last Week', value: 'Last Week' },
             { label: 'This Month', value: 'This Month' },
+            { label: 'Last Month', value: 'Last Month' },
             { label: 'This Quarter', value: 'This Quarter' },
             { label: 'This Year', value: 'This Year' },
             { label: 'Custom Range', value: 'Custom' },
@@ -702,6 +750,7 @@ const QuickSearch: React.FC = () => {
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
                                             <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Rent Expected</th>
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Due Date</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Days Overdue</th>
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
                                         </tr>
                                     )}
@@ -709,10 +758,10 @@ const QuickSearch: React.FC = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
-                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Outstanding</th>
-                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Partial?</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Total Outstanding</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Months in Arrears</th>
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Days Overdue</th>
-                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Due Date</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Last Due Date</th>
                                         </tr>
                                     )}
                                     {(activeFilter === 'Unpaid Fines' || activeFilter === 'Paid Fines') && (
@@ -756,10 +805,11 @@ const QuickSearch: React.FC = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Period</th>
                                             <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Paid</th>
                                             <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Expected</th>
                                             <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Shortfall</th>
-                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Date</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Last Payment</th>
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Method</th>
                                         </tr>
                                     )}
@@ -782,6 +832,9 @@ const QuickSearch: React.FC = () => {
                                                     <td className="px-6 py-4 text-gray-500">{row.property}</td>
                                                     <td className="px-6 py-4 text-right font-bold text-amber-600">{row.amountDisplay}</td>
                                                     <td className="px-6 py-4 text-center text-gray-500">{row.dueDate}</td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold">{row.daysOverdue}d overdue</span>
+                                                    </td>
                                                     <td className="px-6 py-4 text-center"><span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold">{row.status}</span></td>
                                                 </>
                                             )}
@@ -790,9 +843,11 @@ const QuickSearch: React.FC = () => {
                                                     <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
                                                     <td className="px-6 py-4 text-gray-500">{row.property}</td>
                                                     <td className="px-6 py-4 text-right font-bold text-red-600">{row.amountDisplay}</td>
-                                                    <td className="px-6 py-4 text-center text-gray-500">{row.partial}</td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">{row.daysOverdue} Days</span>
+                                                        <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">{row.monthsMissed} {row.monthsMissed === 1 ? 'Month' : 'Months'}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-bold">{row.daysOverdue} Days</span>
                                                     </td>
                                                     <td className="px-6 py-4 text-center text-gray-500">{row.dueDate}</td>
                                                 </>
@@ -838,10 +893,13 @@ const QuickSearch: React.FC = () => {
                                                 <>
                                                     <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
                                                     <td className="px-6 py-4 text-gray-500">{row.property}</td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">{row.period}</span>
+                                                    </td>
                                                     <td className="px-6 py-4 text-right font-bold text-yellow-600">{row.amountDisplay}</td>
                                                     <td className="px-6 py-4 text-right text-gray-500">KES {(row.expected || 0).toLocaleString()}</td>
                                                     <td className="px-6 py-4 text-right font-bold text-red-600">KES {(row.shortfall || 0).toLocaleString()}</td>
-                                                    <td className="px-6 py-4 text-center text-gray-500">{row.date}</td>
+                                                    <td className="px-6 py-4 text-center text-gray-500">{fmtDate(row.date)}</td>
                                                     <td className="px-6 py-4 text-center text-gray-500">{row.method}</td>
                                                 </>
                                             )}
