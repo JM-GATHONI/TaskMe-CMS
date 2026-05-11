@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { websiteLinks } from '../../utils/websiteLinks';
-import { generateUnitReferralCode } from '../../utils/referralCode';
+import { generateUnitReferralCode, generateUserReferralCode } from '../../utils/referralCode';
 
 const ReferralProgram: React.FC = () => {
     const { leads, rfTransactions, currentUser, commissionRules, properties } = useData();
@@ -35,9 +35,10 @@ const ReferralProgram: React.FC = () => {
     }, [commissionRules]);
 
     const referralCode = useMemo(() => {
-        const u = currentUser as { id?: string; email?: string } | null;
-        if (u?.id) return String(u.id).replace(/-/g, '').slice(0, 12).toUpperCase();
-        if (u?.email) return u.email.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'TASKME';
+        const u = currentUser as { id?: string; name?: string; email?: string; referralCode?: string } | null;
+        if ((u as any)?.referralCode) return (u as any).referralCode as string;
+        if (u?.id && u?.name) return generateUserReferralCode(u.name, u.id);
+        if (u?.id) return generateUserReferralCode(u.email?.split('@')[0] || 'User', u.id);
         return 'TASKME';
     }, [currentUser]);
 

@@ -966,7 +966,7 @@ const ReferralLanding: React.FC = () => {
         if (!referrerCode) return undefined;
         const allPeople = [...(tenants || []), ...(staff || []), ...(landlords || []), ...(renovationInvestors || [])]
             .map((u: any) => ({ id: u.id, name: u.name || '', referralCode: u.referralCode }));
-        return resolveReferralCode(referrerCode, allPeople) ?? referrerCode;
+        return resolveReferralCode(referrerCode, allPeople);
     }, [referrerCode, tenants, staff, landlords, renovationInvestors]);
 
     const buildShareLink = (type: 'unit' | 'fund', id: string) => {

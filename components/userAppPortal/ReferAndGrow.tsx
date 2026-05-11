@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { websiteLinks } from '../../utils/websiteLinks';
-import { generateUnitReferralCode } from '../../utils/referralCode';
+import { generateUnitReferralCode, generateUserReferralCode } from '../../utils/referralCode';
 
 const ReferAndGrow: React.FC = () => {
     const { properties, funds, currentUser, tenants, renovationInvestors, leads, applications, rfTransactions, commissionRules } = useData();
@@ -15,7 +15,7 @@ const ReferAndGrow: React.FC = () => {
         if (!currentUser) return { name: "User", referralCode: "REF2025", tier: "Silver", points: 0 };
         return {
             name: currentUser.name || "User",
-            referralCode: (currentUser as any).referralCode || String(currentUser.id).replace(/-/g, '').slice(0, 12).toUpperCase(),
+            referralCode: (currentUser as any).referralCode || generateUserReferralCode(currentUser.name || '', currentUser.id),
             tier: "Silver",
             points: 1250,
             referralConfig: (currentUser as any).referralConfig
