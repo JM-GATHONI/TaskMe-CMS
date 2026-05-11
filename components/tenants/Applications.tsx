@@ -1541,7 +1541,7 @@ const ProfileHubModal: React.FC<{
 };
 
 const Applications: React.FC = () => {
-    const { applications, tenants, properties, staff, landlords, renovationInvestors, commissionRules, addApplication, updateApplication, addTenant, updateTenant, updateStaff, updateProperty, deleteTenant, deleteApplication, checkPermission, currentUser } = useData();
+    const { applications, tenants, properties, staff, landlords, renovationInvestors, commissionRules, addApplication, updateApplication, addTenant, updateTenant, updateStaff, updateLandlord, addRFTransaction, updateProperty, deleteTenant, deleteApplication, checkPermission, currentUser } = useData();
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
     const canCreate  = isSuperAdmin || checkPermission('Tenants', 'create');
     const canEdit    = isSuperAdmin || checkPermission('Tenants', 'edit');
@@ -1978,21 +1978,49 @@ const Applications: React.FC = () => {
                 activationDate: isPending ? new Date().toISOString().split('T')[0] : (t as any).activationDate,
             });
             // ── Auto-assign Tenancy Referral commission on first activation ──────
-            // Fire-and-forget: silently skipped if no matching rule or referrer.
+            // Covers all referrer pools: staff, landlords/affiliates, investors, tenants.
             if (isPending && t.referrerId) {
                 const rule = commissionRules.find(r => r.trigger === 'Tenancy Referral');
                 if (rule && rule.rateValue > 0) {
                     const commissionAmount = rule.rateType === '%'
                         ? Math.round((t.rentAmount || 0) * (rule.rateValue / 100))
                         : rule.rateValue;
-                    const referrer = staff.find(s => s.id === t.referrerId);
-                    if (referrer) {
+                    const today = new Date().toISOString().split('T')[0];
+                    const source = `Tenancy Referral — ${t.name}`;
+
+                    const staffReferrer = staff.find(s => s.id === t.referrerId);
+                    const landlordReferrer = landlords.find(l => l.id === t.referrerId);
+                    const allPeople = [...tenants, ...(renovationInvestors as any[])];
+                    const otherReferrer = allPeople.find((p: any) => p.id === t.referrerId);
+
+                    if (staffReferrer) {
                         updateStaff(t.referrerId, {
                             commissions: [
-                                { date: new Date().toISOString().split('T')[0], amount: commissionAmount, source: `Tenancy Referral — ${t.name}` },
-                                ...(referrer.commissions || []),
+                                { date: today, amount: commissionAmount, source },
+                                ...(staffReferrer.commissions || []),
                             ],
                         });
+                    } else if (landlordReferrer) {
+                        updateLandlord(t.referrerId, {
+                            commissions: [
+                                { date: today, amount: commissionAmount, source },
+                                ...((landlordReferrer as any).commissions || []),
+                            ],
+                        } as any);
+                    } else if (otherReferrer) {
+                        // Tenants / Investors — log via rfTransactions ledger
+                        addRFTransaction({
+                            id: `rft-ref-${Date.now()}`,
+                            date: today,
+                            type: 'Referral Commission',
+                            category: 'Outbound',
+                            amount: commissionAmount,
+                            partyName: (otherReferrer as any).name || 'Referrer',
+                            description: source,
+                            reference: `REF-${t.id.slice(0, 8).toUpperCase()}`,
+                            status: 'Pending',
+                            notes: `Auto-generated on activation of ${t.name}`,
+                        } as any);
                     }
                 }
             }
