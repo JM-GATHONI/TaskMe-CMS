@@ -4,6 +4,7 @@ import { useData } from '../context/DataContext';
 import Icon from './Icon';
 import { StaffProfile, TenantProfile } from '../types';
 import { supabase } from '../utils/supabaseClient';
+import { resolveReferralCode, generateUserReferralCode } from '../utils/referralCode';
 
 const ROLES = ['Landlord', 'Tenant', 'Investor', 'Affiliate', 'Contractor', 'Field Agent', 'Caretaker'] as const;
 
@@ -31,6 +32,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
         password: '',
         confirmPassword: '',
         role: '' as typeof ROLES[number] | '',
+        referralCode: '',
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -45,7 +47,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
         setIsLoading(true);
 
         try {
-            const { firstName, lastName, phone, idNumber, email, password, confirmPassword, role } = formData;
+            const { firstName, lastName, phone, idNumber, email, password, confirmPassword, role, referralCode } = formData;
             if (!email || !password) {
                 setError('Email and password are required.');
                 return;
@@ -65,6 +67,17 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
 
             const fullName = [firstName, lastName].filter(Boolean).join(' ') || email;
 
+            // Resolve referral code → referrer's ID (all user pools)
+            let referrerId: string | undefined;
+            const trimmedCode = referralCode.trim().toUpperCase();
+            if (trimmedCode) {
+                const allPeople = [
+                    ...(tenants || []), ...(staff || []),
+                    ...(landlords || []), ...(renovationInvestors || []),
+                ].map((u: any) => ({ id: u.id, name: u.name || '', referralCode: u.referralCode }));
+                referrerId = resolveReferralCode(trimmedCode, allPeople);
+            }
+
             console.log('[Supabase] auth.signUp');
             const { data, error: signUpError } = await supabase.auth.signUp({
                 email,
@@ -77,6 +90,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                         last_name: lastName,
                         phone,
                         id_number: idNumber,
+                        ...(referrerId ? { referrer_id: referrerId, referral_code: trimmedCode } : {}),
                     },
                 },
             });
@@ -195,7 +209,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                         phone: (staffRow?.phone ?? phone) as string,
                         idNumber: (idNumber ?? '') as string,
                         status: 'Active' as const,
-                        specialty: specialty || 'General',
+                        specialty: (user.user_metadata as any)?.specialty || 'General',
                     } as any;
                 } else {
                     // Staff roles: Field Agent, Caretaker, etc.
@@ -509,6 +523,24 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                                 ))}
                             </select>
                         </div>
+
+                        {['Tenant', 'Landlord', 'Investor'].includes(formData.role) && (
+                            <div className="relative group">
+                                <Icon name="referral" className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
+                                <input
+                                    name="referralCode"
+                                    value={formData.referralCode}
+                                    onChange={e => setFormData(prev => ({ ...prev, referralCode: e.target.value.toUpperCase() }))}
+                                    className={`${inputClass} font-mono tracking-widest`}
+                                    placeholder="Referral code (optional)"
+                                    maxLength={10}
+                                    autoComplete="off"
+                                />
+                                {formData.referralCode.length >= 5 && (
+                                    <p className="text-[10px] text-teal-600 mt-1 pl-1">Code applied — you will be linked to your referrer.</p>
+                                )}
+                            </div>
+                        )}
 
                         <button
                             type="submit"
