@@ -494,6 +494,7 @@ export interface StaffProfile {
   businessUnitAssignment?: string;
   passwordHash?: string;
   assignedPropertyId?: string;
+  referralCode?: string;
   referralConfig?: {
       rateType: '%' | 'KES';
       rateValue: number;
@@ -842,6 +843,7 @@ export interface RenovationInvestor {
   authorizedRep?: { name: string; phone: string; role: string };
   referrerId?: string;
   referrerType?: string;
+  referralCode?: string;
   passwordHash?: string;
 }
 
