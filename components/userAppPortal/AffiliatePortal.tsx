@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Affiliate } from '../../types';
 import Icon from '../Icon';
 import AdBanners from './AdBanners';
+import ReferTenantModal from './ReferTenantModal';
 import { useData } from '../../context/DataContext';
 import { websiteLinks } from '../../utils/websiteLinks';
 
@@ -82,6 +83,7 @@ const AffiliatePortal: React.FC = () => {
         };
     }, [currentUser, leads, applications, rfTransactions, tenants]);
     const [copyText, setCopyText] = useState('Copy Link');
+    const [isReferModalOpen, setIsReferModalOpen] = useState(false);
 
     const handleCopy = () => {
         const link = websiteLinks.referral(affiliate.referralCode);
@@ -165,6 +167,9 @@ const AffiliatePortal: React.FC = () => {
                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Marketing Assets</h3>
                         <div className="space-y-3">
+                            <button onClick={() => setIsReferModalOpen(true)} className="w-full flex items-center justify-center px-4 py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary-dark transition-colors">
+                                <Icon name="tenants" className="w-5 h-5 mr-2" /> Refer a Tenant
+                            </button>
                             <button onClick={() => handleShare('WhatsApp')} className="w-full flex items-center justify-center px-4 py-3 bg-green-50 text-green-700 font-bold rounded-lg hover:bg-green-100 transition-colors">
                                 <Icon name="communication" className="w-5 h-5 mr-2" /> Share on WhatsApp
                             </button>
@@ -186,6 +191,14 @@ const AffiliatePortal: React.FC = () => {
 
             {/* Advert Banners */}
             <AdBanners />
+
+            {isReferModalOpen && (
+                <ReferTenantModal
+                    referrerId={affiliate.id}
+                    referralCode={affiliate.referralCode}
+                    onClose={() => setIsReferModalOpen(false)}
+                />
+            )}
         </div>
     );
 };

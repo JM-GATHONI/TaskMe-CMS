@@ -8,6 +8,7 @@ import { PropertyForm } from '../registration/Properties';
 import { Property, TenantApplication, User, TenantProfile, Task, TaskStatus, TaskPriority, LandlordApplication, StaffProfile } from '../../types';
 import { CollectionManagerModal } from '../operations/TaskManagement';
 import { fmtDate } from '../../utils/date';
+import ReferTenantModal from './ReferTenantModal';
 import { ApplicationFormModal, UnifiedRecord } from '../tenants/Applications';
 import { NewApplicationModal, ExtendedLandlordApp } from '../landlords/Applications';
 import AdBanners from './AdBanners';
@@ -97,6 +98,7 @@ const AgentPortal: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'Dashboard' | 'Tasks' | 'Vacancies' | 'My Properties' | 'My Tenants' | 'My Landlords'>('Dashboard');
     
     const [modalOpen, setModalOpen] = useState<'none' | 'addTenant' | 'addLandlord' | 'addProperty'>('none');
+    const [isReferModalOpen, setIsReferModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [selectedCollectionTenant, setSelectedCollectionTenant] = useState<TenantProfile | null>(null);
     const [taskTypeFilter, setTaskTypeFilter] = useState<'Work Orders' | 'Collections'>('Work Orders');
@@ -353,8 +355,11 @@ const AgentPortal: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex gap-2 items-center flex-wrap">
+                    <button onClick={() => setIsReferModalOpen(true)} className="bg-primary text-white px-4 py-2 rounded-lg font-bold hover:bg-primary-dark shadow-sm flex items-center text-sm">
+                        <Icon name="tenants" className="w-4 h-4 mr-2"/> Refer Tenant
+                    </button>
                     <button onClick={() => setModalOpen('addTenant')} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 shadow-sm flex items-center text-sm">
-                        <Icon name="plus" className="w-4 h-4 mr-2"/> Tenant
+                        <Icon name="plus" className="w-4 h-4 mr-2"/> Add Tenant
                     </button>
                      <button onClick={() => setModalOpen('addLandlord')} className="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-700 shadow-sm flex items-center text-sm">
                         <Icon name="plus" className="w-4 h-4 mr-2"/> Landlord
@@ -688,6 +693,13 @@ const AgentPortal: React.FC = () => {
             )}
 
             {/* Modals for Adding Entities */}
+            {isReferModalOpen && (
+                <ReferTenantModal
+                    referrerId={agent?.id || ''}
+                    referralCode={(agent as any)?.referralCode || `${String(agent?.name ?? 'AGENT').split(' ')[0].toUpperCase().slice(0, 4)}${String(agent?.id ?? '').slice(-4).toUpperCase()}`}
+                    onClose={() => setIsReferModalOpen(false)}
+                />
+            )}
             {modalOpen === 'addTenant' && (
                 <ApplicationFormModal 
                     onClose={() => setModalOpen('none')} 

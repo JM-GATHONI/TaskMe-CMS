@@ -4,10 +4,12 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { Task, TaskPriority, TaskStatus } from '../../types';
 import AdBanners from './AdBanners';
+import ReferTenantModal from './ReferTenantModal';
 import { useProfileFirstName } from '../../hooks/useProfileFirstName';
 
 const CaretakerPortal: React.FC = () => {
     const { tasks, staff, addTask, updateTask, currentUser, isDataLoading } = useData();
+    const [isReferModalOpen, setIsReferModalOpen] = useState(false);
     const [reportDescription, setReportDescription] = useState('');
     // Prefer actual logged-in user if they are a caretaker; otherwise fall back to staff list (demo)
     const caretaker = useMemo(() => {
@@ -155,8 +157,32 @@ const CaretakerPortal: React.FC = () => {
                 </div>
             </div>
 
+            {/* Refer a Tenant */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800">Refer a Tenant</h3>
+                        <p className="text-sm text-gray-500 mt-1">Know someone looking for a unit? Submit their details and earn a referral commission.</p>
+                    </div>
+                    <button
+                        onClick={() => setIsReferModalOpen(true)}
+                        className="ml-4 shrink-0 px-5 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark transition-colors shadow-sm text-sm flex items-center gap-2"
+                    >
+                        <Icon name="tenants" className="w-4 h-4" /> Refer Tenant
+                    </button>
+                </div>
+            </div>
+
             {/* Advert Banners */}
             <AdBanners />
+
+            {isReferModalOpen && (
+                <ReferTenantModal
+                    referrerId={String((caretaker as any)?.id ?? '')}
+                    referralCode={(caretaker as any)?.referralCode || `${String((caretaker as any)?.name ?? 'CTK').split(' ')[0].toUpperCase().slice(0, 4)}${String((caretaker as any)?.id ?? '').slice(-4).toUpperCase()}`}
+                    onClose={() => setIsReferModalOpen(false)}
+                />
+            )}
         </div>
     );
 };

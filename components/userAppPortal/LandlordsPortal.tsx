@@ -7,6 +7,7 @@ import Icon from '../Icon';
 import { exportToCSV, printSection } from '../../utils/exportHelper';
 import { websiteLinks } from '../../utils/websiteLinks';
 import { fmtDate } from '../../utils/date';
+import ReferTenantModal from './ReferTenantModal';
 import { supabase } from '../../utils/supabaseClient';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, BarElement, Filler } from 'chart.js';
 import { Line, Bar } from 'react-chartjs-2';
@@ -369,6 +370,7 @@ const LandlordsPortal: React.FC = () => {
 
     const [isStatementOpen, setIsStatementOpen] = useState(false);
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+    const [isReferModalOpen, setIsReferModalOpen] = useState(false);
     const [requestType, setRequestType] = useState<'General' | 'Maintenance' | 'Eviction'>('General');
 
     const [monthPayments, setMonthPayments] = useState<Array<{ amount: number; date: string; created_at: string }>>([]);
@@ -1476,6 +1478,28 @@ const LandlordsPortal: React.FC = () => {
                                     </div>
                                 </div>
 
+                                {/* Refer Tenant */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-3 bg-green-50 text-green-600 rounded-lg">
+                                            <Icon name="tenants" className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 text-lg">Refer a Tenant</h4>
+                                            <p className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded inline-block mt-1">Earn Tenancy Referral Commission</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-gray-600 text-sm mb-6 flex-grow">
+                                        Know someone looking for a home? Refer them directly to one of your vacant units. They'll appear in applicants and you'll earn a commission when they sign.
+                                    </p>
+                                    <button
+                                        onClick={() => setIsReferModalOpen(true)}
+                                        className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-dark transition-colors shadow-sm"
+                                    >
+                                        Refer a Tenant Now
+                                    </button>
+                                </div>
+
                                 {/* Refer Investor */}
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col h-full">
                                     <div className="flex items-center gap-3 mb-4">
@@ -1507,6 +1531,15 @@ const LandlordsPortal: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+
+            {isReferModalOpen && (
+                <ReferTenantModal
+                    referrerId={currentLandlord.id}
+                    referralCode={(currentLandlord as any).referralCode || `${String(currentLandlord.name ?? 'LL').split(' ')[0].toUpperCase().slice(0, 4)}${String(currentLandlord.id).slice(-4).toUpperCase()}`}
+                    restrictToPropertyIds={allLandlordProperties.map(p => p.id)}
+                    onClose={() => setIsReferModalOpen(false)}
+                />
+            )}
 
                         {/* Investment Section */}
                         <div>

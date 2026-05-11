@@ -10,6 +10,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
 import { fmtDate } from '../../utils/date';
+import ReferTenantModal from './ReferTenantModal';
 
 // --- STK PUSH UI ---
 const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenant: TenantProfile; userId: string; leaseId?: string | null }> = ({ onClose, amount, tenant, userId, leaseId = null }) => {
@@ -294,6 +295,7 @@ const TenantPortal: React.FC = () => {
     const [messagesSubTab, setMessagesSubTab] = useState<'admin' | 'general'>('admin');
     const [isPayRentModalOpen, setIsPayRentModalOpen] = useState(false);
     const [isVacationModalOpen, setIsVacationModalOpen] = useState(false);
+    const [isReferModalOpen, setIsReferModalOpen] = useState(false);
     const [selectedPortalKeys, setSelectedPortalKeys] = useState<Set<string>>(new Set());
     const [activeTab, setActiveTab] = useState<'dashboard' | 'payments' | 'maintenance' | 'messages' | 'browse'>('dashboard');
     const [browseSearch, setBrowseSearch] = useState('');
@@ -329,26 +331,36 @@ const TenantPortal: React.FC = () => {
             Number(activeUser.rentAmount ?? 0) > 0 &&
             (!activeUser.nextDueDate || activeUser.nextDueDate <= today);
         const rent = rentIsDue ? Number(activeUser.rentAmount ?? 0) : 0;
-        const bills = activeUser.outstandingBills?.filter(b => b.status === 'Pending').reduce((s, b) => s + Number(b.amount ?? 0), 0) || 0;
-        const fines = activeUser.outstandingFines?.filter(f => f.status === 'Pending').reduce((s, f) => s + Number(f.amount ?? 0), 0) || 0;
-        return rent + bills + fines;
+        const bills = (activeUser.outstandingBills || []).filter(b => b.status === 'Pending').reduce((s, b) => s + Number(b.amount ?? 0), 0);
+        const fines = (activeUser.outstandingFines || []).filter(f => f.status === 'Pending').reduce((s, f) => s + Number(f.amount ?? 0), 0);
+        const arrears = Math.max(0, Number((activeUser as any).arrears ?? 0));
+        const depositOwed = Math.max(0, Number(activeUser.depositExpected ?? 0) - Number(activeUser.depositPaid ?? 0));
+        return rent + bills + fines + arrears + depositOwed;
     }, [activeUser]);
     const portalLineItems = useMemo(() => {
-        if (!activeUser) return [] as { key: string; label: string; amount: number }[];
-        const items: { key: string; label: string; amount: number }[] = [];
+        if (!activeUser) return [] as { key: string; label: string; amount: number; category: string }[];
+        const items: { key: string; label: string; amount: number; category: string }[] = [];
         const today = new Date().toISOString().split('T')[0];
         const activeStatuses = ['Active', 'Overdue', 'Notice'];
         const rentIsDue = activeStatuses.includes(activeUser.status ?? '') &&
             Number(activeUser.rentAmount ?? 0) > 0 &&
             (!activeUser.nextDueDate || activeUser.nextDueDate <= today);
         if (rentIsDue && Number(activeUser.rentAmount ?? 0) > 0) {
-            items.push({ key: 'rent', label: activeUser.status === 'Overdue' ? 'Rent (Overdue)' : 'Rent (Due)', amount: Number(activeUser.rentAmount ?? 0) });
+            items.push({ key: 'rent', label: activeUser.status === 'Overdue' ? 'Rent (Overdue)' : 'Rent (Due)', amount: Number(activeUser.rentAmount ?? 0), category: 'rent' });
+        }
+        const arrears = Math.max(0, Number((activeUser as any).arrears ?? 0));
+        if (arrears > 0) {
+            items.push({ key: 'arrears', label: 'Arrears', amount: arrears, category: 'arrears' });
         }
         for (const b of (activeUser.outstandingBills || []).filter(b => b.status === 'Pending')) {
-            items.push({ key: `bill:${b.id}`, label: b.type + (b.description ? ` — ${b.description}` : ''), amount: b.amount });
+            items.push({ key: `bill:${b.id}`, label: b.type + (b.description ? ` — ${b.description}` : ''), amount: Number(b.amount ?? 0), category: 'bill' });
         }
         for (const f of (activeUser.outstandingFines || []).filter(f => f.status === 'Pending')) {
-            items.push({ key: `fine:${f.id}`, label: f.type, amount: f.amount });
+            items.push({ key: `fine:${f.id}`, label: f.type, amount: Number(f.amount ?? 0), category: 'fine' });
+        }
+        const depositOwed = Math.max(0, Number(activeUser.depositExpected ?? 0) - Number(activeUser.depositPaid ?? 0));
+        if (depositOwed > 0) {
+            items.push({ key: 'deposit', label: 'Deposit Balance', amount: depositOwed, category: 'deposit' });
         }
         return items;
     }, [activeUser]);
@@ -571,7 +583,9 @@ const TenantPortal: React.FC = () => {
                                     KES {Number(balance ?? 0).toLocaleString()}
                                 </p>
                                 <p className="text-xs text-gray-400 mt-1">
-                                    {hasLease ? 'Due Date: 5th of Month' : 'No active lease found'}
+                                    {hasLease
+                                        ? `Rent due: ${activeUser.rentDueDate ?? 5}${[11,12,13].includes(activeUser.rentDueDate ?? 5) ? 'th' : [1,21,31].includes(activeUser.rentDueDate ?? 5) ? 'st' : [2,22].includes(activeUser.rentDueDate ?? 5) ? 'nd' : [3,23].includes(activeUser.rentDueDate ?? 5) ? 'rd' : 'th'} of each month`
+                                        : 'No active lease found'}
                                 </p>
                                 {portalLineItems.length > 0 && (
                                     <div className="mt-4 space-y-2 border-t pt-3">
@@ -641,6 +655,12 @@ const TenantPortal: React.FC = () => {
                                 </button>
                                 <button onClick={() => setActiveTab('messages')} className="w-full text-left p-2 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center">
                                     <Icon name="mail" className="w-4 h-4 mr-2 text-blue-500"/> Contact Admin
+                                </button>
+                                <button
+                                    onClick={() => setIsReferModalOpen(true)}
+                                    className="w-full text-left p-2 rounded hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center"
+                                >
+                                    <Icon name="user-plus" className="w-4 h-4 mr-2 text-green-600"/> Refer a Tenant
                                 </button>
                                 <button
                                     onClick={() => setIsVacationModalOpen(true)}
@@ -934,6 +954,13 @@ const TenantPortal: React.FC = () => {
                 />
             )}
 
+            {isReferModalOpen && (
+                <ReferTenantModal
+                    referrerId={activeUser.id}
+                    referralCode={(activeUser as any).referralCode || `${activeUser.name.split(' ')[0].toUpperCase().slice(0, 4)}${activeUser.id.slice(-4).toUpperCase()}`}
+                    onClose={() => setIsReferModalOpen(false)}
+                />
+            )}
             {isPayRentModalOpen && (
                 <MpesaStkModal
                     onClose={() => setIsPayRentModalOpen(false)}
