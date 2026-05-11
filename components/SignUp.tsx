@@ -105,6 +105,12 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                 return;
             }
 
+            // Generate this new user's own referral code and persist it in their metadata
+            const ownReferralCode = generateUserReferralCode(fullName, data.user.id);
+            supabase.auth.updateUser({
+                data: { own_referral_code: ownReferralCode },
+            }).catch(e => console.warn('[SignUp] Failed to store own_referral_code (non-blocking)', e));
+
             // Fire-and-forget welcome email — must NOT be awaited so the success
             // screen appears immediately without waiting for Edge Function cold-start.
             supabase.functions.invoke('send-email', {
@@ -263,6 +269,8 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                                 outstandingBills: [],
                                 outstandingFines: [],
                                 maintenanceRequests: [],
+                                referralCode: ownReferralCode,
+                                ...(referrerId ? { referrerId } : {}),
                             } as any);
                         }
                     } else if (resolvedRole === 'Landlord' || resolvedRole === 'Affiliate') {
@@ -271,7 +279,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                         deleteVendor(uid);
                         deleteStaff(uid);
                         if (!landlords.some(l => l.id === uid)) {
-                            addLandlord({ ...base, role: resolvedRole } as any);
+                            addLandlord({ ...base, role: resolvedRole, referralCode: ownReferralCode, ...(referrerId ? { referrerId } : {}) } as any);
                         }
                     } else if (resolvedRole === 'Investor') {
                         deleteTenant(uid);
@@ -285,6 +293,8 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                                 idNumber: meta.id_number ?? idNumber ?? '',
                                 joinDate: new Date().toISOString().split('T')[0],
                                 status: 'Active',
+                                referralCode: ownReferralCode,
+                                ...(referrerId ? { referrerId } : {}),
                             } as any);
                         }
                     } else if (resolvedRole === 'Contractor') {
