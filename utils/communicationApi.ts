@@ -29,7 +29,6 @@ export const communicationApi = {
             return { success: false, error: 'Bulk SMS not integrated. Kindly ask the super-admin to integrate.' };
         }
         console.log(`[API Push] Sending SMS... To: ${to}, SenderID: ${senderId}`);
-        // Minimal placeholder for future SMS Edge Function (no real provider yet).
         try {
             const { data, error } = await supabase.functions.invoke('send-sms', {
                 body: { to, content, senderId },
@@ -38,13 +37,9 @@ export const communicationApi = {
             const messageId = (data as any)?.messageId || `sms-${Date.now()}`;
             return { success: true, messageId, providerRef: (data as any)?.providerRef };
         } catch (e: any) {
-            await delay(800);
-            if (!to) return { success: false, error: 'Recipient number missing' };
-            return { 
-                success: true, 
-                messageId: `sms-${Date.now()}`,
-                providerRef: `sms-local-fallback`
-            };
+            const errMsg = e?.message || 'SMS dispatch failed';
+            console.error('[communicationApi.sendSMS] Error:', errMsg);
+            return { success: false, error: errMsg };
         }
     },
 

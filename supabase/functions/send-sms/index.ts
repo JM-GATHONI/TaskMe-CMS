@@ -45,6 +45,30 @@ function buildCors(origin: string | null): Record<string, string> {
   };
 }
 
+/**
+ * Normalise a phone number to E.164.
+ * Handles common Kenyan formats:
+ *   07XXXXXXXX   → +2547XXXXXXXX
+ *   2547XXXXXXXX → +2547XXXXXXXX
+ *   +2547XXXXXXXX → unchanged
+ *   01XXXXXXXX   → +25401XXXXXXXX  (Safaricom/Airtel landlines)
+ * Returns null if the number cannot be normalised.
+ */
+function normalisePhone(raw: string): string | null {
+  const digits = raw.replace(/[\s\-().]/g, '');
+  // Already full E.164
+  if (/^\+\d{7,15}$/.test(digits)) return digits;
+  // 254XXXXXXXXX (no leading +)
+  if (/^254\d{9}$/.test(digits)) return `+${digits}`;
+  // 07XXXXXXXX or 01XXXXXXXX (Kenya local — 10 digits starting with 0)
+  if (/^0[17]\d{8}$/.test(digits)) return `+254${digits.slice(1)}`;
+  // 7XXXXXXXX or 1XXXXXXXX (9 digits, drop the leading 0)
+  if (/^[71]\d{8}$/.test(digits)) return `+254${digits}`;
+  // Anything else that looks like a plausible international number (7-15 digits)
+  if (/^\d{7,15}$/.test(digits)) return `+${digits}`;
+  return null;
+}
+
 serve(async (req: Request) => {
   const cors = buildCors(req.headers.get('Origin'));
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -57,9 +81,15 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
-  const { to, content, senderId } = body;
-  if (!to || !content) {
+  const { to: rawTo, content, senderId } = body;
+  if (!rawTo || !content) {
     return new Response(JSON.stringify({ error: 'Missing required fields: to, content' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+  }
+
+  // Normalise phone number to E.164 (+254XXXXXXXXX for Kenya)
+  const to = normalisePhone(rawTo);
+  if (!to) {
+    return new Response(JSON.stringify({ error: `Invalid phone number: ${rawTo}` }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 
   const env = Deno.env.toObject();
