@@ -1898,13 +1898,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const addTenant = (t: TenantProfile) => setTenants(prev => [t, ...prev]);
     const updateTenant = (id: string, d: Partial<TenantProfile>) => setTenants(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
     const deleteTenant = (id: string) => {
+        // Capture authUserId before removing from state.
+        const authUid = tenants.find(t => t.id === id)?.authUserId;
         setTenants(prev => prev.filter(t => t.id !== id));
         (async () => {
             // Remove from the normalized table so RPCs/dup-checks stop seeing it.
             const { error: delErr } = await supabase.schema('app').rpc('delete_tenant', { p_id: id });
             if (delErr) console.warn('[Supabase] delete_tenant RPC error:', delErr.message);
-            if (isAuthUUID(id)) {
-                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: id });
+            // Delete the auth account: prefer the tenant's own ID if it is a UUID
+            // (system-registered tenants), otherwise fall back to authUserId
+            // (self-registered tenants whose record ID is 'app-self-...').
+            const authTarget = isAuthUUID(id) ? id : (authUid && isAuthUUID(authUid) ? authUid : null);
+            if (authTarget) {
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: authTarget });
                 if (error) console.warn('[Supabase] admin_delete_auth_user (tenant) error:', error.message);
             }
         })();
@@ -1930,7 +1936,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateQuotation = (id: string, d: Partial<Quotation>) => setQuotations(prev => prev.map(q => q.id === id ? {...q, ...d} : q));
     const addApplication = (a: TenantApplication) => setApplications(prev => [a, ...prev]);
     const updateApplication = (id: string, d: Partial<TenantApplication>) => setApplications(prev => prev.map(a => a.id === id ? {...a, ...d} : a));
-    const deleteApplication = (id: string) => setApplications(prev => prev.filter(a => a.id !== id));
+    const deleteApplication = (id: string) => {
+        // Capture authUserId before removing from state.
+        const authUid = applications.find(a => a.id === id)?.authUserId;
+        setApplications(prev => prev.filter(a => a.id !== id));
+        (async () => {
+            // Remove from the normalized table — without this the record reappears on reload.
+            const { error: delErr } = await supabase.schema('app').rpc('delete_tenant_application', { p_id: id });
+            if (delErr) console.warn('[Supabase] delete_tenant_application RPC error:', delErr.message);
+            // Also delete the auth account if the applicant self-registered.
+            const authTarget = isAuthUUID(id) ? id : (authUid && isAuthUUID(authUid) ? authUid : null);
+            if (authTarget) {
+                const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: authTarget });
+                if (error) console.warn('[Supabase] admin_delete_auth_user (application) error:', error.message);
+            }
+        })();
+    };
     const addLandlordApplication = (a: LandlordApplication) => setLandlordApplications(prev => [a, ...prev]);
     const updateLandlordApplication = (id: string, d: Partial<LandlordApplication>) => setLandlordApplications(prev => prev.map(a => a.id === id ? {...a, ...d} : a));
     const deleteLandlordApplication = (id: string) => setLandlordApplications(prev => prev.filter(a => a.id !== id));
