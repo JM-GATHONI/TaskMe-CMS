@@ -25,7 +25,7 @@ function mapInvestorToKyc(inv: {
 }
 
 const ComplianceAndKYC: React.FC = () => {
-    const { renovationInvestors, updateRenovationInvestor } = useData();
+    const { renovationInvestors, updateRenovationInvestor, staff, landlords, commissionRules, updateStaff, updateLandlord, addRFTransaction } = useData();
     const [viewMode, setViewMode] = useState<'Pending' | 'Verified' | 'Rejected'>('Pending');
 
     const records = useMemo(
@@ -34,8 +34,51 @@ const ComplianceAndKYC: React.FC = () => {
     );
 
     const handleVerify = (id: string) => {
-        if (confirm("Are you sure you want to verify this investor?")) {
-            updateRenovationInvestor(id, { status: 'Verified' });
+        if (!confirm("Are you sure you want to verify this investor?")) return;
+        updateRenovationInvestor(id, { status: 'Verified' });
+
+        // Auto-assign Investor Referral commission if referred
+        const inv = (renovationInvestors || []).find(i => i.id === id);
+        const referrerId = inv?.referrerId;
+        if (referrerId) {
+            const rule = commissionRules.find(r => r.trigger === 'Investor Referral');
+            if (rule && rule.rateValue > 0) {
+                const today = new Date().toISOString().split('T')[0];
+                const commissionAmount = rule.rateType === '%'
+                    ? Math.round(rule.rateValue)
+                    : rule.rateValue;
+                const source = `Investor Referral — ${inv?.name || id}`;
+                const staffRef = staff.find(s => s.id === referrerId);
+                const landlordRef = landlords.find(l => l.id === referrerId);
+                if (staffRef) {
+                    updateStaff(referrerId, {
+                        commissions: [
+                            { date: today, amount: commissionAmount, source },
+                            ...(staffRef.commissions || []),
+                        ],
+                    });
+                } else if (landlordRef) {
+                    updateLandlord(referrerId, {
+                        commissions: [
+                            { date: today, amount: commissionAmount, source },
+                            ...((landlordRef as any).commissions || []),
+                        ],
+                    } as any);
+                } else {
+                    addRFTransaction({
+                        id: `rft-ref-${Date.now()}`,
+                        date: today,
+                        type: 'Referral Commission',
+                        category: 'Outbound',
+                        amount: commissionAmount,
+                        partyName: 'Referrer',
+                        description: source,
+                        reference: `REF-${id.slice(0, 8).toUpperCase()}`,
+                        status: 'Pending',
+                        notes: `Auto-generated on KYC verification of investor ${inv?.name || id}`,
+                    } as any);
+                }
+            }
         }
     };
 

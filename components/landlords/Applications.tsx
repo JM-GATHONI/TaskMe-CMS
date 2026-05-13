@@ -317,9 +317,9 @@ const StatCard: React.FC<{ title: string; value: number; color: string; icon: st
 
 const Applications: React.FC = () => {
     const { 
-        landlordApplications, landlords, properties,
+        landlordApplications, landlords, properties, staff, commissionRules,
         addLandlordApplication, updateLandlordApplication, deleteLandlordApplication,
-        addLandlord, updateLandlord, deleteLandlord, updateProperty,
+        addLandlord, updateLandlord, deleteLandlord, updateProperty, addRFTransaction, updateStaff,
         checkPermission, currentUser
     } = useData();
     const isSuperAdmin = (currentUser as any)?.role === 'Super Admin';
@@ -453,12 +453,55 @@ const Applications: React.FC = () => {
                 idNumber: app.idNumber || '',
                 role: 'Landlord',
                 status: 'Active',
-                branch: 'Headquarters' // Default
+                branch: 'Headquarters'
             };
             addLandlord(newUser);
             alert(`${app.name} has been approved and added as an Active Landlord.`);
         } else {
             alert("Application approved (User already exists).");
+        }
+
+        // 3. Auto-assign Property Management Referral commission if referred
+        const referrerId = (app as any).referrerId as string | undefined;
+        if (referrerId) {
+            const rule = commissionRules.find(r => r.trigger === 'Property Management Referral');
+            if (rule && rule.rateValue > 0) {
+                const today = new Date().toISOString().split('T')[0];
+                const commissionAmount = rule.rateType === '%'
+                    ? Math.round(rule.rateValue)
+                    : rule.rateValue;
+                const source = `Property Management Referral — ${app.name}`;
+                const staffRef = staff.find(s => s.id === referrerId);
+                const landlordRef = landlords.find(l => l.id === referrerId);
+                if (staffRef) {
+                    updateStaff(referrerId, {
+                        commissions: [
+                            { date: today, amount: commissionAmount, source },
+                            ...(staffRef.commissions || []),
+                        ],
+                    });
+                } else if (landlordRef) {
+                    updateLandlord(referrerId, {
+                        commissions: [
+                            { date: today, amount: commissionAmount, source },
+                            ...((landlordRef as any).commissions || []),
+                        ],
+                    } as any);
+                } else {
+                    addRFTransaction({
+                        id: `rft-ref-${Date.now()}`,
+                        date: today,
+                        type: 'Referral Commission',
+                        category: 'Outbound',
+                        amount: commissionAmount,
+                        partyName: 'Referrer',
+                        description: source,
+                        reference: `REF-${app.id.slice(0, 8).toUpperCase()}`,
+                        status: 'Pending',
+                        notes: `Auto-generated on approval of landlord ${app.name}`,
+                    } as any);
+                }
+            }
         }
 
         setReviewApp(null);

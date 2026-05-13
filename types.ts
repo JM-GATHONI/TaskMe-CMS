@@ -406,6 +406,7 @@ export interface LandlordApplication {
   notes?: string;
   location?: string;
   propertyIds?: string[];
+  referrerId?: string;
   paymentConfig?: {
       method: string;
       details: any;
