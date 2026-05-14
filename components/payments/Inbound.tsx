@@ -248,6 +248,28 @@ const MpesaStkModal: React.FC<{
             updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
             updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
         }
+        if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+            const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
+                ? Number((tenant as any).depositMonths) : 1;
+            const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
+                ? Number((tenant as any).depositExpected)
+                : Number(tenant.rentAmount || 0) * depMonths;
+            const depAlreadySettled = tenant.depositExempt || !!tenant.rentExtension?.enabled
+                || (tenant.proratedDeposit?.enabled
+                    ? tenant.proratedDeposit.amountPaidSoFar + 0.5 >= tenant.proratedDeposit.totalDepositAmount
+                    : depExpected > 0 && Number(tenant.depositPaid || 0) + 0.5 >= depExpected);
+            const depSettledByPayment = tenant.proratedDeposit?.enabled
+                ? amt >= Number(tenant.rentAmount || 0) + (tenant.proratedDeposit.monthlyInstallment || 0)
+                : amt >= Number(tenant.rentAmount || 0) + depExpected;
+            if (depAlreadySettled || depSettledByPayment) {
+                updates.status = 'Active';
+                (updates as any).activationDate = payDate;
+            }
+            if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+                && Number(tenant.depositPaid || 0) < depExpected && amt >= depExpected) {
+                updates.depositPaid = depExpected;
+            }
+        }
         updateTenant(tenant.id, updates);
         addNotification({
             id: `notif-stk-${Date.now()}`,
@@ -417,7 +439,7 @@ const ManualPaymentModal: React.FC<{
                     (updates as any).activationDate = date;
                 }
                 if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
-                    && Number(tenant.depositPaid || 0) < depExpected && amt >= effectiveRent + depExpected) {
+                    && Number(tenant.depositPaid || 0) < depExpected && amt >= depExpected) {
                     updates.depositPaid = depExpected;
                 }
             }
@@ -549,7 +571,7 @@ const Inbound: React.FC = () => {
     // pick one canonical row per pair (preferring C2B since it always carries
     // the MpesaReceiptNumber) and mark it with _pairedSources for the badge.
     const collapsedPayments = useMemo<PaymentRow[]>(() => {
-        const byId = new Map(payments.map(p => [p.id, p]));
+        const byId = new Map<string, PaymentRow>(payments.map(p => [p.id, p]));
         const consumed = new Set<string>();
         const out: PaymentRow[] = [];
         for (const p of payments) {

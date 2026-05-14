@@ -328,7 +328,7 @@ const Reconciliation: React.FC = () => {
                 }
                 if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
                     && Number(tenant.depositPaid || 0) < depExpected
-                    && amt >= effectiveRent + depExpected) {
+                    && amt >= depExpected) {
                     updates.depositPaid = depExpected;
                 }
             }
