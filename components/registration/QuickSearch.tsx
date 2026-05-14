@@ -122,6 +122,24 @@ const QuickSearch: React.FC = () => {
         }
     }, [query, activeFilter]);
 
+    // --- Date Range Filtering ---
+    const dateBounds = useMemo(() => {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const shift = (base: Date, days: number) => { const r = new Date(base); r.setDate(r.getDate() + days); return r; };
+        if (!activeDateRange) return null;
+        if (activeDateRange === 'Today') return { from: today, to: shift(today, 1) };
+        if (activeDateRange === 'Yesterday') return { from: shift(today, -1), to: today };
+        if (activeDateRange.startsWith('Day:')) { const x = new Date(activeDateRange.slice(4)); return { from: x, to: shift(x, 1) }; }
+        if (activeDateRange === 'This Week') { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7)); return { from: mon, to: shift(mon, 7) }; }
+        if (activeDateRange === 'Last Week') { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7) - 7); return { from: mon, to: shift(mon, 7) }; }
+        if (activeDateRange === 'This Month') return { from: new Date(today.getFullYear(), today.getMonth(), 1), to: new Date(today.getFullYear(), today.getMonth() + 1, 1) };
+        if (activeDateRange === 'This Quarter') { const q = Math.floor(today.getMonth() / 3); return { from: new Date(today.getFullYear(), q * 3, 1), to: new Date(today.getFullYear(), q * 3 + 3, 1) }; }
+        if (activeDateRange === 'This Year') return { from: new Date(today.getFullYear(), 0, 1), to: new Date(today.getFullYear() + 1, 0, 1) };
+        if (activeDateRange === 'Last Month') return { from: new Date(today.getFullYear(), today.getMonth() - 1, 1), to: new Date(today.getFullYear(), today.getMonth(), 1) };
+        if (activeDateRange === 'Custom' && customFrom && customTo) return { from: new Date(customFrom), to: new Date(new Date(customTo).getTime() + 86400000) };
+        return null;
+    }, [activeDateRange, customFrom, customTo]);
+
     // --- Data Processing for Specific Views ---
 
     const tableData = useMemo(() => {
@@ -316,28 +334,49 @@ const QuickSearch: React.FC = () => {
         }
         
         if (activeFilter === 'Partial Payments') {
+            const now = new Date();
+            const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             return searchedTenants
                 .filter(t => ['Active', 'Overdue', 'Notice'].includes(t.status) && Number(t.rentAmount ?? 0) > 0)
-                .flatMap(t =>
-                    (t.paymentHistory || [])
-                        .map(p => {
-                            const paidVal = parseFloat(String(p.amount || '0').replace(/[^0-9.]/g, '')) || 0;
-                            if (paidVal <= 0 || paidVal >= t.rentAmount) return null;
-                            const balance = t.rentAmount - paidVal;
+                .flatMap(t => {
+                    const byPeriod: Record<string, { totalPaid: number; latestDate: string; methods: string[] }> = {};
+                    (t.paymentHistory || []).forEach(p => {
+                        if (!p.date) return;
+                        const pd = new Date(p.date);
+                        if (isNaN(pd.getTime())) return;
+                        const pk = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+                        if (!byPeriod[pk]) byPeriod[pk] = { totalPaid: 0, latestDate: p.date, methods: [] };
+                        byPeriod[pk].totalPaid += parseFloat(String(p.amount || '0').replace(/[^0-9.]/g, '')) || 0;
+                        if (new Date(p.date) > new Date(byPeriod[pk].latestDate)) byPeriod[pk].latestDate = p.date;
+                        if (p.method && !byPeriod[pk].methods.includes(p.method)) byPeriod[pk].methods.push(p.method);
+                    });
+                    return Object.entries(byPeriod)
+                        .filter(([pk, { totalPaid, latestDate }]) => {
+                            if (totalPaid <= 0 || totalPaid >= Number(t.rentAmount)) return false;
+                            if (!activeDateRange) return pk === currentPeriod;
+                            if (!dateBounds) return pk === currentPeriod;
+                            const d = new Date(latestDate);
+                            return d >= dateBounds.from && d < dateBounds.to;
+                        })
+                        .map(([pk, { totalPaid, latestDate, methods }]) => {
+                            const [yr, mo] = pk.split('-');
+                            const period = new Date(+yr, +mo - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+                            const balance = Number(t.rentAmount) - totalPaid;
                             return {
-                                id: `${t.id}-${p.reference || p.date}`,
+                                id: `${t.id}-${pk}`,
                                 tenant: t.name,
                                 property: `${t.propertyName} - ${t.unit}`,
                                 amountDisplay: `KES ${balance.toLocaleString()}`,
                                 val: balance,
-                                paid: `KES ${paidVal.toLocaleString()}`,
-                                expected: `KES ${t.rentAmount.toLocaleString()}`,
-                                date: p.date || 'N/A',
+                                paid: `KES ${totalPaid.toLocaleString()}`,
+                                expected: `KES ${Number(t.rentAmount).toLocaleString()}`,
+                                period,
+                                date: latestDate || 'N/A',
+                                method: methods.join(', ') || '—',
                                 status: 'Partial',
                             };
-                        })
-                        .filter(item => item !== null)
-                );
+                        });
+                });
         }
 
         if (activeFilter === 'Unpaid Deposit') {
@@ -355,25 +394,7 @@ const QuickSearch: React.FC = () => {
         }
 
         return [];
-    }, [tenants, query, activeFilter, properties, staff]);
-
-    // --- Date Range Filtering ---
-    const dateBounds = useMemo(() => {
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const shift = (base: Date, days: number) => { const r = new Date(base); r.setDate(r.getDate() + days); return r; };
-        if (!activeDateRange) return null;
-        if (activeDateRange === 'Today') return { from: today, to: shift(today, 1) };
-        if (activeDateRange === 'Yesterday') return { from: shift(today, -1), to: today };
-        if (activeDateRange.startsWith('Day:')) { const x = new Date(activeDateRange.slice(4)); return { from: x, to: shift(x, 1) }; }
-        if (activeDateRange === 'This Week') { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7)); return { from: mon, to: shift(mon, 7) }; }
-        if (activeDateRange === 'Last Week') { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7) - 7); return { from: mon, to: shift(mon, 7) }; }
-        if (activeDateRange === 'This Month') return { from: new Date(today.getFullYear(), today.getMonth(), 1), to: new Date(today.getFullYear(), today.getMonth() + 1, 1) };
-        if (activeDateRange === 'This Quarter') { const q = Math.floor(today.getMonth() / 3); return { from: new Date(today.getFullYear(), q * 3, 1), to: new Date(today.getFullYear(), q * 3 + 3, 1) }; }
-        if (activeDateRange === 'This Year') return { from: new Date(today.getFullYear(), 0, 1), to: new Date(today.getFullYear() + 1, 0, 1) };
-        if (activeDateRange === 'Last Month') return { from: new Date(today.getFullYear(), today.getMonth() - 1, 1), to: new Date(today.getFullYear(), today.getMonth(), 1) };
-        if (activeDateRange === 'Custom' && customFrom && customTo) return { from: new Date(customFrom), to: new Date(new Date(customTo).getTime() + 86400000) };
-        return null;
-    }, [activeDateRange, customFrom, customTo]);
+    }, [tenants, query, activeFilter, properties, staff, activeDateRange, dateBounds]);
 
     const filteredTableData = useMemo(() => {
         if (!dateBounds) return tableData;
@@ -677,10 +698,12 @@ const QuickSearch: React.FC = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
-                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Expected Rent</th>
-                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Amount Paid</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Period</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Paid</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Expected</th>
                                             <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Balance</th>
-                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Last Payment Date</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Last Payment</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Method</th>
                                         </tr>
                                     )}
                                 </thead>
@@ -778,10 +801,14 @@ const QuickSearch: React.FC = () => {
                                                 <>
                                                     <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
                                                     <td className="px-6 py-4 text-gray-500">{row.property}</td>
-                                                    <td className="px-6 py-4 text-right text-gray-600">{row.expected}</td>
-                                                    <td className="px-6 py-4 text-right font-bold text-green-600">{row.paid}</td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">{row.period}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right font-bold text-yellow-600">{row.paid}</td>
+                                                    <td className="px-6 py-4 text-right text-gray-500">{row.expected}</td>
                                                     <td className="px-6 py-4 text-right font-bold text-red-600">{row.amountDisplay}</td>
-                                                    <td className="px-6 py-4 text-center text-gray-500">{row.date}</td>
+                                                    <td className="px-6 py-4 text-center text-gray-500">{fmtDate(row.date)}</td>
+                                                    <td className="px-6 py-4 text-center text-gray-500">{row.method}</td>
                                                 </>
                                             )}
                                         </tr>
