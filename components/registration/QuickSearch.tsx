@@ -321,6 +321,7 @@ const QuickSearch: React.FC = () => {
         if (activeDateRange === 'This Month') return { from: new Date(today.getFullYear(), today.getMonth(), 1), to: new Date(today.getFullYear(), today.getMonth() + 1, 1) };
         if (activeDateRange === 'This Quarter') { const q = Math.floor(today.getMonth() / 3); return { from: new Date(today.getFullYear(), q * 3, 1), to: new Date(today.getFullYear(), q * 3 + 3, 1) }; }
         if (activeDateRange === 'This Year') return { from: new Date(today.getFullYear(), 0, 1), to: new Date(today.getFullYear() + 1, 0, 1) };
+        if (activeDateRange === 'Last Month') return { from: new Date(today.getFullYear(), today.getMonth() - 1, 1), to: new Date(today.getFullYear(), today.getMonth(), 1) };
         if (activeDateRange === 'Custom' && customFrom && customTo) return { from: new Date(customFrom), to: new Date(new Date(customTo).getTime() + 86400000) };
         return null;
     }, [activeDateRange, customFrom, customTo]);
