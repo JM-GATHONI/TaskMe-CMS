@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { websiteLinks } from '../../utils/websiteLinks';
 import Icon from '../Icon';
 import { SearchResult } from '../../types';
 import { useData } from '../../context/DataContext';
@@ -38,6 +39,7 @@ const QuickSearch: React.FC = () => {
     const [activeDateRange, setActiveDateRange] = useState<string>('');
     const [customFrom, setCustomFrom] = useState('');
     const [customTo, setCustomTo] = useState('');
+    const [copiedVacantId, setCopiedVacantId] = useState<string | null>(null);
     
     // Updated Filters
     const FILTERS = ['Paid', 'Unpaid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Unpaid Deposit', 'Partial Payments', 'Vacant Units'];
@@ -157,6 +159,7 @@ const QuickSearch: React.FC = () => {
                              (p.location && p.location.toLowerCase().includes(lowerQ))
                             ) {
                                 const agent = staff.find(s => s.id === p.assignedAgentId);
+                                const propListingUrl = (p as any).websiteListingUrl || websiteLinks.listing(p.name);
                                 vacantList.push({
                                     id: u.id,
                                     property: p.name,
@@ -166,7 +169,9 @@ const QuickSearch: React.FC = () => {
                                     rent: `KES ${(u.rent || p.defaultMonthlyRent || 0).toLocaleString()}`,
                                     val: u.rent || 0,
                                     status: 'Vacant',
-                                    type: u.unitType || p.type
+                                    type: u.unitType || p.type,
+                                    listingLink: websiteLinks.unit(u.id, null, propListingUrl),
+                                    listingDisplay: propListingUrl,
                                 });
                             }
                      }
@@ -624,6 +629,7 @@ const QuickSearch: React.FC = () => {
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Type</th>
                                             <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Rent</th>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Agent</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Listing Link</th>
                                         </tr>
                                     )}
                                     {activeFilter === 'Paid' && (
@@ -718,6 +724,29 @@ const QuickSearch: React.FC = () => {
                                                     <td className="px-6 py-4 text-gray-600">{row.type}</td>
                                                     <td className="px-6 py-4 text-right font-bold text-green-600">{row.rent}</td>
                                                     <td className="px-6 py-4 text-gray-600">{row.agent}</td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <a
+                                                                href={row.listingLink}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-xs text-primary hover:underline max-w-[120px] truncate inline-block align-middle"
+                                                                title={row.listingDisplay}
+                                                            >
+                                                                {row.listingDisplay?.replace('https://task-me.ke', '')}
+                                                            </a>
+                                                            <button
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(row.listingLink);
+                                                                    setCopiedVacantId(row.id);
+                                                                    setTimeout(() => setCopiedVacantId(null), 2000);
+                                                                }}
+                                                                className={`text-xs font-semibold px-2 py-0.5 rounded ml-1 transition-colors ${copiedVacantId === row.id ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-primary/10 hover:text-primary'}`}
+                                                            >
+                                                                {copiedVacantId === row.id ? '✓' : 'Copy'}
+                                                            </button>
+                                                        </div>
+                                                    </td>
                                                 </>
                                             )}
                                             {activeFilter === 'Paid' && (

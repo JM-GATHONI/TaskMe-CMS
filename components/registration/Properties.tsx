@@ -6,11 +6,20 @@ import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { uploadToBucket } from '../../utils/supabaseStorage';
 import { supabase } from '../../utils/supabaseClient';
+import { websiteLinks, slugify } from '../../utils/websiteLinks';
 
 const UNIT_TYPES: string[] = ['Single Room', 'Double Room', 'Bedsitter', 'Studio', 'One Bedroom', 'Two Bedrooms', 'Three Bedrooms', 'Shop', 'Office'];
 
 export const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Property) => void; onAddUnit: (p: Property) => void; onDelete: (p: Property) => void; canEdit: boolean; canDelete: boolean }> = ({ property, onEdit, onAddUnit, onDelete, canEdit, canDelete }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [copiedLink, setCopiedLink] = useState(false);
+    const listingUrl = (property as any).websiteListingUrl || websiteLinks.listing(property.name);
+    const handleCopyListingLink = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(listingUrl);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+    };
     const statusClasses = {
         Active: 'bg-green-100 text-green-800',
         Suspended: 'bg-yellow-100 text-yellow-800',
@@ -41,6 +50,13 @@ export const PropertyListItem: React.FC<{ property: Property; onEdit: (p: Proper
                 </div>
                 <div className="flex items-center space-x-4">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[property.status]}`}>{property.status}</span>
+                    <button
+                        onClick={handleCopyListingLink}
+                        title={listingUrl}
+                        className={`text-xs font-semibold px-2 py-1 rounded transition-colors ${copiedLink ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-primary/10 hover:text-primary'}`}
+                    >
+                        {copiedLink ? '✓ Copied' : '🔗 Copy Link'}
+                    </button>
                     {canEdit && <button
                         onClick={(e) => { e.stopPropagation(); onEdit(property); }}
                         className="text-sm font-semibold text-primary hover:text-primary-dark"
@@ -336,6 +352,19 @@ export const PropertyForm: React.FC<{
              return;
         }
         
+        if (name === 'name') {
+            setFormData(prev => {
+                const prevUrl = (prev as any).websiteListingUrl || '';
+                const wasAutoGen = !prevUrl || prevUrl === websiteLinks.listing(prev.name || '');
+                return {
+                    ...prev,
+                    name: value,
+                    ...(wasAutoGen ? { websiteListingUrl: websiteLinks.listing(value) } : {}),
+                };
+            });
+            return;
+        }
+
         const isNumber = type === 'number';
         setFormData(prev => ({ ...prev, [name]: isNumber ? parseInt(value) || 0 : value }));
     };
@@ -773,13 +802,26 @@ export const PropertyForm: React.FC<{
                                         placeholder="Google Maps pin / location URL (optional)"
                                         className="p-2 border rounded bg-white w-full md:col-span-2"
                                     />
-                                    <input
-                                        name="websiteListingUrl"
-                                        value={(formData as any).websiteListingUrl || ''}
-                                        onChange={handleChange}
-                                        placeholder="Website listing URL (e.g. https://task-me.ke/properties/baraka-heights)"
-                                        className="p-2 border rounded bg-white w-full md:col-span-2"
-                                    />
+                                    <div className="flex items-center gap-2 md:col-span-2">
+                                        <input
+                                            name="websiteListingUrl"
+                                            value={(formData as any).websiteListingUrl || (formData.name ? websiteLinks.listing(formData.name) : '')}
+                                            onChange={handleChange}
+                                            placeholder={formData.name ? websiteLinks.listing(formData.name) : 'Website listing URL (auto-generated from property name)'}
+                                            className="p-2 border rounded bg-white flex-1 text-sm"
+                                        />
+                                        {((formData as any).websiteListingUrl || formData.name) && (
+                                            <a
+                                                href={(formData as any).websiteListingUrl || websiteLinks.listing(formData.name || '')}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="shrink-0 text-xs bg-primary/10 text-primary px-2 py-1.5 rounded hover:bg-primary/20 font-semibold"
+                                                title="Open on task-me.ke"
+                                            >
+                                                Open ↗
+                                            </a>
+                                        )}
+                                    </div>
                                 </>
                             )}
                         </div>
