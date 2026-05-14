@@ -3446,12 +3446,16 @@ const ActiveTenants: React.FC = () => {
                             const depExpCard = Number((tenant as any).depositExpected ?? 0) > 0
                                 ? Number((tenant as any).depositExpected)
                                 : Number(tenant.rentAmount || 0) * depMonthsCard;
-                            const depRequiredCard = tenant.depositExempt || tenant.rentExtension?.enabled ? 0
+                            // Use GROSS deposit expected (not remaining) so that totalPaidSoFar
+                            // is not double-counted: if deposit is paid, depositPaid is already
+                            // reflected in totalPaidSoFar — subtracting depRequiredCard(=0) AND
+                            // counting it in totalPaidSoFar would incorrectly zero the balance.
+                            const depGrossCard = tenant.depositExempt || tenant.rentExtension?.enabled ? 0
                                 : tenant.proratedDeposit?.enabled
                                     ? (tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
                                         ? 0 : (tenant.proratedDeposit.monthlyInstallment || 0))
-                                    : Math.max(0, depExpCard - Number(tenant.depositPaid || 0));
-                            const firstPaymentRequired = cardEffectiveRent + depRequiredCard;
+                                    : depExpCard;
+                            const firstPaymentRequired = cardEffectiveRent + depGrossCard;
                             const totalPaidSoFar = (tenant.paymentHistory || [])
                                 .filter(p => p.status === 'Paid')
                                 .reduce((s, p) => s + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0), 0);
