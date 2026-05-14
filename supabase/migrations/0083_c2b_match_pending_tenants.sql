@@ -8,7 +8,9 @@
 -- Fix: expand the status filter to include all "in-tenancy" statuses so that
 -- pending tenants are auto-matched just like active ones.
 
-create or replace function public.find_active_tenant_by_unit_tag(p_tag text)
+drop function if exists public.find_active_tenant_by_unit_tag(text);
+
+create function public.find_active_tenant_by_unit_tag(p_tag text)
 returns table (
   property_id uuid,
   unit_id     text,
