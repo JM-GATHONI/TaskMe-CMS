@@ -498,6 +498,8 @@ const Inbound: React.FC = () => {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+    const [pageSize, setPageSize] = useState(20);
+    const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
 
     // Payment Modal State
     const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -681,16 +683,27 @@ const Inbound: React.FC = () => {
                         />
                         <div className="absolute left-3 top-2.5 text-gray-400"><Icon name="search" className="w-5 h-5" /></div>
                     </div>
-                    <select
-                        value={sourceFilter}
-                        onChange={e => setSourceFilter(e.target.value as SourceFilter)}
-                        className="border border-gray-200 rounded-lg bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                    >
-                        <option value="all">All Methods</option>
-                        <option value="stk">STK</option>
-                        <option value="c2b">C2B</option>
-                        <option value="manual">Manual</option>
-                    </select>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <select
+                            value={sourceFilter}
+                            onChange={e => setSourceFilter(e.target.value as SourceFilter)}
+                            className="border border-gray-200 rounded-lg bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                        >
+                            <option value="all">All Methods</option>
+                            <option value="stk">STK</option>
+                            <option value="c2b">C2B</option>
+                            <option value="manual">Manual</option>
+                        </select>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Rows:</span>
+                        <select
+                            value={pageSize}
+                            onChange={e => setPageSize(Number(e.target.value))}
+                            className="border border-gray-200 rounded-md text-sm px-2 py-1.5 focus:outline-none"
+                        >
+                            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{filteredPayments.length} total</span>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -713,7 +726,7 @@ const Inbound: React.FC = () => {
                             {!isLoading && loadError && (
                                 <tr><td colSpan={7} className="p-8 text-center text-red-500">{loadError}</td></tr>
                             )}
-                            {!isLoading && !loadError && filteredPayments.map((p) => {
+                            {!isLoading && !loadError && filteredPayments.slice(0, pageSize).map((p) => {
                                 const meta = SOURCE_META[p.source];
                                 const matched = p.matched_tenant_id ? tenantsById.get(p.matched_tenant_id) : null;
                                 const isUnmatched = p.source === 'c2b' && !p.matched_tenant_id;
