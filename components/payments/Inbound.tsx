@@ -515,8 +515,7 @@ const Inbound: React.FC = () => {
                 .from('payments')
                 .select('id,created_at,source,status,reconciliation_status,amount,transaction_id,checkout_request_id,bill_ref_number,msisdn,phone,first_name,middle_name,last_name,matched_tenant_id,matched_unit_id,paired_payment_id,result_desc')
                 .eq('status', 'completed')
-                .order('created_at', { ascending: false })
-                .limit(500);
+                .order('created_at', { ascending: false });
             if (error) throw error;
             setPayments((data ?? []) as PaymentRow[]);
         } catch (e: any) {
