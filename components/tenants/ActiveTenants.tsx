@@ -3430,12 +3430,35 @@ const ActiveTenants: React.FC = () => {
 
                     // Card "Total Due" should match the tenant-detail "Total Invoiced"
                     // line: everything they owe right now — rent, deposit/installment,
-                    // outstanding bills, fines, and any accrued late fees. Previously
-                    // the card switched to a rent-only view once the deposit was paid,
-                    // which left other outstanding bills off the headline number.
+                    // outstanding bills, fines, and any accrued late fees.
+                    //
+                    // For Pending/PendingPayment tenants the standard rentDue + depositOwed
+                    // split breaks down: isPaid=true (any payment made) zeroes rentDue even
+                    // when only the deposit was covered. Override with a remaining-balance
+                    // calculation: max(0, firstPaymentRequired - totalPaidSoFar).
                     const totalDueLabel = 'Total Due';
-                    const totalDue = !isAllocated ? 0
-                        : rentDue + depositOwed + pendingBills + pendingFines + automatedLateFine;
+                    const isPendingStatus = isAllocated
+                        && (tenant.status === 'PendingPayment' || tenant.status === 'Pending');
+                    const totalDue = (() => {
+                        if (!isAllocated) return 0;
+                        if (isPendingStatus) {
+                            const depMonthsCard = Number(tenant.depositMonths ?? 1);
+                            const depExpCard = Number((tenant as any).depositExpected ?? 0) > 0
+                                ? Number((tenant as any).depositExpected)
+                                : Number(tenant.rentAmount || 0) * depMonthsCard;
+                            const depRequiredCard = tenant.depositExempt || tenant.rentExtension?.enabled ? 0
+                                : tenant.proratedDeposit?.enabled
+                                    ? (tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
+                                        ? 0 : (tenant.proratedDeposit.monthlyInstallment || 0))
+                                    : Math.max(0, depExpCard - Number(tenant.depositPaid || 0));
+                            const firstPaymentRequired = cardEffectiveRent + depRequiredCard;
+                            const totalPaidSoFar = (tenant.paymentHistory || [])
+                                .filter(p => p.status === 'Paid')
+                                .reduce((s, p) => s + (parseFloat(String(p.amount).replace(/[^0-9.]/g, '')) || 0), 0);
+                            return Math.max(0, firstPaymentRequired - totalPaidSoFar) + pendingBills + pendingFines;
+                        }
+                        return rentDue + depositOwed + pendingBills + pendingFines + automatedLateFine;
+                    })();
 
                     // Arrears Month Indicator
                     const arrearsText = getArrearsText(tenant);
