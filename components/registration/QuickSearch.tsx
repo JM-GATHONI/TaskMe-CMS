@@ -40,13 +40,16 @@ const QuickSearch: React.FC = () => {
     const [customTo, setCustomTo] = useState('');
     
     // Updated Filters
-    const FILTERS = ['Paid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Unpaid Deposit', 'Partial Payments', 'Vacant Units'];
+    const FILTERS = ['Paid', 'Unpaid', 'Arrears', 'Unpaid Fines', 'Paid Fines', 'Deposits Paid', 'Deposit Refunds', 'Unpaid Deposit', 'Partial Payments', 'Vacant Units'];
 
     // Intelligent Keyword Mapping
     const KEYWORD_MAP: Record<string, string> = {
         'paid': 'Paid',
         'payment': 'Paid',
         'payments': 'Paid',
+        'unpaid': 'Unpaid',
+        'not paid': 'Unpaid',
+        'no payment': 'Unpaid',
         'arrears': 'Arrears',
         'debt': 'Arrears',
         'overdue': 'Arrears',
@@ -178,6 +181,52 @@ const QuickSearch: React.FC = () => {
                         method: p.method
                     }))
             );
+        }
+
+        if (activeFilter === 'Unpaid') {
+            const now = new Date();
+            const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            return searchedTenants
+                .filter(t => {
+                    if (!['Active', 'Overdue', 'Notice'].includes(t.status)) return false;
+                    if (!Number(t.rentAmount ?? 0)) return false;
+                    const dueDay = t.rentDueDate || 5;
+                    const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+                    if (dueDate > now) return false;
+                    const totalPaidThisMonth = (t.paymentHistory || []).reduce((sum, p) => {
+                        if (!p.date) return sum;
+                        const pd = new Date(p.date);
+                        if (isNaN(pd.getTime())) return sum;
+                        const pk = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+                        if (pk !== currentPeriod) return sum;
+                        return sum + (parseFloat(String(p.amount || '0').replace(/[^0-9.]/g, '')) || 0);
+                    }, 0);
+                    return totalPaidThisMonth === 0;
+                })
+                .map(t => {
+                    const dueDay = t.rentDueDate || 5;
+                    const dueDate = new Date(now.getFullYear(), now.getMonth(), dueDay);
+                    const daysOverdue = Math.max(0, Math.floor((now.getTime() - dueDate.getTime()) / 86400000));
+                    const rent = Number(t.rentAmount);
+                    const bills = (t.outstandingBills ?? [])
+                        .filter((b: any) => b.status === 'Pending')
+                        .reduce((s: number, b: any) => s + Number(b.amount ?? 0), 0);
+                    const totalDue = rent + bills;
+                    return {
+                        id: t.id,
+                        tenant: t.name,
+                        property: `${t.propertyName} - ${t.unit}`,
+                        amountDisplay: `KES ${totalDue.toLocaleString()}`,
+                        val: totalDue,
+                        rent,
+                        bills,
+                        totalDue,
+                        dueDate: fmtDate(dueDate),
+                        daysOverdue,
+                        status: t.status,
+                        date: dueDate.toISOString().split('T')[0],
+                    };
+                });
         }
 
         if (activeFilter === 'Arrears') {
@@ -565,6 +614,18 @@ const QuickSearch: React.FC = () => {
                                             <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Date</th>
                                         </tr>
                                     )}
+                                    {activeFilter === 'Unpaid' && (
+                                        <tr>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
+                                            <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Property</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Rent</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Bills</th>
+                                            <th className="px-6 py-3 text-right font-medium text-gray-500 uppercase">Total Due</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Due Date</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Days Overdue</th>
+                                            <th className="px-6 py-3 text-center font-medium text-gray-500 uppercase">Status</th>
+                                        </tr>
+                                    )}
                                     {activeFilter === 'Arrears' && (
                                         <tr>
                                             <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase">Tenant</th>
@@ -643,6 +704,25 @@ const QuickSearch: React.FC = () => {
                                                     <td className="px-6 py-4 text-right font-bold text-green-600">{row.amountDisplay}</td>
                                                     <td className="px-6 py-4 text-center text-gray-500">{row.method}</td>
                                                     <td className="px-6 py-4 text-center text-gray-500">{row.date}</td>
+                                                </>
+                                            )}
+                                            {activeFilter === 'Unpaid' && (
+                                                <>
+                                                    <td className="px-6 py-4 font-medium text-gray-900">{row.tenant}</td>
+                                                    <td className="px-6 py-4 text-gray-500">{row.property}</td>
+                                                    <td className="px-6 py-4 text-right text-gray-700">KES {(row.rent || 0).toLocaleString()}</td>
+                                                    <td className="px-6 py-4 text-right text-gray-500">
+                                                        {row.bills > 0
+                                                            ? <span className="text-orange-600 font-semibold">KES {row.bills.toLocaleString()}</span>
+                                                            : <span className="text-gray-300">—</span>
+                                                        }
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right font-bold text-red-600">KES {(row.totalDue || 0).toLocaleString()}</td>
+                                                    <td className="px-6 py-4 text-center text-gray-500">{row.dueDate}</td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold">{row.daysOverdue}d overdue</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center"><span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold">{row.status}</span></td>
                                                 </>
                                             )}
                                             {activeFilter === 'Arrears' && (
