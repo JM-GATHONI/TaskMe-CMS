@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Icon from '../Icon';
 import { SearchResult } from '../../types';
 import { useData } from '../../context/DataContext';
@@ -25,6 +26,11 @@ const getDaysOverdue = (rentDueDate: number) => {
 
 const QuickSearch: React.FC = () => {
     const { tenants, properties, staff } = useData(); // Added staff for agent lookup
+    const queryClient = useQueryClient();
+
+    useEffect(() => {
+        queryClient.invalidateQueries({ queryKey: ['app_state', 'tm_tenants_v11'] });
+    }, []);
 
     const [query, setQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState<string>('All');
