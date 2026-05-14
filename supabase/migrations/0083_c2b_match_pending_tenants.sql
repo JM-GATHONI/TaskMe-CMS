@@ -12,7 +12,7 @@ drop function if exists public.find_active_tenant_by_unit_tag(text);
 
 create function public.find_active_tenant_by_unit_tag(p_tag text)
 returns table (
-  property_id uuid,
+  property_id text,
   unit_id     text,
   unit_tag    text,
   tenant_id   text,
