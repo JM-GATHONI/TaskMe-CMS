@@ -108,7 +108,7 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
             // Generate this new user's own referral code and persist it in their metadata
             const ownReferralCode = generateUserReferralCode(fullName, data.user.id);
             supabase.auth.updateUser({
-                data: { own_referral_code: ownReferralCode },
+                data: { own_referral_code: ownReferralCode, referral_code: ownReferralCode },
             }).catch(e => console.warn('[SignUp] Failed to store own_referral_code (non-blocking)', e));
 
             // Fire-and-forget welcome email — must NOT be awaited so the success
@@ -311,6 +311,8 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                                 rating: 5,
                                 email,
                                 phone,
+                                referralCode: ownReferralCode,
+                                ...(referrerId ? { referrerId } : {}),
                             } as any);
                         }
                     } else {
@@ -326,6 +328,8 @@ const SignUp: React.FC<SignUpProps> = ({ onLogin }) => {
                                 branch: 'Headquarters',
                                 payrollInfo: { baseSalary: 0, nextPaymentDate: '' },
                                 leaveBalance: { annual: 0 },
+                                referralCode: ownReferralCode,
+                                ...(referrerId ? { referrerId } : {}),
                             } as any);
                         }
                     }

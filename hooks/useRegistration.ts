@@ -1,5 +1,6 @@
 import { useData } from '../context/DataContext';
 import { User, LandlordApplication, RenovationInvestor, Vendor, StaffProfile } from '../types';
+import { generateUserReferralCode } from '../utils/referralCode';
 
 export const useRegistration = () => {
     const { 
@@ -44,8 +45,9 @@ export const useRegistration = () => {
     };
 
     const registerContractor = (data: Partial<Vendor>) => {
+        const newVendorId = `vnd-${Date.now()}`;
         const newVendor: Vendor = {
-            id: `vnd-${Date.now()}`,
+            id: newVendorId,
             name: data.name || '',
             email: data.email || '',
             phone: data.phone || '',
@@ -54,6 +56,7 @@ export const useRegistration = () => {
             verified: false,
             completedJobs: 0,
             available: true,
+            referralCode: generateUserReferralCode(data.name || '', newVendorId),
             ...data
         };
         addVendor(newVendor);
@@ -63,8 +66,9 @@ export const useRegistration = () => {
     const registerAffiliate = (data: Partial<User>) => {
         // Affiliates are stored as Users with role 'Affiliate'
         // In DataContext, 'landlords' is often used as a generic User bucket for non-staff/non-tenant users
+        const newAffiliateId = `aff-${Date.now()}`;
         const newAffiliate: User = {
-            id: `aff-${Date.now()}`,
+            id: newAffiliateId,
             name: data.name || '',
             email: data.email || '',
             phone: data.phone || '',
@@ -73,6 +77,7 @@ export const useRegistration = () => {
             status: 'Active', // Auto-activate or Pending if you prefer
             branch: 'Headquarters',
             passwordHash: 'default_hash', // In real app, handle password
+            referralCode: generateUserReferralCode(data.name || '', newAffiliateId),
             ...data
         };
         addLandlord(newAffiliate); // Using addLandlord as it adds to the 'landlords' (User[]) state

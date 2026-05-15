@@ -6,6 +6,7 @@ import { useData } from '../../context/DataContext';
 const AdBanners: React.FC = () => {
     const { currentUser, marketplaceListings, funds, marketingBanners } = useData();
     const [customContact, setCustomContact] = useState(currentUser?.phone || '');
+    const [search, setSearch] = useState('');
 
     const banners = (() => {
         const fallbackRentImg =
@@ -56,6 +57,17 @@ const AdBanners: React.FC = () => {
         return templates;
     })();
 
+    const filteredBanners = banners.filter(b => {
+        const q = search.trim().toLowerCase();
+        if (!q) return true;
+        return (
+            (b.title || '').toLowerCase().includes(q) ||
+            (b.subtitle || '').toLowerCase().includes(q) ||
+            (b.type || '').toLowerCase().includes(q) ||
+            (b.price || '').toLowerCase().includes(q)
+        );
+    });
+
     const buildShareText = (banner: any) => {
         const contact = customContact.trim() ? customContact.trim() : 'Contact Office';
         const base = `${banner.type}: ${banner.title}\n${banner.subtitle}\n${banner.price}`;
@@ -88,21 +100,38 @@ const AdBanners: React.FC = () => {
                     <p className="text-gray-500 text-sm">Share these with your network.</p>
                 </div>
                 
-                <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
-                    <span className="text-xs font-bold text-gray-500 uppercase">Your Contact Info:</span>
-                    <input 
-                        type="text" 
-                        value={customContact}
-                        onChange={(e) => setCustomContact(e.target.value)}
-                        placeholder="Add your phone..."
-                        className="border-none outline-none text-sm font-medium text-gray-800 w-32 bg-transparent"
-                    />
-                    <Icon name="settings" className="w-4 h-4 text-gray-400" />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto">
+                    <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-full sm:w-auto">
+                        <Icon name="search" className="w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Search opportunities..."
+                            className="border-none outline-none text-sm font-medium text-gray-800 w-full sm:w-48 bg-transparent"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-full sm:w-auto">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Your Contact Info:</span>
+                        <input 
+                            type="text" 
+                            value={customContact}
+                            onChange={(e) => setCustomContact(e.target.value)}
+                            placeholder="Add your phone..."
+                            className="border-none outline-none text-sm font-medium text-gray-800 w-full sm:w-32 bg-transparent"
+                        />
+                        <Icon name="settings" className="w-4 h-4 text-gray-400" />
+                    </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {banners.map(banner => (
+                {filteredBanners.length === 0 && (
+                    <div className="col-span-full text-sm text-gray-500 bg-white border border-dashed border-gray-200 rounded-xl p-6 text-center">
+                        No opportunities match your search.
+                    </div>
+                )}
+                {filteredBanners.map(banner => (
                     <div key={banner.id} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100 hover:shadow-lg transition-shadow group relative">
                         <div className="h-48 relative">
                             <img src={banner.image} alt={banner.title} className="w-full h-full object-cover" />

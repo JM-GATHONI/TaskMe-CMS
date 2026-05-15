@@ -629,6 +629,7 @@ export interface Vendor {
   rating: number;
   email?: string;
   phone?: string;
+  referralCode?: string;
   passwordHash?: string;
   // Fundi Hub specific fields
   location?: string;

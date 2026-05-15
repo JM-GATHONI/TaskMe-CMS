@@ -4,6 +4,8 @@ import Icon from '../Icon';
 import { useData } from '../../context/DataContext';
 import { Task, TaskStatus, QuotationItem, Quotation, Bill, TaskPriority } from '../../types';
 import AdBanners from './AdBanners';
+import ReferTenantModal from './ReferTenantModal';
+import { generateUserReferralCode } from '../../utils/referralCode';
 
 const SubmitQuoteModal: React.FC<{ 
     task: Task; 
@@ -163,6 +165,7 @@ const ContractorPortal: React.FC = () => {
     // Modals
     const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+    const [isReferModalOpen, setIsReferModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
     const myTasks = useMemo(() => {
@@ -286,6 +289,9 @@ const ContractorPortal: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
+                    <button onClick={() => setIsReferModalOpen(true)} className="bg-primary text-white px-4 py-2 rounded-lg font-bold hover:bg-primary-dark shadow-sm flex items-center text-sm">
+                        <Icon name="tenants" className="w-4 h-4 mr-2"/> Refer Tenant
+                    </button>
                     <div className="text-right hidden sm:block">
                         <p className="text-xs font-bold text-gray-400 uppercase">Jobs Done</p>
                         <p className="text-xl font-bold text-gray-800">{completedJobs.length}</p>
@@ -480,6 +486,14 @@ const ContractorPortal: React.FC = () => {
                     quote={getQuoteForTask(selectedTask.id)!}
                     onClose={() => { setIsInvoiceModalOpen(false); setSelectedTask(null); }} 
                     onRaise={handleRaiseInvoice} 
+                />
+            )}
+
+            {isReferModalOpen && (
+                <ReferTenantModal
+                    referrerId={vendor.id}
+                    referralCode={(vendor as any).referralCode || generateUserReferralCode(vendor.name, vendor.id)}
+                    onClose={() => setIsReferModalOpen(false)}
                 />
             )}
 
