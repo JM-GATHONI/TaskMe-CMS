@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import Icon from '../Icon';
 import { User, StaffProfile, Lead, RFTransaction } from '../../types';
+import { generateUserReferralCode } from '../../utils/referralCode';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 
@@ -377,7 +378,7 @@ const Affiliates: React.FC = () => {
                 email: user.email,
                 role: user.role,
                 type: (user as any).affiliateType || 'Freelancer',
-                referralCode: `${user.name.split(' ')[0].toUpperCase()}${new Date().getFullYear()}`,
+                referralCode: (user as any).referralCode || generateUserReferralCode(user.name, user.id),
                 stats: {
                     leadsReferred: totalLeads,
                     leasesSigned: signedCount,

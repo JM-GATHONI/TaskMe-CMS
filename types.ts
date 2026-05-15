@@ -165,6 +165,7 @@ export interface TenantProfile {
   role?: string; // Optional for unification
   passwordHash?: string;
   referrerId?: string; // ID of who referred this tenant
+  referralCode?: string;
   referralConfig?: {
       rateType: '%' | 'KES';
       rateValue: number;
@@ -305,6 +306,7 @@ export interface User {
   avatarUrl?: string;
   passwordHash?: string;
   referrerId?: string;
+  referralCode?: string;
   referralConfig?: {
       rateType: '%' | 'KES';
       rateValue: number;
@@ -468,6 +470,7 @@ export interface StaffProfile {
   status: 'Active' | 'On Leave' | 'Terminated';
   avatar?: string;
   department?: BusinessUnit | string;
+  referralCode?: string;
   salaryConfig?: {
       type: SalaryType;
       amount: number;
