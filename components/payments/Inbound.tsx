@@ -224,7 +224,7 @@ const MpesaStkModal: React.FC<{
         }
     };
 
-    const handleFinish = () => {
+    const handleFinish = async () => {
         const amt = Math.round(Number(amount) || 0);
         const payDate = new Date().toISOString().split('T')[0];
         const ref = txCode || `STK-${Date.now()}`;
@@ -284,8 +284,8 @@ const MpesaStkModal: React.FC<{
             const pendingFines = (tenant.outstandingFines || []).filter((f: any) => f.status === 'Pending').reduce((s: number, f: any) => s + Number(f.amount ?? 0), 0);
             const balanceText = pendingFines > 0 ? ` Outstanding fines: KES ${pendingFines.toLocaleString()}.` : ' Your account is up to date.';
             const smsContent = `Dear ${tenant.name}, we have received your M-Pesa payment of KES ${amt.toLocaleString()} for ${tenant.unit}. Ref: ${ref}.${balanceText} Thank you. - TaskMe Realty`;
-            communicationApi.sendSMS(tenant.phone, smsContent, 'TASK-ME', systemSettings?.bulkSmsEnabled);
-            addMessage({ id: `msg-stk-${Date.now()}`, recipient: { name: tenant.name, contact: tenant.phone }, content: smsContent, channel: 'SMS', status: 'Sent', timestamp: new Date().toLocaleString(), priority: 'Normal', isIncoming: false });
+            const smsResult = await communicationApi.sendSMS(tenant.phone, smsContent, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+            addMessage({ id: `msg-stk-${Date.now()}`, recipient: { name: tenant.name, contact: tenant.phone }, content: smsContent, channel: 'SMS', status: smsResult.success ? 'Sent' : 'Failed', timestamp: new Date().toLocaleString(), priority: 'Normal', isIncoming: false });
         }
         onComplete();
     };
@@ -465,8 +465,8 @@ const ManualPaymentModal: React.FC<{
                 const pendingFines = (tenant.outstandingFines || []).filter((f: any) => f.status === 'Pending').reduce((s: number, f: any) => s + Number(f.amount ?? 0), 0);
                 const balanceText = pendingFines > 0 ? ` Outstanding fines: KES ${pendingFines.toLocaleString()}.` : ' Your account is up to date.';
                 const smsContent = `Dear ${tenant.name}, payment of KES ${amt.toLocaleString()} via ${method} for ${tenant.unit} has been recorded. Ref: ${normalizedRef}.${balanceText} Thank you. - TaskMe Realty`;
-                communicationApi.sendSMS(tenant.phone, smsContent, 'TASK-ME', systemSettings?.bulkSmsEnabled);
-                addMessage({ id: `msg-manual-${Date.now()}`, recipient: { name: tenant.name, contact: tenant.phone }, content: smsContent, channel: 'SMS', status: 'Sent', timestamp: new Date().toLocaleString(), priority: 'Normal', isIncoming: false });
+                const smsResult = await communicationApi.sendSMS(tenant.phone, smsContent, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+                addMessage({ id: `msg-manual-${Date.now()}`, recipient: { name: tenant.name, contact: tenant.phone }, content: smsContent, channel: 'SMS', status: smsResult.success ? 'Sent' : 'Failed', timestamp: new Date().toLocaleString(), priority: 'Normal', isIncoming: false });
             }
             onComplete();
         } catch (e: any) {

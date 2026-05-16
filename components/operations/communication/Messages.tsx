@@ -10,7 +10,20 @@ interface MessagesProps {
     folderFilter?: 'Inbox' | 'Sent';
 }
 
-export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, content: string, channel: string, isGroup?: boolean, groupCount?: number) => void; initialRecipient?: { name: string; phone: string } }> = ({ onClose, onSend, initialRecipient }) => {
+export interface ComposeRecipient {
+    name: string;
+    contact: string;
+}
+
+export interface ComposeSendRequest {
+    recipients: ComposeRecipient[];
+    content: string;
+    channel: string;
+    isGroup?: boolean;
+    groupLabel?: string;
+}
+
+export const ComposeModal: React.FC<{ onClose: () => void; onSend: (request: ComposeSendRequest) => Promise<void> | void; initialRecipient?: { name: string; phone: string } }> = ({ onClose, onSend, initialRecipient }) => {
     const { tenants, landlords, staff, properties, renovationInvestors, investments, systemSettings } = useData();
     
     // Mode State
@@ -175,16 +188,35 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
                 if (individualTab === 'Direct' && !directRecipient) return alert("Please enter a recipient.");
                 if (individualTab === 'Search' && !selectedContact) return alert("Please select a contact.");
                 if (!content) return alert("Message content required.");
-                
-                const toName = individualTab === 'Direct' ? directRecipient : selectedContact!.name;
-                const toPhone = individualTab === 'Direct' ? directRecipient : selectedContact!.phone; // Assuming phone as ID for API in simple case
 
-                await onSend(toName, content, channel, false, 1);
+                const recipients: ComposeRecipient[] = individualTab === 'Direct'
+                    ? [{ name: initialRecipient?.name || directRecipient, contact: initialRecipient?.phone || directRecipient }]
+                    : [{ name: selectedContact!.name, contact: selectedContact!.phone }];
+
+                await onSend({
+                    recipients,
+                    content,
+                    channel,
+                    isGroup: false,
+                    groupLabel: recipients[0].name,
+                });
             } else {
                 if (groupRecipients.length === 0) return alert("Selected group has no recipients.");
                 if (!content) return alert("Message content required.");
-                
-                await onSend(`${groupCategory} - ${groupFilter}`, content, channel, true, groupRecipients.length);
+
+                const recipients: ComposeRecipient[] = groupRecipients
+                    .filter(recipient => recipient.phone)
+                    .map(recipient => ({ name: recipient.name, contact: recipient.phone }));
+
+                if (recipients.length === 0) return alert("Selected group has no valid phone numbers.");
+
+                await onSend({
+                    recipients,
+                    content,
+                    channel,
+                    isGroup: true,
+                    groupLabel: `${groupCategory} - ${groupFilter}`,
+                });
             }
         } finally {
             setIsSending(false);
@@ -443,7 +475,7 @@ export const ComposeModal: React.FC<{ onClose: () => void; onSend: (to: string, 
                     </div>
                     {channel === 'SMS' && (
                         <div className="flex justify-end text-xs text-gray-400">
-                             Sender ID: {systemSettings.shortcode || 'DEFAULT'}
+                             Sender ID: TASK-ME
                         </div>
                     )}
                 </div>
@@ -501,35 +533,57 @@ const Messages: React.FC<MessagesProps> = ({ channelFilter, folderFilter }) => {
         }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }, [messages, activeChannel, searchTerm, activeFolder]);
 
-    const handleSendMessage = async (to: string, content: string, channel: string, isGroup = false, count = 1) => {
-        // Use API to send
-        let apiResult;
-        
-        if (channel === 'SMS') apiResult = await communicationApi.sendSMS(to, content, 'TASKME', systemSettings?.bulkSmsEnabled);
-        else if (channel === 'Email') apiResult = await communicationApi.sendEmail(to, 'New Message', content, 'noreply@taskme.re');
-        else if (channel === 'WhatsApp') apiResult = await communicationApi.sendWhatsApp(to, content);
-        else apiResult = await communicationApi.sendInApp(to, content);
+    const handleSendMessage = async ({ recipients, content, channel, isGroup = false, groupLabel }: ComposeSendRequest) => {
+        if (recipients.length === 0) {
+            alert('No recipients selected.');
+            return;
+        }
 
-        if (apiResult.success) {
-            // Save to local state
-            const newMessage: Message = {
-                id: apiResult.messageId || `msg-${Date.now()}`,
-                recipient: { 
-                    name: to, 
-                    contact: isGroup ? `${count} Recipients` : to 
-                },
-                content,
-                channel: channel as any,
-                status: 'Sent',
-                timestamp: new Date().toLocaleString(),
-                priority: 'Normal',
-                isIncoming: false
-            };
-            addMessage(newMessage);
-            setIsComposeOpen(false);
-            alert(`Message sent via ${channel} to ${isGroup ? count + ' recipients' : to}`);
+        if (isGroup && channel !== 'SMS') {
+            alert('Bulk broadcasts are currently supported for SMS only.');
+            return;
+        }
+
+        const results: Array<{ recipient: ComposeRecipient; apiResult: Awaited<ReturnType<typeof communicationApi.sendSMS>> | Awaited<ReturnType<typeof communicationApi.sendEmail>> | Awaited<ReturnType<typeof communicationApi.sendWhatsApp>> | Awaited<ReturnType<typeof communicationApi.sendInApp>> }> = [];
+
+        for (const recipient of recipients) {
+            let apiResult;
+
+            if (channel === 'SMS') apiResult = await communicationApi.sendSMS(recipient.contact, content, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+            else if (channel === 'Email') apiResult = await communicationApi.sendEmail(recipient.contact, 'New Message', content, 'noreply@taskme.re');
+            else if (channel === 'WhatsApp') apiResult = await communicationApi.sendWhatsApp(recipient.contact, content);
+            else apiResult = await communicationApi.sendInApp(recipient.contact, content);
+
+            results.push({ recipient, apiResult });
+        }
+
+        const successful = results.filter(result => result.apiResult.success);
+        if (successful.length === 0) {
+            alert(`Failed to send: ${results[0]?.apiResult.error || 'Unknown error'}`);
+            return;
+        }
+
+        const summaryRecipient = isGroup
+            ? { name: `Group: ${groupLabel || 'Broadcast'}`, contact: `${successful.length} Recipients` }
+            : { name: successful[0].recipient.name, contact: successful[0].recipient.contact };
+
+        const newMessage: Message = {
+            id: successful[0].apiResult.messageId || `msg-${Date.now()}`,
+            recipient: summaryRecipient,
+            content,
+            channel: channel as any,
+            status: successful.length === results.length ? 'Sent' : 'Pending',
+            timestamp: new Date().toLocaleString(),
+            priority: 'Normal',
+            isIncoming: false
+        };
+        addMessage(newMessage);
+        setIsComposeOpen(false);
+
+        if (successful.length === results.length) {
+            alert(`Message sent via ${channel} to ${isGroup ? `${successful.length} recipients` : summaryRecipient.name}`);
         } else {
-            alert(`Failed to send: ${apiResult.error || 'Unknown error'}`);
+            alert(`Sent ${successful.length} of ${results.length} messages via ${channel}. ${results.length - successful.length} failed.`);
         }
     };
 
@@ -538,8 +592,11 @@ const Messages: React.FC<MessagesProps> = ({ channelFilter, folderFilter }) => {
         
         const channel = selectedMessage.channel === 'SMS' ? 'SMS' : selectedMessage.channel === 'Email' ? 'Email' : selectedMessage.channel === 'WhatsApp' ? 'WhatsApp' : 'App';
         
-        // Mock sending via API
-        await handleSendMessage(selectedMessage.recipient.name, replyText, channel);
+        await handleSendMessage({
+            recipients: [{ name: selectedMessage.recipient.name, contact: selectedMessage.recipient.contact }],
+            content: replyText,
+            channel,
+        });
         setReplyText('');
     };
 

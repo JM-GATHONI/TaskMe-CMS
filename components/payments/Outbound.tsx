@@ -131,7 +131,7 @@ const PayOutboundModal: React.FC<{
     category: string;
     item: OutboundItem;
     onClose: () => void;
-    onPaymentComplete: (amount: number, ref: string, item: OutboundItem, receipt?: File) => void;
+    onPaymentComplete: (amount: number, ref: string, item: OutboundItem, receipt?: File) => void | Promise<void>;
 }> = ({ category, item, onClose, onPaymentComplete }) => {
     const [reference, setReference] = useState('');
     const [receipt, setReceipt] = useState<File | null>(null);
@@ -142,9 +142,9 @@ const PayOutboundModal: React.FC<{
         }
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!reference) return alert("Please enter a transaction reference/code.");
-        onPaymentComplete(item.amount, reference, item, receipt || undefined);
+        await onPaymentComplete(item.amount, reference, item, receipt || undefined);
     };
 
     return (
@@ -485,7 +485,7 @@ const Outbound: React.FC = () => {
         setIsPayModalOpen(true);
     };
 
-    const handlePaymentComplete = (amount: number, ref: string, item: OutboundItem, receipt?: File) => {
+    const handlePaymentComplete = async (amount: number, ref: string, item: OutboundItem, receipt?: File) => {
         let notificationMsg = `Payment of KES ${amount.toLocaleString()} processed. Ref: ${ref}`;
         let notificationRecipient = { name: item.recipient, contact: item.recipientPhone || '' };
 
@@ -523,17 +523,19 @@ const Outbound: React.FC = () => {
         // 2. Send Notification
         if (notificationRecipient.contact) {
             const fullMsg = `${notificationMsg} Ref: ${ref}. Thank you. - TaskMe Realty`;
-            communicationApi.sendSMS(notificationRecipient.contact, fullMsg, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+            const smsResult = await communicationApi.sendSMS(notificationRecipient.contact, fullMsg, 'TASK-ME', systemSettings?.bulkSmsEnabled);
             addMessage({
                 id: `msg-${Date.now()}`,
                 recipient: notificationRecipient,
                 content: fullMsg,
                 channel: 'SMS',
-                status: 'Sent',
+                status: smsResult.success ? 'Sent' : 'Failed',
                 timestamp: new Date().toLocaleString(),
                 priority: 'Normal'
             });
-            alert(`Payment recorded & SMS sent to ${notificationRecipient.name}.`);
+            alert(smsResult.success
+                ? `Payment recorded & SMS sent to ${notificationRecipient.name}.`
+                : `Payment recorded, but SMS could not be sent to ${notificationRecipient.name}. ${smsResult.error || ''}`.trim());
         } else {
             alert("Payment recorded.");
         }

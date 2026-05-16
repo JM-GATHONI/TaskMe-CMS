@@ -1,8 +1,10 @@
 
 import React, { useMemo, useState } from 'react';
 import { useData } from '../../../context/DataContext';
+import { Message } from '../../../types';
 import Icon from '../../Icon';
-import { ComposeModal } from './Messages';
+import { communicationApi } from '../../../utils/communicationApi';
+import { ComposeModal, ComposeSendRequest } from './Messages';
 
 const NavCard: React.FC<{ title: string; icon: string; description: string; link: string; color: string }> = ({ title, icon, description, link, color }) => (
     <div 
@@ -33,7 +35,7 @@ const StatCard: React.FC<{ title: string; value: string | number; subtext: strin
 );
 
 const CommunicationOverview: React.FC = () => {
-    const { messages, addMessage, templates, automationRules } = useData();
+    const { messages, addMessage, templates, automationRules, systemSettings } = useData();
     const [isComposeOpen, setIsComposeOpen] = useState(false);
 
     // Stats Calculation
@@ -49,21 +51,55 @@ const CommunicationOverview: React.FC = () => {
 
     const activeRules = automationRules.filter(r => r.enabled).length;
 
-    const handleSendMessage = (to: string, content: string, channel: string, isGroup = false, count = 1) => {
-        const newMessage = {
-            id: `msg-${Date.now()}`,
-            recipient: { name: to, contact: isGroup ? `${count} Recipients` : to },
+    const handleSendMessage = async ({ recipients, content, channel, isGroup = false, groupLabel }: ComposeSendRequest) => {
+        if (recipients.length === 0) {
+            alert('No recipients selected.');
+            return;
+        }
+
+        if (isGroup && channel !== 'SMS') {
+            alert('Bulk broadcasts are currently supported for SMS only.');
+            return;
+        }
+
+        const results = [];
+        for (const recipient of recipients) {
+            let apiResult;
+
+            if (channel === 'SMS') apiResult = await communicationApi.sendSMS(recipient.contact, content, 'TASK-ME', systemSettings?.bulkSmsEnabled);
+            else if (channel === 'Email') apiResult = await communicationApi.sendEmail(recipient.contact, 'New Message', content, 'noreply@taskme.re');
+            else if (channel === 'WhatsApp') apiResult = await communicationApi.sendWhatsApp(recipient.contact, content);
+            else apiResult = await communicationApi.sendInApp(recipient.contact, content);
+
+            results.push({ recipient, apiResult });
+        }
+
+        const successful = results.filter(result => result.apiResult.success);
+        if (successful.length === 0) {
+            alert(`Failed to send: ${results[0]?.apiResult.error || 'Unknown error'}`);
+            return;
+        }
+
+        const newMessage: Message = {
+            id: successful[0].apiResult.messageId || `msg-${Date.now()}`,
+            recipient: isGroup
+                ? { name: `Group: ${groupLabel || 'Broadcast'}`, contact: `${successful.length} Recipients` }
+                : { name: successful[0].recipient.name, contact: successful[0].recipient.contact },
             content,
             channel: channel as any,
-            status: 'Sent',
+            status: successful.length === results.length ? 'Sent' : 'Pending',
             timestamp: new Date().toLocaleString(),
             priority: 'Normal',
             isIncoming: false
         };
-        // @ts-ignore
         addMessage(newMessage);
         setIsComposeOpen(false);
-        alert(`Message sent via ${channel} to ${isGroup ? count + ' recipients' : to}`);
+
+        if (successful.length === results.length) {
+            alert(`Message sent via ${channel} to ${isGroup ? `${successful.length} recipients` : newMessage.recipient.name}`);
+        } else {
+            alert(`Sent ${successful.length} of ${results.length} messages via ${channel}. ${results.length - successful.length} failed.`);
+        }
     };
 
     const modules = [

@@ -60,41 +60,84 @@ function hasPaidThisMonth(tenant: any, monthIso: string): boolean {
   );
 }
 
-/** Send one SMS via OnfonMedia */
-async function sendOnfonSms(
+/** Send one SMS via the generic send-sms Edge Function (provider-agnostic) */
+async function sendSmsViaEdge(
   to: string,
   text: string,
   env: Record<string, string>
 ): Promise<{ ok: boolean; msgId?: string; error?: string }> {
-  const accessKey = env.ONFON_ACCESS_KEY;
-  const apiKey    = env.ONFON_API_KEY;
-  const clientId  = env.ONFON_CLIENT_ID;
-  const senderId  = env.ONFON_SENDER_ID || 'TASK-ME';
+  const supabaseUrl  = env.SUPABASE_URL;
+  const serviceKey   = env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!accessKey || !apiKey || !clientId) {
-    return { ok: false, error: 'OnfonMedia env vars not configured' };
+  if (!supabaseUrl || !serviceKey) {
+    return { ok: false, error: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set' };
   }
 
   try {
-    const res = await fetch('https://api.onfonmedia.co.ke/v1/sms/SendBulkSMS', {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'AccessKey': accessKey },
-      body: JSON.stringify({
-        SenderId: senderId,
-        MessageParameters: [{ Number: to, Text: text }],
-        ApiKey: apiKey,
-        ClientId: clientId,
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ to, content: text }),
     });
+
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return { ok: false, error: (data as any)?.ErrorMessage || `HTTP ${res.status}` };
+    if (!res.ok || (data as any)?.error) {
+      return { ok: false, error: (data as any)?.error || `HTTP ${res.status}` };
     }
-    const msgId = (data as any)?.MessageId || (data as any)?.Data?.[0]?.MessageId;
-    return { ok: true, msgId: String(msgId ?? Date.now()) };
+
+    const msgId = (data as any)?.messageId || `sms-${Date.now()}`;
+    return { ok: true, msgId: String(msgId) };
   } catch (e: any) {
     return { ok: false, error: e.message };
   }
+}
+
+async function loadReminderSettings(db: ReturnType<typeof createClient>) {
+  const { data, error } = await db
+    .from('system_settings')
+    .select('bulk_sms_enabled, shortcode, agency_paybill')
+    .eq('id', 'singleton')
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return {
+    bulkSmsEnabled: data?.bulk_sms_enabled ?? false,
+    paybill: data?.shortcode || data?.agency_paybill || '',
+  };
+}
+
+async function loadReminderTemplate(db: ReturnType<typeof createClient>, templateId: string) {
+  const { data, error } = await db
+    .from('communication_templates')
+    .select('id, content')
+    .eq('id', templateId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function loadReminderTenants(db: ReturnType<typeof createClient>) {
+  const { data, error } = await db
+    .from('tenants')
+    .select('id, name, unit, phone, status, rent_amount, payment_history, outstanding_fines');
+
+  if (error) throw error;
+
+  return (data ?? []).map((tenant: any) => ({
+    id: tenant.id,
+    name: tenant.name,
+    unit: tenant.unit,
+    phone: tenant.phone,
+    status: tenant.status,
+    rentAmount: Number(tenant.rent_amount ?? 0),
+    paymentHistory: Array.isArray(tenant.payment_history) ? tenant.payment_history : [],
+    outstandingFines: Array.isArray(tenant.outstanding_fines) ? tenant.outstanding_fines : [],
+  }));
 }
 
 serve(async (req: Request) => {
@@ -126,48 +169,19 @@ serve(async (req: Request) => {
   }
   const db = createClient(supabaseUrl, serviceKey);
 
-  // Pull system settings
-  const { data: settingsRow } = await db
-    .schema('app')
-    .from('app_state')
-    .select('value')
-    .eq('key', 'tm_system_settings_v11')
-    .maybeSingle();
-
-  const settings: any = settingsRow?.value ?? {};
+  const settings = await loadReminderSettings(db);
   if (!settings.bulkSmsEnabled) {
     return json(200, { message: 'Bulk SMS is disabled in system settings. Skipping.' });
   }
 
-  const paybill  = settings.shortcode || settings.agencyPaybill || '';
-  const provider = (env.SMS_PROVIDER || '').toLowerCase();
-  if (provider !== 'onfonmedia') {
-    return json(200, { message: `SMS_PROVIDER is '${provider}'. Only onfonmedia is supported for scheduled sends.` });
-  }
+  const paybill  = settings.paybill;
 
-  // Pull template content
-  const { data: templatesRow } = await db
-    .schema('app')
-    .from('app_state')
-    .select('value')
-    .eq('key', 'tm_templates_v11')
-    .maybeSingle();
-
-  const templates: any[] = Array.isArray(templatesRow?.value) ? templatesRow.value : [];
-  const template = templates.find((t: any) => t.id === templateId);
+  const template = await loadReminderTemplate(db, templateId);
   if (!template?.content) {
-    return json(500, { error: `Template '${templateId}' not found in app_state. Visit Operations > Communications > Templates to seed it.` });
+    return json(500, { error: `Template '${templateId}' not found in communication_templates. Visit Operations > Communications > Templates to seed it.` });
   }
 
-  // Pull tenants
-  const { data: tenantsRow } = await db
-    .schema('app')
-    .from('app_state')
-    .select('value')
-    .eq('key', 'tm_tenants_v11')
-    .maybeSingle();
-
-  const allTenants: any[] = Array.isArray(tenantsRow?.value) ? tenantsRow.value : [];
+  const allTenants = await loadReminderTenants(db);
 
   // Filter: active tenants who haven't paid this month
   const unpaidTenants = allTenants.filter((t: any) => {
@@ -202,7 +216,7 @@ serve(async (req: Request) => {
     };
 
     const smsText = renderTemplate(template.content, vars);
-    const result = await sendOnfonSms(tenant.phone, smsText, env);
+    const result = await sendSmsViaEdge(tenant.phone, smsText, env);
     results.push({ name: tenant.name, phone: tenant.phone, ok: result.ok, error: result.error });
   }
 

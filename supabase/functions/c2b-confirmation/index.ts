@@ -64,6 +64,190 @@ type C2BPayload = {
   LastName?: string;
 };
 
+type TenantRow = Record<string, any>;
+
+function toNumber(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseMoney(value: unknown): number {
+  const parsed = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatKes(amount: number): string {
+  return `KES ${Math.round(amount).toLocaleString()}`;
+}
+
+function joinParts(parts: string[]): string {
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+}
+
+function currentMonthIso(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function sumPaidThisMonth(tenant: TenantRow | null): number {
+  if (!tenant) return 0;
+  const monthIso = currentMonthIso();
+  const history = Array.isArray(tenant.payment_history) ? tenant.payment_history : [];
+  return history
+    .filter((payment: any) => typeof payment?.date === 'string' && payment.date.startsWith(monthIso) && payment.status === 'Paid')
+    .reduce((sum: number, payment: any) => sum + parseMoney(payment.amount), 0);
+}
+
+function getEffectiveRent(tenant: TenantRow | null): number {
+  if (!tenant) return 0;
+  const monthIso = currentMonthIso();
+  const activationMonth = tenant.activation_date
+    ? String(tenant.activation_date).slice(0, 7)
+    : tenant.onboarding_date
+      ? String(tenant.onboarding_date).slice(0, 7)
+      : null;
+  const firstMonthRent = toNumber(tenant.first_month_rent);
+  if (activationMonth === monthIso && firstMonthRent > 0) return firstMonthRent;
+  return toNumber(tenant.rent_amount);
+}
+
+function getDepositDue(tenant: TenantRow | null): number {
+  if (!tenant || tenant.deposit_exempt) return 0;
+  const prorated = tenant.prorated_deposit;
+  if (prorated?.enabled) {
+    return Math.max(0, toNumber(prorated.totalDepositAmount) - toNumber(prorated.amountPaidSoFar));
+  }
+  const depositMonths = toNumber(tenant.deposit_months) > 0 ? toNumber(tenant.deposit_months) : 1;
+  const expected = toNumber(tenant.deposit_expected) > 0
+    ? toNumber(tenant.deposit_expected)
+    : toNumber(tenant.rent_amount) * depositMonths;
+  return Math.max(0, expected - toNumber(tenant.deposit_paid));
+}
+
+function getPendingItems(items: unknown): Array<{ id: string; label: string; amount: number }> {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item: any) => item?.status === 'Pending')
+    .map((item: any, index: number) => ({
+      id: String(item?.id ?? `${index}`),
+      label: String(item?.description || item?.type || 'balance'),
+      amount: toNumber(item?.amount),
+    }))
+    .filter(item => item.amount > 0);
+}
+
+function summarizeOutstanding(tenant: TenantRow | null): string {
+  if (!tenant) return 'Your payment has been received.';
+
+  const parts: string[] = [];
+  const rentOutstanding = Math.max(0, getEffectiveRent(tenant) - sumPaidThisMonth(tenant));
+  const depositDue = getDepositDue(tenant);
+  const pendingBills = getPendingItems(tenant.outstanding_bills);
+  const pendingFines = getPendingItems(tenant.outstanding_fines);
+
+  if (rentOutstanding > 0) parts.push(`unpaid rent of ${formatKes(rentOutstanding)}`);
+  if (depositDue > 0) parts.push(`${tenant.prorated_deposit?.enabled ? 'deposit balance' : 'unpaid deposit'} of ${formatKes(depositDue)}`);
+  pendingBills.slice(0, 2).forEach(item => parts.push(`${item.label.toLowerCase()} of ${formatKes(item.amount)}`));
+  pendingFines.slice(0, 2).forEach(item => parts.push(`${item.label.toLowerCase()} of ${formatKes(item.amount)}`));
+
+  const remainingBillCount = Math.max(0, pendingBills.length - 2) + Math.max(0, pendingFines.length - 2);
+  const remainingExtraTotal = [
+    ...pendingBills.slice(2).map(item => item.amount),
+    ...pendingFines.slice(2).map(item => item.amount),
+  ].reduce((sum, amount) => sum + amount, 0);
+
+  if (remainingBillCount > 0 && remainingExtraTotal > 0) {
+    parts.push(`other balances of ${formatKes(remainingExtraTotal)}`);
+  }
+
+  if (parts.length === 0) return 'Your account is paid in full.';
+  return `You still have ${joinParts(parts)}.`;
+}
+
+function summarizeCoveredItems(beforeTenant: TenantRow | null, afterTenant: TenantRow | null): string[] {
+  const covered: string[] = [];
+
+  const beforeDepositPaid = toNumber(beforeTenant?.deposit_paid);
+  const afterDepositPaid = toNumber(afterTenant?.deposit_paid);
+  if (afterDepositPaid > beforeDepositPaid) {
+    const depositDelta = afterDepositPaid - beforeDepositPaid;
+    covered.push(`${afterTenant?.prorated_deposit?.enabled ? 'prorated deposit' : 'deposit'} of ${formatKes(depositDelta)}`);
+  }
+
+  const beforeBills = new Map(getPendingItems(beforeTenant?.outstanding_bills).map(item => [item.id, item]));
+  const afterBillsPendingIds = new Set(getPendingItems(afterTenant?.outstanding_bills).map(item => item.id));
+  for (const [id, item] of beforeBills.entries()) {
+    if (!afterBillsPendingIds.has(id)) covered.push(`${item.label.toLowerCase()} of ${formatKes(item.amount)}`);
+  }
+
+  const beforeFines = new Map(getPendingItems(beforeTenant?.outstanding_fines).map(item => [item.id, item]));
+  const afterFinesPendingIds = new Set(getPendingItems(afterTenant?.outstanding_fines).map(item => item.id));
+  for (const [id, item] of beforeFines.entries()) {
+    if (!afterFinesPendingIds.has(id)) covered.push(`${item.label.toLowerCase()} of ${formatKes(item.amount)}`);
+  }
+
+  const beforeRentCovered = sumPaidThisMonth(beforeTenant) + 0.5 >= getEffectiveRent(beforeTenant);
+  const afterRentCovered = sumPaidThisMonth(afterTenant) + 0.5 >= getEffectiveRent(afterTenant);
+  if (!beforeRentCovered && afterRentCovered && getEffectiveRent(afterTenant) > 0) {
+    covered.push(`rent of ${formatKes(getEffectiveRent(afterTenant))}`);
+  }
+
+  return covered;
+}
+
+function buildAcknowledgementSms(beforeTenant: TenantRow | null, afterTenant: TenantRow, amount: number, reference: string): string {
+  const name = String(afterTenant.name || 'Tenant').trim();
+  const covered = summarizeCoveredItems(beforeTenant, afterTenant);
+  const intro = covered.length > 0
+    ? `Dear ${name}, your payment of ${formatKes(amount)} has been received. It covered ${joinParts(covered)}.`
+    : `Dear ${name}, your payment of ${formatKes(amount)} has been received.`;
+  const outstanding = summarizeOutstanding(afterTenant);
+  return `${intro} ${outstanding} Ref: ${reference}. - TaskMe Realty`;
+}
+
+async function getMatchedTenantBeforePayment(sb: ReturnType<typeof createClient>, billRef: string): Promise<TenantRow | null> {
+  if (!billRef) return null;
+  const { data } = await sb.rpc('find_active_tenant_by_unit_tag', { p_tag: billRef });
+  const row = Array.isArray(data) ? data[0] : null;
+  const tenantId = row?.tenant_id ? String(row.tenant_id) : null;
+  if (!tenantId) return null;
+  const { data: tenant } = await sb.from('tenants').select('*').eq('id', tenantId).maybeSingle();
+  return tenant ?? null;
+}
+
+async function isBulkSmsEnabled(sb: ReturnType<typeof createClient>): Promise<boolean> {
+  const { data } = await sb
+    .from('system_settings')
+    .select('bulk_sms_enabled')
+    .eq('id', 'singleton')
+    .maybeSingle();
+  return data?.bulk_sms_enabled ?? false;
+}
+
+async function sendSmsViaEdge(
+  to: string,
+  content: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<void> {
+  const response = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({ to, content, senderId: 'TASK-ME' }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || (data as any)?.error) {
+    throw new Error((data as any)?.error || `HTTP ${response.status}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -76,13 +260,11 @@ Deno.serve(async (req) => {
   }
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 
-  // IP check (can be disabled for sandbox via env var).
   const verifyIp = (Deno.env.get("MPESA_VERIFY_CALLBACK_IP") ?? "true") !== "false";
   if (verifyIp) {
     const ip = resolveCallerIp(req);
     if (!ip || !SAFARICOM_IPS.has(ip)) {
       console.warn(`[c2b-confirmation] rejected IP: ${ip}`);
-      // Return 200 ok so Safaricom does not retry a request we intentionally dropped.
       return json(200, { ResultCode: 0, ResultDesc: "Ignored" });
     }
   }
@@ -119,12 +301,13 @@ Deno.serve(async (req) => {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = Deno.env.toObject();
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error("[c2b-confirmation] Supabase env vars missing");
-    // Return 500 so Safaricom retries — a genuine server misconfig, not a duplicate.
     return json(500, { ResultCode: 1, ResultDesc: "Server misconfigured" });
   }
 
   try {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const beforeTenant = await getMatchedTenantBeforePayment(sb, billRef);
+
     const { data, error } = await sb.rpc("record_c2b_payment", {
       p_transaction_id: transId,
       p_amount: amount,
@@ -141,13 +324,25 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error(`[c2b-confirmation] RPC error for ${transId}:`, error.message);
-      // Return 500 so Safaricom retries — transient DB error.
       return json(500, { ResultCode: 1, ResultDesc: "DB error" });
     }
 
     const row = Array.isArray(data) ? data[0] : data;
     const matchedTenantId = row?.matched_tenant_id ?? null;
     const wasDuplicate = !!row?.was_duplicate;
+
+    if (matchedTenantId && !wasDuplicate) {
+      const { data: afterTenant } = await sb.from('tenants').select('*').eq('id', matchedTenantId).maybeSingle();
+      const bulkSmsEnabled = await isBulkSmsEnabled(sb);
+      if (afterTenant?.phone && bulkSmsEnabled) {
+        try {
+          const smsContent = buildAcknowledgementSms(beforeTenant, afterTenant, amount, transId);
+          await sendSmsViaEdge(afterTenant.phone, smsContent, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        } catch (smsError) {
+          console.error(`[c2b-confirmation] SMS send failed for ${transId}:`, (smsError as Error)?.message);
+        }
+      }
+    }
 
     console.log(
       `[c2b-confirmation] ${transId} amount=${amount} billRef="${billRef}" ` +
