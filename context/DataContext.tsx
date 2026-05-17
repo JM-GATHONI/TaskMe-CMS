@@ -1895,19 +1895,92 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [properties, landlords, staff]);
 
     // ... (Keep existing update functions) ...
+    const buildPendingApplicantTenant = React.useCallback((application: TenantApplication): TenantProfile => {
+        const rentAmount = Number(application.rentAmount || 0);
+        const depositMonths = Math.max(1, Number(application.depositMonths ?? 1));
+        const depositExpected = application.depositExempt
+            ? 0
+            : application.rentExtension?.enabled
+                ? Number(application.rentExtension.depositPaidUpfront || 0)
+                : application.proratedDeposit?.enabled
+                    ? Number(application.proratedDeposit.totalDepositAmount || 0)
+                    : rentAmount * depositMonths;
+
+        return {
+            id: application.id,
+            name: application.name,
+            username: '',
+            email: String(application.email || ''),
+            phone: String(application.phone || ''),
+            alternativePhone: (application as any).alternativePhone || undefined,
+            nextOfKinName: (application as any).nextOfKinName || undefined,
+            nextOfKinPhone: (application as any).nextOfKinPhone || undefined,
+            nextOfKinRelationship: (application as any).nextOfKinRelationship || undefined,
+            idNumber: String(application.idNumber || ''),
+            status: 'PendingApproval',
+            propertyId: application.propertyId,
+            propertyName: application.propertyName || application.property,
+            unitId: application.unitId,
+            unit: application.unit || '',
+            rentAmount,
+            rentDueDate: application.rentDueDate,
+            rentGraceDays: application.rentGraceDays,
+            depositPaid: Number(application.depositPaid || 0),
+            depositExpected,
+            onboardingDate: application.submittedDate || new Date().toISOString().split('T')[0],
+            leaseSigned: !!application.leaseSigned,
+            leaseStartDate: application.leaseStartDate,
+            leaseEnd: application.leaseEnd,
+            paymentHistory: [],
+            outstandingBills: [],
+            outstandingFines: [],
+            maintenanceRequests: [],
+            avatar: application.avatar,
+            profilePicture: application.profilePicture,
+            kraPin: application.kraPin,
+            role: 'Tenant',
+            referrerId: application.referrerId,
+            referralCode: application.referralCode,
+            authUserId: application.authUserId,
+            depositExempt: application.depositExempt,
+            depositMonths,
+            proratedDeposit: application.proratedDeposit,
+            rentExtension: application.rentExtension,
+            waterDeposit: application.waterDeposit,
+            electricityDeposit: application.electricityDeposit,
+        };
+    }, []);
+    const syncPendingApplicantTenant = React.useCallback((application: TenantApplication) => {
+        if (application.status === 'Rejected') {
+            setTenants(prev => prev.filter(t => !(t.id === application.id && t.status === 'PendingApproval')));
+            return;
+        }
+
+        const mirrored = buildPendingApplicantTenant(application);
+        setTenants(prev => {
+            const existing = prev.find(t => t.id === application.id);
+            if (!existing) return [mirrored, ...prev];
+            if (existing.status !== 'PendingApproval') return prev;
+            return prev.map(t => t.id === application.id ? {
+                ...t,
+                ...mirrored,
+                paymentHistory: t.paymentHistory || [],
+                outstandingBills: t.outstandingBills || [],
+                outstandingFines: t.outstandingFines || [],
+                maintenanceRequests: t.maintenanceRequests || [],
+                nextDueDate: t.nextDueDate,
+                activationDate: t.activationDate,
+            } : t);
+        });
+    }, [buildPendingApplicantTenant, setTenants]);
     const addTenant = (t: TenantProfile) => setTenants(prev => [t, ...prev]);
     const updateTenant = (id: string, d: Partial<TenantProfile>) => setTenants(prev => prev.map(t => t.id === id ? { ...t, ...d } : t));
     const deleteTenant = (id: string) => {
-        // Capture authUserId before removing from state.
         const authUid = tenants.find(t => t.id === id)?.authUserId;
         setTenants(prev => prev.filter(t => t.id !== id));
         (async () => {
-            // Remove from the normalized table so RPCs/dup-checks stop seeing it.
             const { error: delErr } = await supabase.schema('app').rpc('delete_tenant', { p_id: id });
             if (delErr) console.warn('[Supabase] delete_tenant RPC error:', delErr.message);
-            // Delete the auth account: prefer the tenant's own ID if it is a UUID
-            // (system-registered tenants), otherwise fall back to authUserId
-            // (self-registered tenants whose record ID is 'app-self-...').
             const authTarget = isAuthUUID(id) ? id : (authUid && isAuthUUID(authUid) ? authUid : null);
             if (authTarget) {
                 const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: authTarget });
@@ -1934,17 +2007,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateTask = (id: string, d: Partial<Task>) => setTasks(prev => prev.map(t => t.id === id ? {...t, ...d} : t));
     const addQuotation = (q: Quotation) => setQuotations(prev => [q, ...prev]);
     const updateQuotation = (id: string, d: Partial<Quotation>) => setQuotations(prev => prev.map(q => q.id === id ? {...q, ...d} : q));
-    const addApplication = (a: TenantApplication) => setApplications(prev => [a, ...prev]);
-    const updateApplication = (id: string, d: Partial<TenantApplication>) => setApplications(prev => prev.map(a => a.id === id ? {...a, ...d} : a));
-    const deleteApplication = (id: string) => {
-        // Capture authUserId before removing from state.
+    const addApplication = (a: TenantApplication) => {
+        setApplications(prev => [a, ...prev]);
+        syncPendingApplicantTenant(a);
+    };
+    const updateApplication = (id: string, d: Partial<TenantApplication>) => {
+        const existing = applications.find(a => a.id === id);
+        const nextApplication = { ...(existing || { id }), ...d } as TenantApplication;
+        setApplications(prev => prev.map(a => a.id === id ? {...a, ...d} : a));
+        syncPendingApplicantTenant(nextApplication);
+    };
+    const deleteApplication = (id: string, options?: { keepTenant?: boolean; keepAuthUser?: boolean }) => {
         const authUid = applications.find(a => a.id === id)?.authUserId;
+        const pendingApplicantTenant = tenants.find(t => t.id === id && t.status === 'PendingApproval');
         setApplications(prev => prev.filter(a => a.id !== id));
+        if (pendingApplicantTenant && !options?.keepTenant) {
+            setTenants(prev => prev.filter(t => t.id !== id));
+        }
         (async () => {
-            // Remove from the normalized table — without this the record reappears on reload.
             const { error: delErr } = await supabase.schema('app').rpc('delete_tenant_application', { p_id: id });
             if (delErr) console.warn('[Supabase] delete_tenant_application RPC error:', delErr.message);
-            // Also delete the auth account if the applicant self-registered.
+            if (options?.keepAuthUser) return;
             const authTarget = isAuthUUID(id) ? id : (authUid && isAuthUUID(authUid) ? authUid : null);
             if (authTarget) {
                 const { error } = await supabase.schema('app').rpc('admin_delete_auth_user', { p_user_id: authTarget });
@@ -1952,6 +2035,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         })();
     };
+    React.useEffect(() => {
+        if (applicationsStatus.loading || tenantsStatus.loading || applications.length === 0) return;
+        const missing = applications.filter(a => {
+            if (a.status === 'Rejected') return false;
+            const existing = tenants.find(t => t.id === a.id);
+            return !existing;
+        });
+        if (missing.length === 0) return;
+        setTenants(prev => {
+            const existingIds = new Set(prev.map(t => t.id));
+            const additions = missing
+                .filter(a => !existingIds.has(a.id))
+                .map(a => buildPendingApplicantTenant(a));
+            if (additions.length === 0) return prev;
+            return [...additions, ...prev];
+        });
+    }, [applications, applicationsStatus.loading, tenants, tenantsStatus.loading, buildPendingApplicantTenant, setTenants]);
     const addLandlordApplication = (a: LandlordApplication) => setLandlordApplications(prev => [a, ...prev]);
     const updateLandlordApplication = (id: string, d: Partial<LandlordApplication>) => setLandlordApplications(prev => prev.map(a => a.id === id ? {...a, ...d} : a));
     const deleteLandlordApplication = (id: string) => setLandlordApplications(prev => prev.filter(a => a.id !== id));

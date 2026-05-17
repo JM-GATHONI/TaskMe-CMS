@@ -248,7 +248,7 @@ const MpesaStkModal: React.FC<{
             updates.proratedDeposit = { ...tenant.proratedDeposit, ...cycle.proratedUpdate };
             updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
         }
-        if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+        if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
             const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
                 ? Number((tenant as any).depositMonths) : 1;
             const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
@@ -261,7 +261,8 @@ const MpesaStkModal: React.FC<{
             const depSettledByPayment = tenant.proratedDeposit?.enabled
                 ? amt >= Number(tenant.rentAmount || 0) + (tenant.proratedDeposit.monthlyInstallment || 0)
                 : amt >= Number(tenant.rentAmount || 0) + depExpected;
-            if (depAlreadySettled || depSettledByPayment) {
+            const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
+            if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
                 updates.status = 'Active';
                 (updates as any).activationDate = payDate;
             }
@@ -415,7 +416,7 @@ const ManualPaymentModal: React.FC<{
                 paymentHistory: [newPayment, ...(tenant.paymentHistory || [])],
                 nextDueDate: cycle.nextDueDateIso,
             };
-            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+            if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
                 const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
                     ? Number((tenant as any).depositMonths) : 1;
                 const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
@@ -434,7 +435,8 @@ const ManualPaymentModal: React.FC<{
                 const depSettledByPayment = tenant.proratedDeposit?.enabled
                     ? amt >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
                     : amt >= effectiveRent + depExpected;
-                if (depAlreadySettled || depSettledByPayment) {
+                const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
+                if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
                 }

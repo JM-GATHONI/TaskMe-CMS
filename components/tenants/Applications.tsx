@@ -1551,7 +1551,7 @@ const Applications: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | undefined>(undefined);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState<'All' | 'Active' | 'PendingAllocation' | 'PendingPayment'>('All');
+    const [filterType, setFilterType] = useState<'All' | 'Applicants' | 'Active' | 'PendingAllocation' | 'PendingPayment'>('All');
     const [moveTenant, setMoveTenant] = useState<TenantProfile | null>(null);
     const [manualPayRecord, setManualPayRecord] = useState<UnifiedRecord | null>(null);
     const [stkPayRecord, setStkPayRecord] = useState<UnifiedRecord | null>(null);
@@ -1722,7 +1722,7 @@ const Applications: React.FC = () => {
             } else {
                 addTenant(tenantPayload as TenantProfile);
             }
-            deleteApplication(record.id);
+            deleteApplication(record.id, { keepTenant: true, keepAuthUser: true });
             setProfileHubRecord(null);
             alert(`${record.name} approved and moved to Pending Payment. Record their payment to activate.`);
 
@@ -1741,7 +1741,7 @@ const Applications: React.FC = () => {
             } else {
                 addTenant(tenantPayload as TenantProfile);
             }
-            deleteApplication(record.id);
+            deleteApplication(record.id, { keepTenant: true, keepAuthUser: true });
             setProfileHubRecord(null);
             alert(`${record.name} approved and moved to Pending Allocation. Assign a unit to proceed to payment.`);
         }
@@ -2207,7 +2207,10 @@ const Applications: React.FC = () => {
 
     // --- Combine Data Sources ---
     const unifiedList: UnifiedRecord[] = useMemo(() => {
-        const activeTenants: UnifiedRecord[] = tenants.map(t => ({
+        const applicationIds = new Set(applications.map(a => a.id));
+        const activeTenants: UnifiedRecord[] = tenants
+            .filter(t => !(t.status === 'PendingApproval' && applicationIds.has(t.id)))
+            .map(t => ({
             ...t,
             recordType: 'Tenant',
             displayStatus: t.status,
@@ -2230,6 +2233,7 @@ const Applications: React.FC = () => {
                                   (item.propertyName || item.property || '').toLowerCase().includes(searchQuery.toLowerCase());
             const matchesType =
                 filterType === 'All' ||
+                (filterType === 'Applicants' && item.recordType === 'Application') ||
                 (filterType === 'Active' && item.recordType === 'Tenant' && item.displayStatus === 'Active') ||
                 (filterType === 'PendingAllocation' && item.recordType === 'Tenant' && item.displayStatus === 'PendingAllocation') ||
                 (filterType === 'PendingPayment' && item.recordType === 'Tenant' && (item.displayStatus === 'PendingPayment' || item.displayStatus === 'Pending'));
@@ -2279,6 +2283,7 @@ const Applications: React.FC = () => {
                             className="p-2 border rounded-lg bg-white"
                         >
                             <option value="All">All Records</option>
+                            <option value="Applicants">Applicants</option>
                             <option value="Active">Active Tenants</option>
                             <option value="PendingAllocation">Pending Allocation</option>
                             <option value="PendingPayment">Pending Payment</option>

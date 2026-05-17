@@ -300,7 +300,7 @@ const Reconciliation: React.FC = () => {
                 nextDueDate: cycle.nextDueDateIso,
             };
             // Activate pending tenants whose payment covers rent + deposit
-            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+            if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
                 const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
                     ? Number((tenant as any).depositMonths) : 1;
                 const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
@@ -322,7 +322,8 @@ const Reconciliation: React.FC = () => {
                 const depSettledByPayment = tenant.proratedDeposit?.enabled
                     ? amt >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
                     : amt >= effectiveRent + depExpected;
-                if (depAlreadySettled || depSettledByPayment) {
+                const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
+                if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
                     updates.status = 'Active';
                     (updates as any).activationDate = paymentDate;
                 }

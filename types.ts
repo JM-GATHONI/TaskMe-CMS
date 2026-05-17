@@ -75,6 +75,7 @@ export interface Task {
 }
 
 export type TenantStatus =
+  | 'PendingApproval'
   | 'PendingAllocation'
   | 'PendingPayment'
   | 'Active'
@@ -470,7 +471,6 @@ export interface StaffProfile {
   status: 'Active' | 'On Leave' | 'Terminated';
   avatar?: string;
   department?: BusinessUnit | string;
-  referralCode?: string;
   salaryConfig?: {
       type: SalaryType;
       amount: number;
@@ -1333,7 +1333,7 @@ export interface DataContextType {
     updateQuotation: (id: string, d: Partial<Quotation>) => void;
     addApplication: (a: TenantApplication) => void;
     updateApplication: (id: string, d: Partial<TenantApplication>) => void;
-    deleteApplication: (id: string) => void;
+    deleteApplication: (id: string, options?: { keepTenant?: boolean; keepAuthUser?: boolean }) => void;
     addLandlordApplication: (a: LandlordApplication) => void;
     updateLandlordApplication: (id: string, d: Partial<LandlordApplication>) => void;
     deleteLandlordApplication: (id: string) => void;

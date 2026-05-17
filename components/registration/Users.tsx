@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
-import { User, StaffProfile, TenantProfile, RenovationInvestor, Vendor } from '../../types';
+import { User, StaffProfile, TenantProfile, RenovationInvestor, Vendor, TenantApplication } from '../../types';
 import Icon from '../Icon';
 import { hashPassword } from '../../utils/security';
 import { supabase } from '../../utils/supabaseClient';
@@ -164,6 +164,9 @@ const UserForm: React.FC<{
     const isAffiliate = category.id === 'affiliates' || formData.role === 'Affiliate';
     const isFieldAgent = category.id === 'field' || formData.role === 'Field Agent';
     const isTenant = category.id === 'tenants' || formData.role === 'Tenant';
+    const statusOptions = isTenant
+        ? ['PendingApproval', 'PendingAllocation', 'PendingPayment', 'Active', 'Overdue', 'Notice', 'Vacated', 'Inactive']
+        : ['Active', 'Inactive', 'Suspended'];
     const currentRelationship = String(formData.nextOfKinRelationship ?? '');
     const isCustomRelationship = currentRelationship !== '' &&
         !['Spouse', 'Parent', 'Sibling', 'Child'].includes(currentRelationship);
@@ -368,9 +371,7 @@ const UserForm: React.FC<{
                          <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
                             <select name="status" value={formData.status} onChange={handleChange} className="w-full p-2 border rounded bg-white focus:ring-1 focus:ring-primary outline-none">
-                                <option>Active</option>
-                                <option>Inactive</option>
-                                <option>Suspended</option>
+                                {statusOptions.map(status => <option key={status} value={status}>{status}</option>)}
                             </select>
                          </div>
                     </div>
@@ -396,10 +397,10 @@ const UserForm: React.FC<{
 
 const Users: React.FC = () => {
     const { 
-        staff, landlords, tenants, roles, renovationInvestors, vendors, properties,
+        staff, landlords, tenants, roles, renovationInvestors, vendors, properties, applications,
         addStaff, updateStaff, deleteStaff,
         addLandlord, updateLandlord, deleteLandlord,
-        addTenant, updateTenant, deleteTenant, updateProperty,
+        addTenant, updateTenant, deleteTenant, updateProperty, updateApplication, deleteApplication,
         addRenovationInvestor, updateRenovationInvestor, deleteRenovationInvestor,
         addVendor, updateVendor, deleteVendor,
         checkPermission, currentUser
@@ -586,12 +587,33 @@ const Users: React.FC = () => {
             // Update logic
             if (editUser.type === 'Staff') updateStaff(editUser.id, { ...rest, assignedPropertyId });
             else if (editUser.type === 'Landlord') updateLandlord(editUser.id, rest);
-            else if (editUser.type === 'Tenant') updateTenant(editUser.id, {
-                ...rest,
-                phone: canonicalizePhone(rest.phone) || rest.phone,
-                alternativePhone: canonicalizePhone(rest.alternativePhone) || rest.alternativePhone || undefined,
-                nextOfKinPhone: canonicalizePhone(rest.nextOfKinPhone) || rest.nextOfKinPhone || undefined,
-            });
+            else if (editUser.type === 'Tenant') {
+                const existingTenant = tenants.find(t => t.id === editUser.id);
+                const linkedApplication = applications.find(a => a.id === editUser.id);
+                if (existingTenant?.status === 'PendingApproval' && linkedApplication && rest.status !== 'PendingApproval') {
+                    alert('Approve this applicant from Tenants > Applications before changing their lifecycle status.');
+                    return;
+                }
+                updateTenant(editUser.id, {
+                    ...rest,
+                    phone: canonicalizePhone(rest.phone) || rest.phone,
+                    alternativePhone: canonicalizePhone(rest.alternativePhone) || rest.alternativePhone || undefined,
+                    nextOfKinPhone: canonicalizePhone(rest.nextOfKinPhone) || rest.nextOfKinPhone || undefined,
+                });
+                if (existingTenant?.status === 'PendingApproval' && linkedApplication) {
+                    updateApplication(editUser.id, {
+                        name: rest.name,
+                        email: rest.email,
+                        phone: canonicalizePhone(rest.phone) || rest.phone,
+                        idNumber: rest.idNumber || '',
+                        kraPin: rest.kraPin || '',
+                        alternativePhone: canonicalizePhone(rest.alternativePhone) || rest.alternativePhone || undefined,
+                        nextOfKinName: rest.nextOfKinName || undefined,
+                        nextOfKinPhone: canonicalizePhone(rest.nextOfKinPhone) || rest.nextOfKinPhone || undefined,
+                        nextOfKinRelationship: rest.nextOfKinRelationship || undefined,
+                    } as Partial<TenantApplication>);
+                }
+            }
             else if (editUser.type === 'Investor') updateRenovationInvestor(editUser.id, { ...rest, referrerId, referrerType });
             else if (editUser.type === 'Vendor') updateVendor(editUser.id, { ...rest, specialty });
             setEditUser(null);
@@ -641,6 +663,7 @@ const Users: React.FC = () => {
             } else if (activeCategory.id === 'tenants') {
                 addTenant({
                     ...commonFieldsWithId,
+                    status: rest.status || 'PendingApproval',
                     unit: '', rentAmount: 0, onboardingDate: new Date().toISOString().split('T')[0],
                     paymentHistory: [], outstandingBills: [], outstandingFines: [], maintenanceRequests: [],
                     alternativePhone: canonicalizePhone(rest.alternativePhone) || rest.alternativePhone || undefined,
@@ -732,7 +755,9 @@ const Users: React.FC = () => {
                         updateProperty(prop.id, { units: updatedUnits as any });
                     }
                 }
-                deleteTenant(user.id);
+                const linkedApplication = applications.find(a => a.id === user.id);
+                if (tenant?.status === 'PendingApproval' && linkedApplication) deleteApplication(user.id);
+                else deleteTenant(user.id);
             }
             else if (user.type === 'Investor') deleteRenovationInvestor(user.id);
             else if (user.type === 'Vendor') deleteVendor(user.id);

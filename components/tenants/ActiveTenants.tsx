@@ -59,6 +59,7 @@ function tenantFullyAllocated(t: TenantProfile): boolean {
 
 function isInactiveApplicantTenant(t: TenantProfile): boolean {
     return (
+        t.status === 'PendingApproval' ||
         t.status === 'Pending' ||
         t.status === 'PendingAllocation' ||
         t.status === 'PendingPayment'
@@ -357,7 +358,7 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                     };
                     const cycle = computeRentPaymentCycleUpdate(t, amt, newPayment.date);
                     updates.nextDueDate = cycle.nextDueDateIso;
-                    if (t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment') {
+                    if (t.status === 'PendingApproval' || t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment') {
                         const depExpected = Number((t as any).depositExpected ?? 0) > 0
                             ? Number((t as any).depositExpected)
                             : Number(t.rentAmount || 0) * Math.max(1, Number((t as any).depositMonths ?? 1));
@@ -378,7 +379,8 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         const depSettledByPayment = t.proratedDeposit?.enabled
                             ? amt >= tEffectiveRent + (t.proratedDeposit.monthlyInstallment || 0)
                             : amt >= tEffectiveRent + depExpected;
-                        if (depAlreadySettled || depSettledByPayment) {
+                        const canAutoActivate = t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment';
+                        if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
                             updates.status = 'Active';
                             (updates as any).activationDate = new Date().toISOString().split('T')[0];
                         }
@@ -2166,14 +2168,15 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             // ── No selection: existing full-amount waterfall (unchanged behaviour) ──
             const cycle = computeRentPaymentCycleUpdate(tenant, Number(amount || 0), date);
             updates.nextDueDate = cycle.nextDueDateIso;
-            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+            if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
                 const alreadySettled = tenant.depositExempt || isDepositFullyPaid || !!tenant.rentExtension?.enabled;
                 const settledByPayment = tenant.proratedDeposit?.enabled
                     ? Number(amount) >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
                     : Number(amount) >= effectiveRent + depositExpectedStandard;
                 // When deposit is pre-settled, still require rent to be covered before activating.
                 const rentPaidThisTransaction = !!tenant.rentExtension?.enabled || Number(amount) >= effectiveRent;
-                if ((alreadySettled && rentPaidThisTransaction) || settledByPayment) {
+                const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
+                if (canAutoActivate && ((alreadySettled && rentPaidThisTransaction) || settledByPayment)) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
                 }
@@ -2277,13 +2280,14 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
             // 10. Activate pending tenant if both rent and deposit are now covered.
             // Checkbox selection alone is not enough — validate the payment amount too.
-            if (tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
+            if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
                 const depositSelectedAndPaid = selectedPaymentKeys.has('deposit') && Number(amount) >= depositDueForInvoice;
                 const depositCovered = tenant.depositExempt || isDepositFullyPaid
                     || !!tenant.rentExtension?.enabled || depositSelectedAndPaid;
                 const rentCovered = selectedPaymentKeys.has('rent')
                     && (!!tenant.rentExtension?.enabled || Number(amount) >= rentDue);
-                if (depositCovered && rentCovered) {
+                const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
+                if (canAutoActivate && depositCovered && rentCovered) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
                 }
