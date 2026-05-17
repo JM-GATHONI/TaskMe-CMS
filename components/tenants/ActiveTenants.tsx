@@ -7,7 +7,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { canonicalizePhone } from '../../utils/phone';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
 import { getMonthlyRentStatus } from '../../utils/rentSchedule';
-import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
+import { computeRentPaymentCycleUpdate, getPendingTenantPaymentAllocation } from '../../utils/tenantPaymentCycle';
 import { printSection } from '../../utils/exportHelper';
 import { fmtDate } from '../../utils/date';
 import { ManageOffboardingModal } from './Offboarding';
@@ -357,38 +357,16 @@ const MpesaStkModal: React.FC<{ onClose: () => void; amount: number; tenantName:
                         paymentHistory: [newPayment, ...currentHistory],
                     };
                     const cycle = computeRentPaymentCycleUpdate(t, amt, newPayment.date);
+                    const allocation = getPendingTenantPaymentAllocation(t, amt, newPayment.date);
                     updates.nextDueDate = cycle.nextDueDateIso;
                     if (t.status === 'PendingApproval' || t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment') {
-                        const depExpected = Number((t as any).depositExpected ?? 0) > 0
-                            ? Number((t as any).depositExpected)
-                            : Number(t.rentAmount || 0) * Math.max(1, Number((t as any).depositMonths ?? 1));
-                        const depPaid = Number(t.depositPaid || 0);
-                        const depAlreadySettled = t.depositExempt
-                            || !!t.rentExtension?.enabled
-                            || (t.proratedDeposit?.enabled
-                                ? t.proratedDeposit.amountPaidSoFar + 0.5 >= t.proratedDeposit.totalDepositAmount
-                                : depExpected > 0 && depPaid + 0.5 >= depExpected);
-                        // Compute effective rent for t: use prorated firstMonthRent in activation month
-                        const tActMonthIso = (t as any).activationDate
-                            ? String((t as any).activationDate).slice(0, 7)
-                            : (t.onboardingDate ? t.onboardingDate.slice(0, 7) : null);
-                        const tNowMonthIso = new Date().toISOString().slice(0, 7);
-                        const tIsActMonth = tActMonthIso === tNowMonthIso;
-                        const tFirstMonthRent = Number((t as any).firstMonthRent || 0);
-                        const tEffectiveRent = (tIsActMonth && tFirstMonthRent > 0) ? tFirstMonthRent : Number(t.rentAmount || 0);
-                        const depSettledByPayment = t.proratedDeposit?.enabled
-                            ? amt >= tEffectiveRent + (t.proratedDeposit.monthlyInstallment || 0)
-                            : amt >= tEffectiveRent + depExpected;
                         const canAutoActivate = t.status === 'Pending' || t.status === 'PendingAllocation' || t.status === 'PendingPayment';
-                        if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
+                        if (!t.depositExempt && !t.proratedDeposit?.enabled && !t.rentExtension?.enabled && allocation.depositCreditApplied > 0) {
+                            updates.depositPaid = allocation.depositPaidAfterPayment;
+                        }
+                        if (canAutoActivate && allocation.depositSettledAfterPayment && allocation.rentCoveredByPayment) {
                             updates.status = 'Active';
                             (updates as any).activationDate = new Date().toISOString().split('T')[0];
-                        }
-                        // Update depositPaid for standard tenants only when the payment
-                        // verifiably covers rent + full expected deposit (no auto-pay).
-                        if (!t.depositExempt && !t.proratedDeposit?.enabled && !t.rentExtension?.enabled
-                            && depPaid < depExpected && amt >= tEffectiveRent + depExpected) {
-                            updates.depositPaid = depExpected;
                         }
                     }
                     // Rent extension: restore grace days and clear extension flag
@@ -1901,7 +1879,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             ? tenant.proratedDeposit.amountPaidSoFar >= tenant.proratedDeposit.totalDepositAmount
             : depositExpectedStandard > 0 && depositPaidAmt + 0.5 >= depositExpectedStandard
     );
-    const recurrentBills = Object.values(tenant.recurringBills || {}).reduce((a: number, b) => a + (b as number), 0);
+    const recurrentBills = Object.values(tenant.recurringBills || {}).reduce((a: number, b) => a + Number(b || 0), 0);
     const pendingBills = (tenant.outstandingBills || []).filter(b => b.status === 'Pending').reduce((sum, b) => sum + b.amount, 0);
     const fines = (tenant.outstandingFines || []).filter(f => f.type !== 'Late Rent' && f.status === 'Pending').reduce((sum, f) => sum + f.amount, 0);
     
@@ -1930,6 +1908,10 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
     const balanceDue = totalExpected - amountPaidThisMonth;
     const isCreditBalance = balanceDue < 0;
     const creditAmount = isCreditBalance ? Math.abs(balanceDue) : 0;
+    const pendingPaymentBalanceDue = rentDue + recurrentBills + pendingBills + fines + automatedLateFine + depositDue + waterDepositOwed + electricityDepositOwed;
+    const displayedBalanceDue = tenant.status === 'PendingPayment' ? pendingPaymentBalanceDue : balanceDue;
+    const displayedIsCreditBalance = tenant.status === 'PendingPayment' ? false : isCreditBalance;
+    const displayedCreditAmount = tenant.status === 'PendingPayment' ? 0 : creditAmount;
 
     // ── Priority allocation for per-row status badges ─────────────────────────
     const RECURRING_BILL_LABELS: Record<keyof RecurringBillSettings, string> = {
@@ -1979,7 +1961,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s;
     });
     const selectedTotal = useMemo(() => {
-        if (selectedPaymentKeys.size === 0) return Math.max(0, balanceDue);
+        if (selectedPaymentKeys.size === 0) return Math.max(0, displayedBalanceDue);
         let t = 0;
         if (selectedPaymentKeys.has('deposit') && !tenant.depositExempt && !isDepositFullyPaid) t += depositDueForInvoice;
         if (selectedPaymentKeys.has('rent')) t += rentDue;
@@ -1996,7 +1978,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         if (selectedPaymentKeys.has('waterDeposit')) t += waterDepositOwed;
         if (selectedPaymentKeys.has('electricityDeposit')) t += electricityDepositOwed;
         return t;
-    }, [selectedPaymentKeys, tenant, isDepositFullyPaid, depositDueForInvoice, rentDue, automatedLateFine, waterDepositOwed, electricityDepositOwed, balanceDue]);
+    }, [selectedPaymentKeys, tenant, isDepositFullyPaid, depositDueForInvoice, rentDue, automatedLateFine, waterDepositOwed, electricityDepositOwed, displayedBalanceDue]);
 
     // First rent+deposit payment (or onboarding) – used for display-only "Last Due Date".
     const firstPaidDateStr = paidDates.length > 0
@@ -2167,24 +2149,17 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
         if (!hasSelection) {
             // ── No selection: existing full-amount waterfall (unchanged behaviour) ──
             const cycle = computeRentPaymentCycleUpdate(tenant, Number(amount || 0), date);
+            const allocation = getPendingTenantPaymentAllocation(tenant, Number(amount || 0), date);
             updates.nextDueDate = cycle.nextDueDateIso;
             if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
-                const alreadySettled = tenant.depositExempt || isDepositFullyPaid || !!tenant.rentExtension?.enabled;
-                const settledByPayment = tenant.proratedDeposit?.enabled
-                    ? Number(amount) >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
-                    : Number(amount) >= effectiveRent + depositExpectedStandard;
-                // When deposit is pre-settled, still require rent to be covered before activating.
-                const rentPaidThisTransaction = !!tenant.rentExtension?.enabled || Number(amount) >= effectiveRent;
                 const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
-                if (canAutoActivate && ((alreadySettled && rentPaidThisTransaction) || settledByPayment)) {
+                if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled && allocation.depositCreditApplied > 0) {
+                    updates.depositPaid = allocation.depositPaidAfterPayment;
+                }
+                if (canAutoActivate && allocation.depositSettledAfterPayment && allocation.rentCoveredByPayment) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
                 }
-            }
-            if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
-                && Number(tenant.depositPaid || 0) < depositExpectedStandard
-                && Number(amount || 0) >= effectiveRent + depositExpectedStandard) {
-                updates.depositPaid = depositExpectedStandard;
             }
             if (cycle.clearRentExtension && tenant.rentExtension) {
                 updates.rentGraceDays = tenant.rentExtension.originalGraceDays ?? 4;
@@ -2215,13 +2190,18 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             if (selectedPaymentKeys.has('deposit') && !tenant.depositExempt
                 && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
                 && Number(tenant.depositPaid || 0) < depositExpectedStandard) {
-                updates.depositPaid = depositExpectedStandard;
+                const depositCreditApplied = Math.min(Number(amount || 0), Math.max(0, depositExpectedStandard - Number(tenant.depositPaid || 0)));
+                if (depositCreditApplied > 0) {
+                    updates.depositPaid = Math.min(depositExpectedStandard, Number(tenant.depositPaid || 0) + depositCreditApplied);
+                }
             }
 
             // 3. Prorated deposit installment (only if cycle didn't already handle it)
             if (selectedPaymentKeys.has('deposit') && tenant.proratedDeposit?.enabled && !updates.proratedDeposit) {
-                const nextPaid = (tenant.proratedDeposit.monthsPaid || 0) + 1;
-                const nextAmt  = (tenant.proratedDeposit.amountPaidSoFar || 0) + tenant.proratedDeposit.monthlyInstallment;
+                const installment = tenant.proratedDeposit.monthlyInstallment || 0;
+                const credited = Math.min(Number(amount || 0), installment);
+                const nextAmt  = Math.min(tenant.proratedDeposit.totalDepositAmount, (tenant.proratedDeposit.amountPaidSoFar || 0) + credited);
+                const nextPaid = (tenant.proratedDeposit.monthsPaid || 0) + (credited + 0.5 >= installment ? 1 : 0);
                 updates.proratedDeposit = { ...tenant.proratedDeposit, monthsPaid: nextPaid, amountPaidSoFar: nextAmt };
                 updates.depositPaid = nextAmt;
             }
@@ -2281,11 +2261,22 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             // 10. Activate pending tenant if both rent and deposit are now covered.
             // Checkbox selection alone is not enough — validate the payment amount too.
             if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
-                const depositSelectedAndPaid = selectedPaymentKeys.has('deposit') && Number(amount) >= depositDueForInvoice;
-                const depositCovered = tenant.depositExempt || isDepositFullyPaid
-                    || !!tenant.rentExtension?.enabled || depositSelectedAndPaid;
+                const selectedStandardDepositCredit = selectedPaymentKeys.has('deposit') && !tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+                    ? Math.min(Number(amount || 0), Math.max(0, depositExpectedStandard - Number(tenant.depositPaid || 0)))
+                    : 0;
+                const selectedProratedDepositCredit = selectedPaymentKeys.has('deposit') && tenant.proratedDeposit?.enabled
+                    ? Math.min(Number(amount || 0), tenant.proratedDeposit.monthlyInstallment || 0)
+                    : 0;
+                const depositPaidAfterSelection = selectedPaymentKeys.has('deposit') && !tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
+                    ? Number(updates.depositPaid ?? tenant.depositPaid ?? 0)
+                    : Number(tenant.depositPaid || 0);
+                const depositCovered = tenant.depositExempt || !!tenant.rentExtension?.enabled || tenant.proratedDeposit?.enabled
+                    ? (tenant.depositExempt
+                        || !!tenant.rentExtension?.enabled
+                        || Number((updates.proratedDeposit?.amountPaidSoFar ?? tenant.proratedDeposit?.amountPaidSoFar) || 0) + 0.5 >= Number(tenant.proratedDeposit?.totalDepositAmount || 0))
+                    : depositPaidAfterSelection + 0.5 >= depositExpectedStandard;
                 const rentCovered = selectedPaymentKeys.has('rent')
-                    && (!!tenant.rentExtension?.enabled || Number(amount) >= rentDue);
+                    && (Number(amount || 0) - selectedStandardDepositCredit - selectedProratedDepositCredit + 0.5 >= rentDue);
                 const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
                 if (canAutoActivate && depositCovered && rentCovered) {
                     updates.status = 'Active';
@@ -2901,10 +2892,10 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
 
                     <div className="border-t pt-3 mt-2 flex justify-between items-center">
                         <span className="font-bold text-gray-800 text-base">
-                            {isCreditBalance ? 'Credit (Advance)' : 'Total Due'}
+                            {displayedIsCreditBalance ? 'Credit (Advance)' : 'Total Due'}
                         </span>
-                        <span className={`text-xl font-extrabold ${isCreditBalance ? 'text-emerald-600' : balanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {isCreditBalance ? '- ' : ''}KES {Number(isCreditBalance ? creditAmount : balanceDue).toLocaleString()}
+                        <span className={`text-xl font-extrabold ${displayedIsCreditBalance ? 'text-emerald-600' : displayedBalanceDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {displayedIsCreditBalance ? '- ' : ''}KES {Number(displayedIsCreditBalance ? displayedCreditAmount : displayedBalanceDue).toLocaleString()}
                         </span>
                     </div>
                 </div>
@@ -3097,7 +3088,7 @@ const TenantDetailView: React.FC<{ tenant: TenantProfile; onBack: () => void }> 
             {activeModal === 'fines' && <FinesManagementModal tenant={tenant} onClose={() => setActiveModal(null)} />}
             {activeModal === 'status' && <StatusManagementModal tenant={tenant} onClose={() => setActiveModal(null)} />}
             {activeModal === 'request' && <NewRequestModal tenant={tenant} onClose={() => setActiveModal(null)} onSave={handleNewRequest} />}
-            {activeModal === 'pay' && <MpesaStkModal onClose={() => setActiveModal(null)} amount={Math.max(0, balanceDue)} tenantName={tenant.name} tenantId={tenant.id} />}
+            {activeModal === 'pay' && <MpesaStkModal onClose={() => setActiveModal(null)} amount={Math.max(0, displayedBalanceDue)} tenantName={tenant.name} tenantId={tenant.id} />}
             {activeModal === 'recordPayment' && (
                 <RecordPaymentModal
                     tenant={tenant}

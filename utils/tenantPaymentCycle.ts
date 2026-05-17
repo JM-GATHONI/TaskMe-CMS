@@ -21,6 +21,79 @@ function addMonthsKeepingDay(base: Date, months: number, dueDay: number): Date {
     return out;
 }
 
+function getEffectiveRentForDate(tenant: TenantProfile, paymentDateIso: string): number {
+    const activationMonthIso = (tenant as any).activationDate
+        ? String((tenant as any).activationDate).slice(0, 7)
+        : (tenant.onboardingDate ? String(tenant.onboardingDate).slice(0, 7) : null);
+    const paymentMonthIso = String(paymentDateIso || '').slice(0, 7);
+    const firstMonthRent = Number((tenant as any).firstMonthRent || 0);
+    if (activationMonthIso === paymentMonthIso && firstMonthRent > 0) return Math.max(0, firstMonthRent);
+    return Math.max(0, Number(tenant.rentAmount || 0));
+}
+
+function getDepositExpected(tenant: TenantProfile): number {
+    const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
+        ? Number((tenant as any).depositMonths)
+        : 1;
+    return Number((tenant as any).depositExpected ?? 0) > 0
+        ? Number((tenant as any).depositExpected)
+        : Math.max(0, Number(tenant.rentAmount || 0) * depMonths);
+}
+
+export interface PendingTenantPaymentAllocation {
+    effectiveRent: number;
+    depositExpected: number;
+    depositOutstanding: number;
+    depositCreditApplied: number;
+    depositPaidAfterPayment: number;
+    rentAmountAvailable: number;
+    depositAlreadySettled: boolean;
+    depositSettledAfterPayment: boolean;
+    rentCoveredByPayment: boolean;
+}
+
+export function getPendingTenantPaymentAllocation(
+    tenant: TenantProfile,
+    amountPaid: number,
+    paymentDateIso: string,
+): PendingTenantPaymentAllocation {
+    const paid = Math.max(0, Number(amountPaid || 0));
+    const effectiveRent = getEffectiveRentForDate(tenant, paymentDateIso);
+    const depositExpected = getDepositExpected(tenant);
+    const currentDepositPaid = Math.max(0, Number(tenant.depositPaid || 0));
+    const isStandardDepositRequired = !tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled && depositExpected > 0;
+    const depositOutstanding = isStandardDepositRequired
+        ? Math.max(0, depositExpected - currentDepositPaid)
+        : 0;
+    const depositCreditApplied = Math.min(paid, depositOutstanding);
+    const depositPaidAfterPayment = isStandardDepositRequired
+        ? Math.min(depositExpected, currentDepositPaid + depositCreditApplied)
+        : currentDepositPaid;
+    const depositAlreadySettled = tenant.depositExempt
+        || !!tenant.rentExtension?.enabled
+        || (tenant.proratedDeposit?.enabled
+            ? tenant.proratedDeposit.amountPaidSoFar + 0.5 >= tenant.proratedDeposit.totalDepositAmount
+            : depositExpected > 0 && currentDepositPaid + 0.5 >= depositExpected);
+    const depositSettledAfterPayment = depositAlreadySettled || (tenant.proratedDeposit?.enabled
+        ? paid >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
+        : (tenant.depositExempt || depositExpected <= 0 || depositPaidAfterPayment + 0.5 >= depositExpected));
+    const rentAmountAvailable = tenant.proratedDeposit?.enabled
+        ? Math.max(0, paid - (tenant.proratedDeposit.monthlyInstallment || 0))
+        : Math.max(0, paid - depositCreditApplied);
+    const rentCoveredByPayment = rentAmountAvailable + 0.5 >= effectiveRent;
+    return {
+        effectiveRent,
+        depositExpected,
+        depositOutstanding,
+        depositCreditApplied,
+        depositPaidAfterPayment,
+        rentAmountAvailable,
+        depositAlreadySettled,
+        depositSettledAfterPayment,
+        rentCoveredByPayment,
+    };
+}
+
 export interface RentPaymentCycleResult {
     nextDueDateIso: string;
     monthsCovered: number;
@@ -49,7 +122,7 @@ export function computeRentPaymentCycleUpdate(
     paymentDateIso: string,
 ): RentPaymentCycleResult {
     const dueDay = clampDueDay(tenant.rentDueDate);
-    const monthlyRent = Math.max(0, Number(tenant.rentAmount || 0));
+    const monthlyRent = getEffectiveRentForDate(tenant, paymentDateIso);
     const paid = Math.max(0, Number(amountPaid || 0));
 
     const paymentDate = new Date(paymentDateIso || new Date().toISOString().split('T')[0]);
@@ -81,16 +154,16 @@ export function computeRentPaymentCycleUpdate(
         const pd = tenant.proratedDeposit;
         const installment = pd.monthlyInstallment || 0;
         const amountForRent = Math.max(0, paid - installment);
-        const monthsCovered = monthlyRent > 0 ? Math.max(1, Math.floor(amountForRent / monthlyRent)) : 1;
-        const nextDue = addMonthsKeepingDay(paymentDate, monthsCovered, dueDay);
+        const monthsCovered = monthlyRent > 0 ? Math.max(0, Math.floor(amountForRent / monthlyRent)) : 0;
+        const nextDue = monthsCovered > 0 ? addMonthsKeepingDay(paymentDate, monthsCovered, dueDay) : null;
 
         // Update deposit tracking
         const newAmountPaid = Math.min(pd.totalDepositAmount, pd.amountPaidSoFar + Math.min(installment, paid));
-        const newMonthsPaid = pd.monthsPaid + 1;
+        const newMonthsPaid = pd.monthsPaid + (Math.min(installment, paid) + 0.5 >= installment ? 1 : 0);
         const fullyPaid = newAmountPaid >= pd.totalDepositAmount;
 
         return {
-            nextDueDateIso: toIsoDate(nextDue),
+            nextDueDateIso: nextDue ? toIsoDate(nextDue) : (tenant.nextDueDate ?? paymentDateIso),
             monthsCovered,
             proratedUpdate: {
                 monthsPaid: newMonthsPaid,
@@ -102,14 +175,13 @@ export function computeRentPaymentCycleUpdate(
 
     // ── Standard / Multi-month deposit / Deposit Exempt ───────────────────────
     // Deposit is already paid (or not required) — entire amount applies to rent.
-    const depositOutstanding = Number(tenant.depositPaid || 0) > 0 ? 0 : monthlyRent;
+    const depositOutstanding = tenant.depositExempt ? 0 : Math.max(0, getDepositExpected(tenant) - Math.max(0, Number(tenant.depositPaid || 0)));
     const amountForRent = Math.max(0, paid - depositOutstanding);
     const monthsCovered = monthlyRent > 0 ? Math.max(0, Math.floor(amountForRent / monthlyRent)) : 0;
-    const monthsToAdvance = Math.max(1, monthsCovered || 1);
-    const nextDue = addMonthsKeepingDay(paymentDate, monthsToAdvance, dueDay);
+    const nextDue = monthsCovered > 0 ? addMonthsKeepingDay(paymentDate, monthsCovered, dueDay) : null;
 
     return {
-        nextDueDateIso: toIsoDate(nextDue),
-        monthsCovered: monthsToAdvance,
+        nextDueDateIso: nextDue ? toIsoDate(nextDue) : (tenant.nextDueDate ?? paymentDateIso),
+        monthsCovered,
     };
 }

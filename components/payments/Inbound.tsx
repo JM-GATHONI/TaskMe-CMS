@@ -5,7 +5,7 @@ import { TenantProfile } from '../../types';
 import Icon from '../Icon';
 import { supabase } from '../../utils/supabaseClient';
 import { followStkPaymentCompletion } from '../../utils/stkPaymentFollowup';
-import { computeRentPaymentCycleUpdate } from '../../utils/tenantPaymentCycle';
+import { computeRentPaymentCycleUpdate, getPendingTenantPaymentAllocation } from '../../utils/tenantPaymentCycle';
 import { communicationApi } from '../../utils/communicationApi';
 
 // DB row shape from public.payments (selected columns).
@@ -236,6 +236,7 @@ const MpesaStkModal: React.FC<{
             reference: ref,
         };
         const cycle = computeRentPaymentCycleUpdate(tenant, amt, payDate);
+        const allocation = getPendingTenantPaymentAllocation(tenant, amt, payDate);
         const updates: Partial<TenantProfile> = {
             paymentHistory: [newPayment, ...(tenant.paymentHistory || [])],
             nextDueDate: cycle.nextDueDateIso,
@@ -249,26 +250,13 @@ const MpesaStkModal: React.FC<{
             updates.depositPaid = cycle.proratedUpdate.amountPaidSoFar;
         }
         if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
-            const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
-                ? Number((tenant as any).depositMonths) : 1;
-            const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
-                ? Number((tenant as any).depositExpected)
-                : Number(tenant.rentAmount || 0) * depMonths;
-            const depAlreadySettled = tenant.depositExempt || !!tenant.rentExtension?.enabled
-                || (tenant.proratedDeposit?.enabled
-                    ? tenant.proratedDeposit.amountPaidSoFar + 0.5 >= tenant.proratedDeposit.totalDepositAmount
-                    : depExpected > 0 && Number(tenant.depositPaid || 0) + 0.5 >= depExpected);
-            const depSettledByPayment = tenant.proratedDeposit?.enabled
-                ? amt >= Number(tenant.rentAmount || 0) + (tenant.proratedDeposit.monthlyInstallment || 0)
-                : amt >= Number(tenant.rentAmount || 0) + depExpected;
             const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
-            if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
+            if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled && allocation.depositCreditApplied > 0) {
+                updates.depositPaid = allocation.depositPaidAfterPayment;
+            }
+            if (canAutoActivate && allocation.depositSettledAfterPayment && allocation.rentCoveredByPayment) {
                 updates.status = 'Active';
                 (updates as any).activationDate = payDate;
-            }
-            if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
-                && Number(tenant.depositPaid || 0) < depExpected && amt >= depExpected) {
-                updates.depositPaid = depExpected;
             }
         }
         updateTenant(tenant.id, updates);
@@ -412,37 +400,19 @@ const ManualPaymentModal: React.FC<{
                 reference: normalizedRef,
             };
             const cycle = computeRentPaymentCycleUpdate(tenant, amt, date);
+            const allocation = getPendingTenantPaymentAllocation(tenant, amt, date);
             const updates: Partial<TenantProfile> = {
                 paymentHistory: [newPayment, ...(tenant.paymentHistory || [])],
                 nextDueDate: cycle.nextDueDateIso,
             };
             if (tenant.status === 'PendingApproval' || tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment') {
-                const depMonths = Number.isFinite(Number((tenant as any).depositMonths)) && Number((tenant as any).depositMonths) > 0
-                    ? Number((tenant as any).depositMonths) : 1;
-                const depExpected = Number((tenant as any).depositExpected ?? 0) > 0
-                    ? Number((tenant as any).depositExpected)
-                    : Number(tenant.rentAmount || 0) * depMonths;
-                const tActMonthIso = (tenant as any).activationDate
-                    ? String((tenant as any).activationDate).slice(0, 7)
-                    : (tenant.onboardingDate ? tenant.onboardingDate.slice(0, 7) : null);
-                const tFirstMonthRent = Number((tenant as any).firstMonthRent || 0);
-                const effectiveRent = (tActMonthIso === date.slice(0, 7) && tFirstMonthRent > 0)
-                    ? tFirstMonthRent : Number(tenant.rentAmount || 0);
-                const depAlreadySettled = tenant.depositExempt || !!tenant.rentExtension?.enabled
-                    || (tenant.proratedDeposit?.enabled
-                        ? tenant.proratedDeposit.amountPaidSoFar + 0.5 >= tenant.proratedDeposit.totalDepositAmount
-                        : depExpected > 0 && Number(tenant.depositPaid || 0) + 0.5 >= depExpected);
-                const depSettledByPayment = tenant.proratedDeposit?.enabled
-                    ? amt >= effectiveRent + (tenant.proratedDeposit.monthlyInstallment || 0)
-                    : amt >= effectiveRent + depExpected;
                 const canAutoActivate = tenant.status === 'Pending' || tenant.status === 'PendingAllocation' || tenant.status === 'PendingPayment';
-                if (canAutoActivate && (depAlreadySettled || depSettledByPayment)) {
+                if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled && allocation.depositCreditApplied > 0) {
+                    updates.depositPaid = allocation.depositPaidAfterPayment;
+                }
+                if (canAutoActivate && allocation.depositSettledAfterPayment && allocation.rentCoveredByPayment) {
                     updates.status = 'Active';
                     (updates as any).activationDate = date;
-                }
-                if (!tenant.depositExempt && !tenant.proratedDeposit?.enabled && !tenant.rentExtension?.enabled
-                    && Number(tenant.depositPaid || 0) < depExpected && amt >= depExpected) {
-                    updates.depositPaid = depExpected;
                 }
             }
             if (cycle.clearRentExtension && tenant.rentExtension) {
